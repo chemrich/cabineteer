@@ -513,8 +513,22 @@ def _require_cq():
         )
 
 
+def _is_butt(cfg: CabinetConfig) -> bool:
+    """Butt-joint construction (floating tenon / pocket screw / biscuit /
+    dowel): interior panels seat BETWEEN plain-slab sides at their cutlist
+    dimensions — no dados, no back rabbet. Only dado/rabbet construction
+    keeps the housed (dado-era) geometry. Mirrors the cutlist convention in
+    server._raw_panels_for_cabinet."""
+    return cfg.carcass_joinery != CarcassJoinery.DADO_RABBET
+
+
 def make_side_panel(cfg: CabinetConfig, mirror: bool = False) -> "cq.Workplane":
-    """Create a side panel with dados for bottom/shelves and rabbet for back.
+    """Create a side panel.
+
+    Dado/rabbet construction: dados for bottom/top/shelves and a rabbet for
+    the back. Butt construction: a plain slab (panels butt against the
+    interior face; the back seats against the setback of the interior
+    panels, not a rabbet).
 
     Args:
         cfg: Cabinet configuration.
@@ -527,6 +541,29 @@ def make_side_panel(cfg: CabinetConfig, mirror: bool = False) -> "cq.Workplane":
         cq.Workplane("XY")
         .box(cfg.side_thickness, cfg.depth, cfg.height, centered=False)
     )
+
+    if _is_butt(cfg):
+        # Plain slab; only the shelf-pin holes apply. The rear pin row
+        # references the back's seat plane (depth − back_thickness).
+        if cfg.adj_shelf_holes:
+            x_start = (cfg.side_thickness - cfg.shelf_pin_depth) if not mirror else 0
+            z = cfg.shelf_pin_start_z
+            rear_ref = cfg.depth - cfg.back_thickness
+            while z <= cfg.shelf_pin_end_z:
+                for y_inset in [cfg.shelf_pin_row_inset,
+                                rear_ref - cfg.shelf_pin_row_inset]:
+                    pin_hole = (
+                        cq.Workplane("YZ")
+                        .transformed(offset=(y_inset, z, x_start))
+                        .cylinder(
+                            cfg.shelf_pin_depth,
+                            cfg.shelf_pin_diameter / 2,
+                            centered=(True, True, False),
+                        )
+                    )
+                    panel = panel.cut(pin_hole)
+                z += cfg.shelf_pin_spacing
+        return panel
 
     # Cut rabbet for back panel along the back edge.
     # The rabbet runs the full height on the inside-back edge.
@@ -599,11 +636,20 @@ def make_side_panel(cfg: CabinetConfig, mirror: bool = False) -> "cq.Workplane":
 
 
 def make_bottom_panel(cfg: CabinetConfig) -> "cq.Workplane":
-    """Create the bottom panel. Sits in dados on both sides."""
+    """Create the bottom panel.
+
+    Dado/rabbet: extends into the side dados, stops at the back rabbet.
+    Butt: cut to interior width × (depth − back_thickness) — the cutlist
+    dims; the 6 mm rear setback is the back panel's seat.
+    """
     _require_cq()
-    # Width: interior width + dado depth on each side (panel extends into dados)
-    panel_width = cfg.interior_width + (cfg.dado_depth * 2)
-    panel_depth = cfg.depth - cfg.back_rabbet_width
+    if _is_butt(cfg):
+        panel_width = cfg.interior_width
+        panel_depth = cfg.depth - cfg.back_thickness
+    else:
+        # Width: interior width + dado depth on each side (extends into dados)
+        panel_width = cfg.interior_width + (cfg.dado_depth * 2)
+        panel_depth = cfg.depth - cfg.back_rabbet_width
 
     return (
         cq.Workplane("XY")
@@ -612,26 +658,38 @@ def make_bottom_panel(cfg: CabinetConfig) -> "cq.Workplane":
 
 
 def make_top_panel(cfg: CabinetConfig) -> "cq.Workplane":
-    """Create the top panel. Sits in dados at the top of both side panels.
+    """Create the top panel.
 
-    Extends to the full cabinet depth so the top surface is flush with the
-    back face of the side panels. The back panel stops at the underside of
-    this panel (back_panel_height = height - top_thickness).
+    Dado/rabbet: seats in side dados and extends to full depth (the back
+    stops at its underside). Butt: interior width; depth follows
+    ``back_style`` — "under_top" runs full depth (rear edge flush with the
+    sides, capping the back), "full_height" stops at depth − back_thickness
+    (the back runs past it to the top plane), matching the cutlist.
     """
     _require_cq()
-    panel_width = cfg.interior_width + (cfg.dado_depth * 2)
+    if _is_butt(cfg):
+        panel_width = cfg.interior_width
+        panel_depth = (cfg.depth if cfg.back_style == "under_top"
+                       else cfg.depth - cfg.back_thickness)
+    else:
+        panel_width = cfg.interior_width + (cfg.dado_depth * 2)
+        panel_depth = cfg.depth
 
     return (
         cq.Workplane("XY")
-        .box(panel_width, cfg.depth, cfg.top_thickness, centered=False)
+        .box(panel_width, panel_depth, cfg.top_thickness, centered=False)
     )
 
 
 def make_shelf(cfg: CabinetConfig) -> "cq.Workplane":
     """Create a fixed shelf panel. Same dimensions as bottom."""
     _require_cq()
-    panel_width = cfg.interior_width + (cfg.dado_depth * 2)
-    panel_depth = cfg.depth - cfg.back_rabbet_width
+    if _is_butt(cfg):
+        panel_width = cfg.interior_width
+        panel_depth = cfg.depth - cfg.back_thickness
+    else:
+        panel_width = cfg.interior_width + (cfg.dado_depth * 2)
+        panel_depth = cfg.depth - cfg.back_rabbet_width
 
     return (
         cq.Workplane("XY")
@@ -640,11 +698,23 @@ def make_shelf(cfg: CabinetConfig) -> "cq.Workplane":
 
 
 def make_back_panel(cfg: CabinetConfig) -> "cq.Workplane":
-    """Create the back panel. Sits in rabbets on both sides."""
+    """Create the back panel.
+
+    Dado/rabbet: rabbet-width panel stopping under the full-depth top.
+    Butt: interior width; height follows ``back_style`` — "full_height"
+    runs the full carcass height (its top edge reaches the top plane),
+    "under_top" stops at the underside of the full-depth top.
+    """
     _require_cq()
+    if _is_butt(cfg):
+        width = cfg.interior_width
+        height = (cfg.height - cfg.top_thickness
+                  if cfg.back_style == "under_top" else cfg.height)
+    else:
+        width, height = cfg.back_panel_width, cfg.back_panel_height
     return (
         cq.Workplane("XY")
-        .box(cfg.back_panel_width, cfg.back_thickness, cfg.back_panel_height, centered=False)
+        .box(width, cfg.back_thickness, height, centered=False)
     )
 
 
@@ -666,6 +736,18 @@ def make_interior_divider(
     clipped, only bottom dados are cut; no top dados are added.
     """
     _require_cq()
+    if _is_butt(cfg):
+        # Butt construction: the divider is a plain slab seated on the
+        # bottom panel (caller places it at z = bottom_thickness) — interior
+        # height up to the top, or up to height_override for clipped
+        # armoire dividers. Matches the cutlist's column_divider row.
+        panel_depth = cfg.depth - cfg.back_thickness
+        top_z = cfg.height - cfg.top_thickness if height_override is None \
+            else height_override
+        height = top_z - cfg.bottom_thickness
+        return cq.Workplane("XY").box(
+            cfg.side_thickness, panel_depth, height, centered=False)
+
     panel_depth = cfg.depth - cfg.back_rabbet_width
     height      = height_override if height_override is not None else cfg.height
 
@@ -826,30 +908,37 @@ def build_cabinet(
                  loc=cq.Location((cfg.width - cfg.side_thickness, 0, 0)),
                  color=cq.Color(0.87, 0.72, 0.53, 1.0))
 
-    # Bottom: sits between sides, in the dados
-    # X position: side_thickness - dado_depth (panel extends into dado)
+    # Butt: panels seat against the sides' interior faces (x = side_thickness);
+    # dado/rabbet: panels extend into the dados / rabbets.
+    interior_x = (cfg.side_thickness if _is_butt(cfg)
+                  else cfg.side_thickness - cfg.dado_depth)
+
+    # Bottom: sits between sides
     if bottom is not None:
-        bottom_x = cfg.side_thickness - cfg.dado_depth
-        assy.add(bottom, name="bottom", loc=cq.Location((bottom_x, 0, 0)),
+        assy.add(bottom, name="bottom", loc=cq.Location((interior_x, 0, 0)),
                  color=cq.Color(0.87, 0.72, 0.53, 1.0))
 
     # Shelves
     for i, (shelf, shelf_z) in enumerate(zip(shelves, cfg.fixed_shelf_positions)):
-        shelf_x = cfg.side_thickness - cfg.dado_depth
-        assy.add(shelf, name=f"shelf_{i}", loc=cq.Location((shelf_x, 0, shelf_z)),
+        assy.add(shelf, name=f"shelf_{i}", loc=cq.Location((interior_x, 0, shelf_z)),
                  color=cq.Color(0.80, 0.65, 0.45, 1.0))
 
-    # Top panel: sits in dados at the top of both sides
+    # Top panel
     if top is not None:
-        top_x = cfg.side_thickness - cfg.dado_depth
         top_z = cfg.height - cfg.top_thickness
-        assy.add(top, name="top", loc=cq.Location((top_x, 0, top_z)),
+        assy.add(top, name="top", loc=cq.Location((interior_x, 0, top_z)),
                  color=cq.Color(0.87, 0.72, 0.53, 1.0))
 
-    # Back panel: sits in rabbets (omitted when suppress_back=True)
+    # Back panel (omitted when suppress_back=True). Butt: seats between the
+    # sides against the interior panels' rear setback; dado/rabbet: in the
+    # side rabbets.
     if back is not None:
-        back_x = cfg.side_thickness - cfg.back_rabbet_depth
-        back_y = cfg.depth - cfg.back_rabbet_width
+        if _is_butt(cfg):
+            back_x = cfg.side_thickness
+            back_y = cfg.depth - cfg.back_thickness
+        else:
+            back_x = cfg.side_thickness - cfg.back_rabbet_depth
+            back_y = cfg.depth - cfg.back_rabbet_width
         assy.add(back, name="back", loc=cq.Location((back_x, back_y, 0)),
                  color=cq.Color(0.75, 0.60, 0.40, 0.8))
 
@@ -1027,20 +1116,26 @@ def build_multi_bay_cabinet(
     # ── Continuous bottom + top panels (non-stacked only) ──────────────────────
     if suppress_bay_tb:
         cfg0 = bay_configs[0]
-        # Panel spans from the inside-back of the left side panel's bottom dado
-        # to the matching point on the right side panel — i.e. interior width
-        # plus one dado_depth on each side for seating in the outer dados.
-        cont_panel_width = (
-            total_width
-            - 2 * cfg0.side_thickness
-            + 2 * cfg0.dado_depth
-        )
-        cont_panel_x = cfg0.side_thickness - cfg0.dado_depth
+        butt = _is_butt(cfg0)
+        if butt:
+            # Butt: panels seat BETWEEN the outer sides at interior width —
+            # the cutlist dims. Rear setback = back thickness (the back's
+            # seat).
+            cont_panel_width = total_width - 2 * cfg0.side_thickness
+            cont_panel_x = cfg0.side_thickness
+            cont_bottom_depth = cfg0.depth - cfg0.back_thickness
+        else:
+            # Dado/rabbet: spans from the inside-back of the left side
+            # panel's bottom dado to the matching point on the right side —
+            # interior width plus one dado_depth each side.
+            cont_panel_width = (
+                total_width
+                - 2 * cfg0.side_thickness
+                + 2 * cfg0.dado_depth
+            )
+            cont_panel_x = cfg0.side_thickness - cfg0.dado_depth
+            cont_bottom_depth = cfg0.depth - cfg0.back_rabbet_width
 
-        # Continuous bottom — same depth profile as per-bay bottom (stops at
-        # the front face of the back panel so the back can seat against the
-        # side rabbets without conflict).
-        cont_bottom_depth = cfg0.depth - cfg0.back_rabbet_width
         cont_bottom = (
             cq.Workplane("XY")
             .box(cont_panel_width, cont_bottom_depth, cfg0.bottom_thickness, centered=False)
@@ -1057,11 +1152,16 @@ def build_multi_bay_cabinet(
             notes="continuous bottom — single panel spanning all bays",
         ))
 
-        # Continuous top — extends full depth so the top surface is flush with
-        # the back face of the side panels (matches make_top_panel).
+        # Continuous top — depth follows the construction (matches
+        # make_top_panel): dado/rabbet always full depth; butt "under_top"
+        # full depth (caps the back); butt "full_height" stops at the back's
+        # seat and the back runs past it to the top plane.
+        cont_top_depth = (cfg0.depth if (not butt or
+                                         cfg0.back_style == "under_top")
+                          else cfg0.depth - cfg0.back_thickness)
         cont_top = (
             cq.Workplane("XY")
-            .box(cont_panel_width, cfg0.depth, cfg0.top_thickness, centered=False)
+            .box(cont_panel_width, cont_top_depth, cfg0.top_thickness, centered=False)
         )
         cont_top_z = cfg0.height - cfg0.top_thickness
         assy.add(cont_top, name="top",
@@ -1083,8 +1183,11 @@ def build_multi_bay_cabinet(
     divider_colour = cq.Color(0.87, 0.72, 0.53, 1.0)
     for div_idx, (div_x, cfg) in enumerate(zip(x_offsets[1:], bay_configs)):
         div_shape = make_interior_divider(cfg, height_override=divider_top_z)
+        # Butt dividers seat ON the bottom panel (make_interior_divider cut
+        # them short by bottom_thickness); dado dividers run to the floor.
+        div_z = cfg.bottom_thickness if _is_butt(cfg) else 0.0
         assy.add(div_shape, name=f"divider_{div_idx}",
-                 loc=cq.Location((div_x, 0, 0)),
+                 loc=cq.Location((div_x, 0, div_z)),
                  color=divider_colour)
         all_parts.append(PartInfo(
             name=f"divider_{div_idx}",
@@ -1099,17 +1202,29 @@ def build_multi_bay_cabinet(
     # and running behind the shared interior dividers.
     cfg0 = bay_configs[0]
     cfg_last = bay_configs[-1]
-    cont_back_width = (
-        total_width
-        - (cfg0.side_thickness - cfg0.back_rabbet_depth)   # left rabbet offset
-        - (cfg_last.side_thickness - cfg_last.back_rabbet_depth)  # right rabbet offset
-    )
+    if _is_butt(cfg0):
+        # Butt: the back seats BETWEEN the outer sides against the interior
+        # panels' rear setback. Height follows back_style: "full_height"
+        # runs to the top plane (its edge shows from above — matching the
+        # cutlist), "under_top" stops at the underside of the full-depth top.
+        cont_back_width = total_width - cfg0.side_thickness - cfg_last.side_thickness
+        cont_back_height = (cfg0.height - cfg0.top_thickness
+                            if cfg0.back_style == "under_top" else cfg0.height)
+        back_x = cfg0.side_thickness
+        back_y = cfg0.depth - cfg0.back_thickness
+    else:
+        cont_back_width = (
+            total_width
+            - (cfg0.side_thickness - cfg0.back_rabbet_depth)   # left rabbet offset
+            - (cfg_last.side_thickness - cfg_last.back_rabbet_depth)  # right rabbet offset
+        )
+        cont_back_height = cfg0.back_panel_height
+        back_x = cfg0.side_thickness - cfg0.back_rabbet_depth
+        back_y = cfg0.depth - cfg0.back_rabbet_width
     cont_back = (
         cq.Workplane("XY")
-        .box(cont_back_width, cfg0.back_thickness, cfg0.back_panel_height, centered=False)
+        .box(cont_back_width, cfg0.back_thickness, cont_back_height, centered=False)
     )
-    back_x = cfg0.side_thickness - cfg0.back_rabbet_depth
-    back_y = cfg0.depth - cfg0.back_rabbet_width
     assy.add(cont_back, name="back",
              loc=cq.Location((back_x, back_y, 0)),
              color=cq.Color(0.75, 0.60, 0.40, 0.8))
@@ -1127,7 +1242,8 @@ def build_multi_bay_cabinet(
         shelf_colour_ts = cq.Color(0.87, 0.72, 0.53, 1.0)
         ts_cfg  = bay_configs[0]
         ts_w    = total_width - 2 * ts_cfg.side_thickness
-        ts_dep  = ts_cfg.depth - ts_cfg.back_rabbet_width
+        ts_dep  = ts_cfg.depth - (ts_cfg.back_thickness if _is_butt(ts_cfg)
+                                  else ts_cfg.back_rabbet_width)
         ts_thk  = ts_cfg.shelf_thickness
         for ts_idx, ts_z in enumerate(transition_shelf_zs):
             ts_panel = (

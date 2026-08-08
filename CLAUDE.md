@@ -96,7 +96,7 @@ server.py       ← MCP server (30 tools, stdio or HTTP/SSE)
 
 Scenarios live in `evals/scenarios.py`. Each `Scenario` has a natural-language `prompt`, a list of `ToolCall`s with `Assertion`s, and tags/difficulty for filtering. Available assertion operators: `EQ`, `APPROX`, `GT`, `GTE`, `LT`, `LTE`, `IN`, `CONTAINS`, `HAS_KEY`, `LEN_EQ`, `LEN_GTE`, `IS_TRUE`, `IS_FALSE`, `NO_ERRORS`, `HAS_ERROR`, `HAS_WARNING`.
 
-Baseline: 306 scenarios / 1150 assertions / 100% pass rate; the pytest suite is 1557 passed / 6 skipped (2026-08-02, post back_style). Run the eval suite after any non-trivial change.
+Baseline: 306 scenarios / 1150 assertions / 100% pass rate; the pytest suite is 1566 passed / 6 skipped (2026-08-02, post viewer-geometry fix). Run the eval suite after any non-trivial change.
 
 ## Known issues
 
@@ -113,6 +113,8 @@ Baseline: 306 scenarios / 1150 assertions / 100% pass rate; the pytest suite is 
 - ~~**`consolidate_bom` merges differently-named identical panels**~~ — fixed: `name` is now part of the consolidation key, so "top" and "bottom" panels with the same dimensions stay distinct.
 
 ### Visualizer bugs
+- ~~**Viewer rendered dado-era geometry for every carcass joinery**~~ — fixed (2026-08-02, Charlie's audit ask after the back_style work): butt-joint carcasses (floating tenon / pocket screw / biscuit / dowel) now render plain-slab sides (no dados/rabbets) with interior panels seated BETWEEN them at exact cutlist dims — bottoms/shelves interior-width × (depth − back_t), top depth and back height following `back_style` (full_height shows the back's top edge in the top plane, as the paper builds it), shared dividers at interior height on the bottom panel. `cabinet._is_butt()` gates every panel maker + `build_cabinet`/`build_multi_bay_cabinet` placement; DADO_RABBET keeps the housed legacy geometry (locked by `tests/test_viewer_geometry.py::TestDadoLegacyLocked`). Verified by bbox-probe tests matching `_raw_panels_for_cabinet` output (9 tests).
+- **Known gap: dado_rabbet cutlist has no dado/rabbet allowances** — `_raw_panels_for_cabinet` emits butt-style dims (interior width, depth − back_t) even for DADO_RABBET construction, whose real panels need +2×dado_depth width and rabbet-based depths (the 3D model shows the correct housed panels). Charlie never uses dado_rabbet; flagged 2026-08-02 during the viewer audit, unfixed.
 - ~~**`visualize_cabinet` pulls not rendered**~~ — fixed: `build_multi_bay_cabinet` now adds a `bay{i}_pull{j}_{k}` mesh for each pull placement; `visualize_cabinet` now forwards `drawer_pull` into per-column bay configs for multi-column layouts; the viewer tracks `bay{i}_pull{j}_{k}` nodes and animates them alongside the face when "O" is pressed.
 - ~~**`visualize_cabinet` "O" shortcut** (open drawers) does not work~~ — fixed. Two root causes:
   1. **Wrong traversal depth for `pair.box`**: Three.js r165 GLTFLoader wraps multi-primitive GLTF meshes in an extra Group node, making the ancestry `leaf_mesh → _part_N Group → panel_part Group → panel_name Group → bay{i}_drawer{j} Group`. The old code only searched 3 levels (depths 0–2); `bay{i}_drawer{j}` sits at depth 3. Fixed by adding `p3 = p2?.parent` and extending `searchNames`/`searchNodes` to 4 entries.
