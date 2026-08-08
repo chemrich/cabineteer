@@ -4,9 +4,9 @@
 
 Describe the piece you want in plain English. Claude (or another AI assistant) drives cabineteer's parametric engine and hands back a validated design, an interactive 3D preview, optimized cut sheets, a priced hardware shopping list with real part numbers, and step-by-step carcass assembly instructions.
 
-![Two-pedestal desk in the 3D viewer, all drawers open](docs/images/viewer-drawers-open.png)
+![Twelve-foot rift white oak sideboard run in the 3D viewer](docs/images/hero-sideboard.png)
 
-*A two-pedestal desk in rift-sawn white oak with Baltic-birch drawer boxes. One keystroke slides every drawer open; the side panel switches wood finish and grain direction live.*
+*A three-cabinet dining sideboard run in rift-sawn white oak — drawer banks, door bays, hardwood-banded edges, hairpin legs. Every screenshot in this README came from a real project that produced real cut sheets; this one is being built right now.*
 
 You don't need to be a programmer. If you can install two command-line tools and paste one line into a terminal, you can use everything here from a chat window. And the dimensional math is never left to the AI's imagination — every number comes from deterministic code that knows slide clearances, hinge boring positions, joinery offsets, and sheet sizes.
 
@@ -18,9 +18,52 @@ You don't need to be a programmer. If you can install two command-line tools and
 4. **A hardware shopping list with real SKUs.** Blum, Accuride, Salice, Richelieu — orderable part numbers, pack-quantity math ("5 pulls needed → 3 IKEA 2-packs → 1 leftover"), and list-price totals per line and per project.
 5. **Assembly instructions.** A printable, per-panel plan for carcass glue-up: which joints go where, Domino mortise positions measured from the front edge, machine setup values, a dry-fit step before any glue, and edge-banding steps in the right order.
 
-![Cut sheet layout with numbered guillotine cuts](docs/images/cutlist-sheets.png)
+![Batch cut sheet with three projects colour-coded on one panel](docs/images/paper-batch-layout.png)
 
-*One 2440 × 1220 sheet of the desk's 18 mm carcass panels — the dashed red line is guillotine cut #1, and the tabs switch between the three sheet thicknesses.*
+*One 2440 × 1220 sheet from a five-project batch — parts from three different builds share the panel, colour-coded per project with lettered part IDs, and the numbered dashed lines are the guillotine breakdown cuts with their dimensions.*
+
+## Gallery
+
+### One engine, many pieces
+
+Every render below is a saved cabineteer project, not a mock-up.
+
+| Kids' desk | Miter-saw station | Shelf trio |
+|---|---|---|
+| ![Two-tower desk with worktop](docs/images/gallery-desk.png) | ![Three-cabinet Kapex station](docs/images/gallery-kapex.png) | ![Twin cubbies and a step-tall shelf](docs/images/gallery-shelf.png) |
+
+*Left to right: two drawer towers flanking a 48″ kneehole under one worktop; a mixed-height miter-saw station with wings; twin cubbies plus a step-tall shelf unit.*
+
+### Same design, one line of config apart
+
+| European walnut | Rift white oak | Bamboo |
+|---|---|---|
+| ![Sideboard in walnut](docs/images/finish-walnut.png) | ![Sideboard in rift oak](docs/images/finish-oak.png) | ![Sideboard in bamboo](docs/images/finish-bamboo.png) |
+
+*The identical sideboard project rendered with three `finish` values. Drawer boxes stay Baltic birch throughout — as they would in the shop.*
+
+### See inside before you cut
+
+| | |
+|---|---|
+| ![X-ray fronts](docs/images/viewer-xray.png) | ![All drawers open](docs/images/viewer-open.png) |
+| *`X` — x-ray the fronts to check boxes and slides* | *`O` — every drawer slides open, faces and pulls along* |
+| ![Section cut](docs/images/viewer-clip.png) | ![Manga scale reference](docs/images/viewer-manga.png) |
+| *`C` — clip plane with live mm readout* | *`M` — a manga stack in the drawer answers "how big is it really?"* |
+
+### The paperwork follows the design automatically
+
+Change one dimension and every document below regenerates to match.
+
+| Bench parts list | Mortise map | Registration drawing |
+|---|---|---|
+| ![Bench-format parts list](docs/images/paper-parts-table.png) | ![Per-panel mortise map](docs/images/paper-mortise-map.png) | ![Registration cross-section](docs/images/paper-registration.png) |
+
+*A bench-format cut parts page (bold metric, grey fractional-inch sub-rows); a bottom panel's Domino mortise map — red rows are face mortises, blue are edge mortises, centres measured from the front edge; and the machine-setup cross-section showing the one 10 mm registration reference every mortise shares.*
+
+![Hardware BOM with real part numbers](docs/images/paper-hardware-bom.png)
+
+*The batch hardware BOM: real Blum/Top Knobs/Richelieu part numbers, per-project piece counts, pack-quantity math, and list-price totals — ready to paste into an order.*
 
 ## Quick start
 
