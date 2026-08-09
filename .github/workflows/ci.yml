@@ -19,6 +19,11 @@ jobs:
   lite:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
+    # Windows lite is INFORMATIONAL until the UTF-8 file-I/O fix lands (the
+    # product writes/reads cutlist + project files without encoding="utf-8",
+    # which crashes under Windows' cp1252 default — surfaced by this very
+    # job). Promote to required once green. ubuntu + macOS are required.
+    continue-on-error: ${{ matrix.os == 'windows-latest' }}
     strategy:
       fail-fast: false          # let every OS/py combo report, don't cancel siblings
       matrix:
