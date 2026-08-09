@@ -12,13 +12,23 @@ concurrency:
 
 jobs:
   # Pure-Python paths — what the tests and evals are written against.
-  # No CadQuery/opcut/rectpack, so this stays fast.
+  # No CadQuery/opcut/rectpack, so this stays fast. Runs on all three OSes:
+  # the core (MCP server, parametric, cutlist BOM, evals) must work on the
+  # platforms people actually run it — Windows (Claude Desktop) and macOS
+  # (dev). Catches path-separator, filename-validation, and encoding bugs.
   lite:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
+      fail-fast: false          # let every OS/py combo report, don't cancel siblings
       matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ["3.10", "3.12"]
+    defaults:
+      run:
+        # Uniform shell across OSes (Windows runners ship Git Bash) so the
+        # one-liners below don't need per-platform quoting.
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -38,10 +48,18 @@ jobs:
         run: uv run --no-group full python -m evals
 
   # Full install — exercises the CadQuery-backed geometry tests and the
-  # opcut/rectpack/reportlab cutlist paths.
+  # opcut/rectpack/reportlab cutlist paths. Ubuntu + macOS are required
+  # (macOS is the dev platform and its full stack is proven locally).
   full:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -49,8 +67,41 @@ jobs:
           python-version: "3.12"
           enable-cache: true
       - name: System deps (cairo headers — opcut pulls pycairo, which builds from sdist)
-        run: sudo apt-get update && sudo apt-get install -y libcairo2-dev pkg-config
+        # Linux/macOS need the cairo C library + pkg-config to build pycairo.
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            sudo apt-get update && sudo apt-get install -y libcairo2-dev pkg-config
+          elif [ "$RUNNER_OS" = "macOS" ]; then
+            brew install cairo pkg-config
+          fi
       - name: Install (full)
+        run: uv sync
+      - name: Tests
+        run: uv run pytest tests/ -q
+      - name: Evals
+        run: uv run python -m evals
+
+  # Windows full is the risky one: opcut's pycairo dependency and CadQuery's
+  # OCP wheels are least battle-tested there. Kept INFORMATIONAL for now
+  # (continue-on-error) so a native-build hiccup surfaces without blocking
+  # merges. Promote into the `full` matrix once it's reliably green.
+  full-windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - name: Install (full)
+        # pycairo ships Windows wheels on PyPI (no system cairo needed); if
+        # opcut's pin ever forces an sdist build this job will fail — which
+        # is exactly the signal continue-on-error is here to surface.
         run: uv sync
       - name: Tests
         run: uv run pytest tests/ -q
