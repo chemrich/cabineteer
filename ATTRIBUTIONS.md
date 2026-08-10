@@ -14,7 +14,7 @@ Hardware dimensions, placement rules, and part numbers in this project are deriv
 
 ## Door hinges
 
-- **Blum Clip Top 110° / 170° family** — Blum CLIP top official datasheet ([d2.blum.com/en/HingeDataSheet_cliptop.pdf](https://d2.blum.com/en/HingeDataSheet_cliptop.pdf)); Blum catalog "Kitchen & Bedroom" © 2023; confirmed SKUs via [hafele.com](https://hafele.com) and [hardware.com](https://hardware.com). BLUMOTION variants: 71B3590 (full), 71H3590 (half), 71N3590 (inset).
+- **Blum Clip Top 110° / 170° family** — Blum CLIP top official datasheet ([d2.blum.com/en/HingeDataSheet_cliptop.pdf](https://d2.blum.com/en/HingeDataSheet_cliptop.pdf)); Blum catalog "Kitchen & Bedroom" © 2023; confirmed SKUs via [hafele.com](https://hafele.com) and [hardware.com](https://hardware.com). Overlay is encoded in the last two of the four core digits — **35** = full, **36** = half, **37** = inset — and the family letter marks soft-close: plain **71T3590 / 71T3690 / 71T3790**, integrated-BLUMOTION **71B3590 / 71B3690 / 71B3790**; the 170° hinge is **71T6550**. Trailing **…90** = INSERTA (tool-free cup, no cup screws), **…50** = screw-on (2× 606N cup screws). These match `hardware.py`; the earlier 71H (half) / 71N (inset) prefixes were a placeholder scheme, not real Blum SKUs, and were corrected to the digit-coded numbers above on 2026-07-28.
 - Hinge count and placement rules (100 mm from top/bottom; spacing thresholds at 1 200 mm and 1 800 mm) from Blum published door-height/weight tables.
 
 ## Furniture legs

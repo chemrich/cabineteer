@@ -49,6 +49,11 @@ jobs:
         run: uv run --no-group full pytest tests/ -q
       - name: Evals
         run: uv run --no-group full python -m evals
+      - name: README stats current
+        # Fails if a catalog/eval change moved a count the README quotes but
+        # forgot to run scripts/readme_stats.py. Cheap; one OS/py is plenty.
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        run: uv run --no-group full python scripts/readme_stats.py --check
 
   # Full install — exercises the CadQuery-backed geometry tests and the
   # opcut/rectpack/reportlab cutlist paths. All three OSes required.
