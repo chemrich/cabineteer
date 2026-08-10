@@ -4,9 +4,9 @@
 
 Describe the piece you want in plain English. Claude (or another AI assistant) drives cabineteer's parametric engine and hands back a validated design, an interactive 3D preview, optimized cut sheets, a priced hardware shopping list with real part numbers, and step-by-step carcass assembly instructions.
 
-![Twelve-foot rift white oak sideboard run in the 3D viewer](docs/images/hero-sideboard.png)
+![Animated tour of nine furniture types cabineteer designs](docs/images/grand-tour.gif)
 
-*A three-cabinet dining sideboard run in rift-sawn white oak — drawer banks, door bays, hardwood-banded edges, hairpin legs. Every screenshot in this README came from a real project that produced real cut sheets; this one is being built right now.*
+*Nine distinct furniture types — credenza, dresser, tall chest, nightstand, media console, bar cabinet, open shelving, console table, wardrobe — each a real cabineteer design in walnut, white oak, or birch, with pulls, knobs, and lifted stances. Every image in this README came from a real project that produced real cut sheets.*
 
 You don't need to be a programmer. If you can install two command-line tools and paste one line into a terminal, you can use everything here from a chat window. And the dimensional math is never left to the AI's imagination — every number comes from deterministic code that knows slide clearances, hinge boring positions, joinery offsets, and sheet sizes.
 
@@ -42,6 +42,10 @@ Every render below is a saved cabineteer project, not a mock-up.
 
 *The identical sideboard project rendered with three `finish` values. Drawer boxes stay Baltic birch throughout — as they would in the shop.*
 
+![The same sideboard cycling through wood finishes while it turns](docs/images/finish-carousel.gif)
+
+*…or switch finishes live in the viewer — rift oak → walnut → bamboo → cherry — on one continuously revolving design.*
+
 ### See inside before you cut
 
 | | |
@@ -50,6 +54,10 @@ Every render below is a saved cabineteer project, not a mock-up.
 | *`X` — x-ray the fronts to check boxes and slides* | *`O` — every drawer slides open, faces and pulls along* |
 | ![Section cut](docs/images/viewer-clip.png) | ![Manga scale reference](docs/images/viewer-manga.png) |
 | *`C` — clip plane with live mm readout* | *`M` — a manga stack in the drawer answers "how big is it really?"* |
+
+![Drawers gradient-open and x-rayed across five pieces](docs/images/open-xray-tour.gif)
+
+*`O` then `X` together: drawers cascade open in a bottom-heavy gradient while the fronts turn transparent — the Baltic-birch boxes you'll actually build, visible in place.*
 
 ### The paperwork follows the design automatically
 
