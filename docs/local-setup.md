@@ -1,6 +1,6 @@
 # Local setup and debugging
 
-This guide covers installing cabineteer on macOS, registering it with your AI client, and diagnosing the most common connection problems.
+This guide covers installing cabineteer on macOS and Windows, registering it with your AI client, and diagnosing the most common connection problems. The commands below are macOS unless a step is marked **Windows**; see the [Windows](#windows) section for the shell and config-path differences.
 
 ---
 
@@ -47,6 +47,43 @@ You should see the argparse help block listing `--http`, `--port`, `--host`, and
 > ```bash
 > uv run --no-group full cabineteer --help
 > ```
+
+---
+
+## Windows
+
+Everything works on Windows; only the shell and the config-file paths differ.
+
+**Install uv** (PowerShell):
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+Then `git clone` and `uv sync` exactly as in [Install](#install) above.
+
+**Register with Claude Code.** The macOS one-liner ends in `$(pwd)`, which only expands in a Unix shell — on Windows it produces a broken path. Either run the command from **Git Bash** (bundled with Git for Windows, where `$(pwd)` works), or pass the folder's absolute path instead:
+
+```
+claude mcp add cabineteer -- uv --directory C:\Users\yourname\cabineteer run cabineteer
+```
+
+Confirm it registered with `claude mcp list` — you should see `cabineteer`.
+
+**Claude Desktop config** lives at `%APPDATA%\Claude\claude_desktop_config.json`. As on macOS, GUI apps don't inherit your terminal PATH, so use the absolute path to `uv.exe` (find it with `where uv`) and escape backslashes in JSON:
+
+```json
+{
+  "mcpServers": {
+    "cabineteer": {
+      "command": "C:\\Users\\yourname\\.local\\bin\\uv.exe",
+      "args": ["--directory", "C:\\Users\\yourname\\cabineteer", "run", "cabineteer"]
+    }
+  }
+}
+```
+
+Fully quit and relaunch Claude Desktop after editing the config. Its MCP logs are at `%APPDATA%\Claude\Logs\mcp-server-cabineteer.log`.
 
 ---
 
