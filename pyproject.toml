@@ -41,6 +41,11 @@ override-dependencies = [
     # opcut 0.1.3 → doit==0.31.1 → pyinotify which fails to build on macOS.
     # We only import opcut.common/csp (not doit at all), so any doit version works.
     "doit>=0.36",
+    # opcut 0.1.3 pins pycairo==1.18.1, which has no Windows wheel and fails
+    # to build from source there (missing cairo.h). 1.26+ ships prebuilt
+    # wheels for every platform; we never import cairo/pycairo (opcut only
+    # drags it in), so any version is fine and no system cairo is needed.
+    "pycairo>=1.26",
 ]
 
 [project.scripts]

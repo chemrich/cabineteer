@@ -51,15 +51,17 @@ jobs:
         run: uv run --no-group full python -m evals
 
   # Full install — exercises the CadQuery-backed geometry tests and the
-  # opcut/rectpack/reportlab cutlist paths. Ubuntu + macOS are required
-  # (macOS is the dev platform and its full stack is proven locally).
+  # opcut/rectpack/reportlab cutlist paths. All three OSes required.
+  # Windows works now that pycairo is overridden to a version with a
+  # prebuilt wheel (opcut's ==1.18.1 pin has no Windows wheel and failed
+  # to build against a missing cairo.h — see pyproject override-dependencies).
   full:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     defaults:
       run:
         shell: bash
@@ -69,8 +71,9 @@ jobs:
         with:
           python-version: "3.12"
           enable-cache: true
-      - name: System deps (cairo headers — opcut pulls pycairo, which builds from sdist)
-        # Linux/macOS need the cairo C library + pkg-config to build pycairo.
+      - name: System deps (cairo headers for pycairo's source build)
+        # Linux/macOS build pycairo from sdist and need the cairo C library +
+        # pkg-config; Windows installs a prebuilt wheel, so this no-ops there.
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then
             sudo apt-get update && sudo apt-get install -y libcairo2-dev pkg-config
@@ -78,33 +81,6 @@ jobs:
             brew install cairo pkg-config
           fi
       - name: Install (full)
-        run: uv sync
-      - name: Tests
-        run: uv run pytest tests/ -q
-      - name: Evals
-        run: uv run python -m evals
-
-  # Windows full is the risky one: opcut's pycairo dependency and CadQuery's
-  # OCP wheels are least battle-tested there. Kept INFORMATIONAL for now
-  # (continue-on-error) so a native-build hiccup surfaces without blocking
-  # merges. Promote into the `full` matrix once it's reliably green.
-  full-windows:
-    runs-on: windows-latest
-    timeout-minutes: 30
-    continue-on-error: true
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-        with:
-          python-version: "3.12"
-          enable-cache: true
-      - name: Install (full)
-        # pycairo ships Windows wheels on PyPI (no system cairo needed); if
-        # opcut's pin ever forces an sdist build this job will fail — which
-        # is exactly the signal continue-on-error is here to surface.
         run: uv sync
       - name: Tests
         run: uv run pytest tests/ -q
