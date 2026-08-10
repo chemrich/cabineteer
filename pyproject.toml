@@ -50,6 +50,8 @@ override-dependencies = [
 
 [project.scripts]
 cabineteer = "cabineteer.server:main"
+# Headless CLI — drives the same tool handlers as the MCP server, no AI client.
+cabineteer-cli = "cabineteer.cli:main"
 # Deprecated alias — keeps pre-rename client configs launching until they
 # migrate to "cabineteer"; remove after one release.
 cabinet-mcp = "cabineteer.server:main"
