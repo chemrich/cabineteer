@@ -2944,69 +2944,11 @@ async def list_tools() -> list[types.Tool]:
 
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
+    handler = TOOL_DISPATCH.get(name)
+    if handler is None:
+        return _err(f"Unknown tool: {name}")
     try:
-        if name == "list_hardware":
-            return await _tool_list_hardware(arguments)
-        elif name == "list_joinery_options":
-            return await _tool_list_joinery(arguments)
-        elif name == "design_cabinet":
-            return await _tool_design_cabinet(arguments)
-        elif name == "design_multi_column_cabinet":
-            return await _tool_design_multi_column_cabinet(arguments)
-        elif name == "evaluate_cabinet":
-            return await _tool_evaluate_cabinet(arguments)
-        elif name == "design_door":
-            return await _tool_design_door(arguments)
-        elif name == "design_drawer":
-            return await _tool_design_drawer(arguments)
-        elif name == "generate_cutlist":
-            return await _tool_generate_cutlist(arguments)
-        elif name == "compare_joinery":
-            return await _tool_compare_joinery(arguments)
-        elif name == "visualize_cabinet":
-            return await _tool_visualize_cabinet(arguments)
-        elif name == "list_presets":
-            return await _tool_list_presets(arguments)
-        elif name == "apply_preset":
-            return await _tool_apply_preset(arguments)
-        elif name == "identify_furniture_type":
-            return await _tool_identify_furniture_type(arguments)
-        elif name == "auto_fix_cabinet":
-            return await _tool_auto_fix_cabinet(arguments)
-        elif name == "describe_design":
-            return await _tool_describe_design(arguments)
-        elif name == "design_legs":
-            return await _tool_design_legs(arguments)
-        elif name == "design_pulls":
-            return await _tool_design_pulls(arguments)
-        elif name == "suggest_proportions":
-            return await _tool_suggest_proportions(arguments)
-        elif name == "list_pull_presets":
-            return await _tool_list_pull_presets(arguments)
-        elif name == "design_project":
-            return await _tool_design_project(arguments)
-        elif name == "update_project":
-            return await _tool_update_project(arguments)
-        elif name == "list_projects":
-            return await _tool_list_projects(arguments)
-        elif name == "rename_project":
-            return await _tool_rename_project(arguments)
-        elif name == "duplicate_project":
-            return await _tool_duplicate_project(arguments)
-        elif name == "delete_project":
-            return await _tool_delete_project(arguments)
-        elif name == "load_project":
-            return await _tool_load_project(arguments)
-        elif name == "evaluate_project":
-            return await _tool_evaluate_project(arguments)
-        elif name == "generate_project_cutlist":
-            return await _tool_generate_project_cutlist(arguments)
-        elif name == "generate_assembly_instructions":
-            return await _tool_generate_assembly_instructions(arguments)
-        elif name == "visualize_project":
-            return await _tool_visualize_project(arguments)
-        else:
-            return _err(f"Unknown tool: {name}")
+        return await handler(arguments)
     except Exception as exc:
         return _err(f"{type(exc).__name__}: {exc}")
 
@@ -5915,6 +5857,46 @@ async def _run_http(host: str, port: int) -> None:
     )
     uv_server = uvicorn.Server(config)
     await uv_server.serve()
+
+
+# ─── Canonical tool dispatch ──────────────────────────────────────────────────
+# Single source of truth mapping tool name → async handler. `call_tool` (the
+# MCP path), the eval harness, and the headless CLI all route through this dict,
+# so there is exactly one place a new tool has to be registered. Defined here,
+# after every _tool_* handler exists at module load.
+
+TOOL_DISPATCH: dict[str, Any] = {
+    "list_hardware":                 _tool_list_hardware,
+    "list_joinery_options":          _tool_list_joinery,
+    "design_cabinet":                _tool_design_cabinet,
+    "design_multi_column_cabinet":   _tool_design_multi_column_cabinet,
+    "evaluate_cabinet":              _tool_evaluate_cabinet,
+    "design_door":                   _tool_design_door,
+    "design_drawer":                 _tool_design_drawer,
+    "generate_cutlist":              _tool_generate_cutlist,
+    "compare_joinery":               _tool_compare_joinery,
+    "visualize_cabinet":             _tool_visualize_cabinet,
+    "list_presets":                  _tool_list_presets,
+    "apply_preset":                  _tool_apply_preset,
+    "identify_furniture_type":       _tool_identify_furniture_type,
+    "auto_fix_cabinet":              _tool_auto_fix_cabinet,
+    "describe_design":               _tool_describe_design,
+    "design_legs":                   _tool_design_legs,
+    "design_pulls":                  _tool_design_pulls,
+    "suggest_proportions":           _tool_suggest_proportions,
+    "list_pull_presets":             _tool_list_pull_presets,
+    "design_project":                _tool_design_project,
+    "update_project":                _tool_update_project,
+    "list_projects":                 _tool_list_projects,
+    "rename_project":                _tool_rename_project,
+    "duplicate_project":             _tool_duplicate_project,
+    "delete_project":                _tool_delete_project,
+    "load_project":                  _tool_load_project,
+    "evaluate_project":              _tool_evaluate_project,
+    "generate_project_cutlist":      _tool_generate_project_cutlist,
+    "generate_assembly_instructions": _tool_generate_assembly_instructions,
+    "visualize_project":             _tool_visualize_project,
+}
 
 
 # ─── Entry point ──────────────────────────────────────────────────────────────
