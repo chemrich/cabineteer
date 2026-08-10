@@ -62,6 +62,37 @@ def test_friendly_wrapper_drops_unset_options(capsys):
     assert "presets" in payload
 
 
+def test_run_preserves_explicit_null(monkeypatch):
+    # `run --json '{...: null}'` must pass the null through — several tools use
+    # an explicit null to clear a key (e.g. update_project removing a worktop).
+    captured = {}
+
+    async def fake_call_tool(name, args):
+        captured["name"], captured["args"] = name, dict(args)
+        return server._ok({"ok": True})
+
+    monkeypatch.setattr(server, "call_tool", fake_call_tool)
+    rc = cli.main(["run", "update_project", "--json",
+                   '{"project_name": "x", "worktop": null}'])
+    assert rc == 0
+    assert captured["args"] == {"project_name": "x", "worktop": None}
+
+
+def test_wrapper_omits_unset_options_from_args(monkeypatch):
+    # A friendly wrapper with no flags must NOT forward category=None/tag=None;
+    # unset options fall back to the tool's own defaults.
+    captured = {}
+
+    async def fake_call_tool(name, args):
+        captured["args"] = dict(args)
+        return server._ok({"presets": []})
+
+    monkeypatch.setattr(server, "call_tool", fake_call_tool)
+    rc = cli.main(["presets"])
+    assert rc == 0
+    assert captured["args"] == {}
+
+
 def test_dispatch_matches_advertised_tools():
     advertised = {t.name for t in asyncio.run(server.list_tools())}
     assert advertised == set(server.TOOL_DISPATCH), (

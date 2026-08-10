@@ -28,23 +28,31 @@ import argparse
 import asyncio
 import json
 import sys
+from pathlib import Path
 from typing import Any
 
 from cabineteer import server
 
 
-def _run_tool(name: str, args: dict[str, Any]) -> int:
-    """Call one tool through the server's canonical path; print and return exit code."""
+def _run_tool(name: str, args: dict[str, Any], *, drop_none: bool = True) -> int:
+    """Call one tool through the server's canonical path; print and return exit code.
+
+    ``drop_none`` strips keys whose value is None so an unset friendly-wrapper
+    option (e.g. ``--finish`` not passed) falls back to the tool default. The
+    generic ``run`` path passes ``drop_none=False`` so an *explicit* JSON null
+    reaches the handler — several tools (e.g. update_project) use null to mean
+    "clear this key", which dropping it would silently defeat.
+    """
     if name not in server.TOOL_DISPATCH:
         avail = ", ".join(sorted(server.TOOL_DISPATCH))
         print(f"Unknown tool: {name}\nAvailable: {avail}", file=sys.stderr)
         return 2
-    # Drop keys the caller didn't set so tool defaults apply.
-    args = {k: v for k, v in args.items() if v is not None}
+    if drop_none:
+        args = {k: v for k, v in args.items() if v is not None}
     blocks = asyncio.run(server.call_tool(name, args))
     text = "\n".join(b.text for b in blocks)
 
-    if text.startswith("ERROR:"):
+    if text.startswith(server.ERROR_PREFIX):
         print(text, file=sys.stderr)
         return 1
     # Pretty-print JSON payloads; pass other text through untouched.
@@ -82,10 +90,11 @@ def _cmd_list_tools(_: argparse.Namespace) -> int:
 def _cmd_run(ns: argparse.Namespace) -> int:
     args = _parse_kv(ns.arg)
     if ns.json_file:
-        args.update(json.loads(open(ns.json_file, encoding="utf-8").read()))
+        args.update(json.loads(Path(ns.json_file).read_text(encoding="utf-8")))
     if ns.json:
         args.update(json.loads(ns.json))
-    return _run_tool(ns.tool, args)
+    # drop_none=False: an explicit null in --json is a real value (clears a key).
+    return _run_tool(ns.tool, args, drop_none=False)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -164,7 +173,9 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("run", help="call any tool by name with raw args")
     sp.add_argument("tool", help="tool name (see: cabineteer-cli list-tools)")
     sp.add_argument("--arg", action="append", metavar="KEY=VALUE",
-                    help="repeatable; VALUE parsed as JSON when possible")
+                    help="repeatable; VALUE parsed as JSON when it can be "
+                         "(so 123/true become int/bool) — use --json for a "
+                         "value that must stay a string like \"123\"")
     sp.add_argument("--json", metavar="JSON", help="args as a JSON object string")
     sp.add_argument("--json-file", metavar="PATH", help="args as a JSON object file")
     sp.set_defaults(func=_cmd_run)

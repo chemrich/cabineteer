@@ -156,9 +156,14 @@ def _ok(data: Any) -> list[types.TextContent]:
     return [types.TextContent(type="text", text=json.dumps(data, indent=2))]
 
 
+# Failure sentinel shared with the CLI, which keys its exit code on this prefix.
+# Keep _err the single place the wire format is spelled, so the two can't drift.
+ERROR_PREFIX = "ERROR: "
+
+
 def _err(msg: str) -> list[types.TextContent]:
     """Return a plain-text error response."""
-    return [types.TextContent(type="text", text=f"ERROR: {msg}")]
+    return [types.TextContent(type="text", text=f"{ERROR_PREFIX}{msg}")]
 
 
 def _issues_to_dicts(issues: list[Issue]) -> list[dict]:
