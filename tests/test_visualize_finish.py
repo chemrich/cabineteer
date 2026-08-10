@@ -237,7 +237,7 @@ class TestVisualizeCabinetHandler:
             "open_browser": False,
         }))
         result = json.loads(out[0].text)
-        html = (tmp_path / "finish_test_viewer.html").read_text()
+        html = (tmp_path / "finish_test_viewer.html").read_text(encoding="utf-8")
         assert "Rift-Sawn White Oak" in html
         assert '"scale_u": 250'.replace(" ", "") in html.replace(" ", "")
         # Drawer boxes default to baltic birch and show in the info panel.

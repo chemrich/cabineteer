@@ -107,7 +107,7 @@ class TestPullSpecDerivedFields:
             }],
         }
         fp = tmp_path / "knobs.json"
-        fp.write_text(json.dumps(catalog))
+        fp.write_text(json.dumps(catalog), encoding="utf-8")
         loaded = _load_pulls_from_catalog(fp)
         k = loaded["test-knob-1"]
         assert k.is_knob
@@ -118,7 +118,7 @@ class TestPullSpecDerivedFields:
 class TestCatalogLoaderErrors:
     def _write(self, tmp_path, entry: dict) -> Path:
         fp = tmp_path / "catalog.json"
-        fp.write_text(json.dumps({"pulls": [entry]}))
+        fp.write_text(json.dumps({"pulls": [entry]}), encoding="utf-8")
         return fp
 
     def test_missing_required_field(self, tmp_path):
@@ -155,7 +155,7 @@ class TestCatalogLoaderErrors:
             "dimensions": {"cc_mm": 0, "length_mm": 10, "projection_mm": 5},
         }
         fp = tmp_path / "c.json"
-        fp.write_text(json.dumps({"pulls": [entry, entry]}))
+        fp.write_text(json.dumps({"pulls": [entry, entry]}), encoding="utf-8")
         with pytest.raises(ValueError, match="Duplicate pull id"):
             _load_pulls_from_catalog(fp)
 
@@ -273,7 +273,7 @@ class TestPositions:
             "tags": [],
         }
         fp = tmp_path / "c.json"
-        fp.write_text(json.dumps({"pulls": [entry]}))
+        fp.write_text(json.dumps({"pulls": [entry]}), encoding="utf-8")
         catalog = _load_pulls_from_catalog(fp)
         knob = catalog["k1"]
         placements = pull_positions(1000, 200, knob, "k1", count=2)

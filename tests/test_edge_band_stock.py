@@ -528,10 +528,10 @@ class TestProjectIntegration:
         # banding cutlist files emitted alongside the standard set
         assert "banding_cutlist_html" in cut["files"]
         assert "banding_cutlist_csv" in cut["files"]
-        doc = open(cut["files"]["banding_cutlist_html"]).read()
+        doc = open(cut["files"]["banding_cutlist_html"], encoding="utf-8").read()
         assert "Board #1" in doc and "Strip S1" in doc
 
-        bom = json.load(open(cut["files"]["hardware_bom_json"]))
+        bom = json.load(open(cut["files"]["hardware_bom_json"], encoding="utf-8"))
         band = [l for l in bom["lines"] if l["category"] == "edge_band"]
         # ONE aggregated line across both cabinets, priced from the spec
         assert len(band) == 1
@@ -548,7 +548,7 @@ class TestProjectIntegration:
             "shared": {"edge_band_stock": None}}))
         cut2 = json.loads(_await(_tool_generate_project_cutlist(
             {"project_name": "eval_band_stock"}))[0].text)
-        bom2 = json.load(open(cut2["files"]["hardware_bom_json"]))
+        bom2 = json.load(open(cut2["files"]["hardware_bom_json"], encoding="utf-8"))
         band2 = [l for l in bom2["lines"] if l["category"] == "edge_band"]
         assert len(band2) == 1
         assert band2[0]["unit_price_usd"] == 0.0

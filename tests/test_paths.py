@@ -21,10 +21,10 @@ class TestDataDir:
         home = _home(tmp_path, monkeypatch)
         old = home / ".cabinet-mcp"
         (old / "projects").mkdir(parents=True)
-        (old / "projects" / "sideboards.json").write_text("{}")
+        (old / "projects" / "sideboards.json").write_text("{}", encoding="utf-8")
         d = data_dir()
         assert d == home / ".cabineteer"
-        assert (d / "projects" / "sideboards.json").read_text() == "{}"
+        assert (d / "projects" / "sideboards.json").read_text(encoding="utf-8") == "{}"
         assert not old.exists()
 
     def test_both_exist_prefers_new_untouched(self, tmp_path, monkeypatch):

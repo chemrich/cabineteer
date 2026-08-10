@@ -631,17 +631,17 @@ class TestPortFile:
     def test_write_contains_port_number(self, tmp_path):
         p = tmp_path / "cabineteer.port"
         write_port_file(4242, path=p)
-        assert p.read_text() == "4242"
+        assert p.read_text(encoding="utf-8") == "4242"
 
     def test_write_overwrites_previous(self, tmp_path):
         p = tmp_path / "cabineteer.port"
         write_port_file(1111, path=p)
         write_port_file(2222, path=p)
-        assert p.read_text() == "2222"
+        assert p.read_text(encoding="utf-8") == "2222"
 
     def test_clear_removes_file(self, tmp_path):
         p = tmp_path / "cabineteer.port"
-        p.write_text("3749")
+        p.write_text("3749", encoding="utf-8")
         clear_port_file(path=p)
         assert not p.exists()
 
@@ -655,7 +655,7 @@ class TestPortFile:
         p = tmp_path / "cabineteer.port"
         port = find_free_port(start=19900)
         write_port_file(port, path=p)
-        assert int(p.read_text()) == port
+        assert int(p.read_text(encoding="utf-8")) == port
         clear_port_file(path=p)
         assert not p.exists()
 

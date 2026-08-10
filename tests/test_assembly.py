@@ -483,7 +483,7 @@ class TestAssemblyPartIdCollisions:
             "project_name": "idcol", "format": "html"}))
         payload = json.loads(res[0].text)
         html_path = payload["files"]["html"]
-        return payload, Path(html_path).read_text()
+        return payload, Path(html_path).read_text(encoding="utf-8")
 
     def test_thickness_distinguishes_ids(self, tmp_path, monkeypatch):
         base = {"height": 700, "depth": 457, "width": 800,

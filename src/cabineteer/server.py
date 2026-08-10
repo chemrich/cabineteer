@@ -4042,14 +4042,14 @@ def _cutlist_pipeline(
             carcass_sheets.append(sh)
     if not carcass_sheets:
         carcass_sheets = [_make_sheet(18.0)]
-    csv_path.write_text(to_csv(all_panels))
-    json_path.write_text(to_json(all_panels, carcass_sheets))
+    csv_path.write_text(to_csv(all_panels), encoding="utf-8")
+    json_path.write_text(to_json(all_panels, carcass_sheets), encoding="utf-8")
 
     files: dict[str, str] = {"csv": str(csv_path), "json": str(json_path)}
 
     if hw_lines:
         hw_json_path = out_dir / f"{name}_hardware_bom.json"
-        hw_json_path.write_text(to_hardware_json(hw_lines))
+        hw_json_path.write_text(to_hardware_json(hw_lines), encoding="utf-8")
         files["hardware_bom_json"] = str(hw_json_path)
 
     layout_groups = []
@@ -4089,7 +4089,7 @@ def _cutlist_pipeline(
             hardware_lines=hw_lines or None,
         )
         layout_path = out_dir / f"{name}_layout.html"
-        layout_path.write_text(html)
+        layout_path.write_text(html, encoding="utf-8")
         files["layout"] = str(layout_path)
 
         try:
@@ -4169,10 +4169,10 @@ def _cutlist_pipeline(
                                   generate_banding_cutlist_pdf,
                                   to_banding_csv)
             p = out_dir / f"{name}_banding_cutlist.html"
-            p.write_text(generate_banding_cutlist_html(banded, band_cfg, name))
+            p.write_text(generate_banding_cutlist_html(banded, band_cfg, name), encoding="utf-8")
             files["banding_cutlist_html"] = str(p)
             p = out_dir / f"{name}_banding_cutlist.csv"
-            p.write_text(to_banding_csv(banded, band_cfg))
+            p.write_text(to_banding_csv(banded, band_cfg), encoding="utf-8")
             files["banding_cutlist_csv"] = str(p)
             try:
                 pdf_bytes = generate_banding_cutlist_pdf(

@@ -99,7 +99,7 @@ class TestCheckDrawerPull:
             }],
         }
         fp = tmp_path / "c.json"
-        fp.write_text(json.dumps(catalog))
+        fp.write_text(json.dumps(catalog), encoding="utf-8")
         loaded = _load_pulls_from_catalog(fp)
         # Inject into global PULLS so get_pull finds it
         PULLS["tall-bar"] = loaded["tall-bar"]
@@ -128,7 +128,7 @@ class TestCheckDrawerPull:
             }],
         }
         fp = tmp_path / "c.json"
-        fp.write_text(json.dumps(catalog))
+        fp.write_text(json.dumps(catalog), encoding="utf-8")
         loaded = _load_pulls_from_catalog(fp)
         PULLS["test-knob"] = loaded["test-knob"]
         try:
@@ -156,7 +156,7 @@ class TestCheckDrawerPull:
             }],
         }
         fp = tmp_path / "c.json"
-        fp.write_text(json.dumps(catalog))
+        fp.write_text(json.dumps(catalog), encoding="utf-8")
         loaded = _load_pulls_from_catalog(fp)
         PULLS["test-knob-2"] = loaded["test-knob-2"]
         try:

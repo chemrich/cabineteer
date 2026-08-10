@@ -114,7 +114,7 @@ class TestGenerateViewerHtml:
         generate_viewer_html(glb, html)
 
         expected_b64 = base64.b64encode(glb_data).decode("ascii")
-        content = html.read_text()
+        content = html.read_text(encoding="utf-8")
         assert expected_b64 in content
 
     def test_title_appears_in_html(self, tmp_path):
@@ -124,7 +124,7 @@ class TestGenerateViewerHtml:
 
         generate_viewer_html(glb, html, title="My Fancy Cabinet")
 
-        assert "My Fancy Cabinet" in html.read_text()
+        assert "My Fancy Cabinet" in html.read_text(encoding="utf-8")
 
     def test_cabinet_info_dimensions_appear(self, tmp_path):
         glb = tmp_path / "model.glb"
@@ -136,7 +136,7 @@ class TestGenerateViewerHtml:
             cabinet_info={"width": 900, "height": 800, "depth": 600},
         )
 
-        content = html.read_text()
+        content = html.read_text(encoding="utf-8")
         assert "900" in content
         assert "800" in content
         assert "600" in content
@@ -157,7 +157,7 @@ class TestGenerateViewerHtml:
 
         generate_viewer_html(glb, html)  # no cabinet_info
 
-        content = html.read_text()
+        content = html.read_text(encoding="utf-8")
         assert "<!DOCTYPE html>" in content
 
     def test_string_paths_accepted(self, tmp_path):
@@ -281,7 +281,7 @@ class TestBuildAndVisualize:
             cfg, output_dir=tmp_path, name="check_cab", open_browser=False
         )
 
-        html_content = Path(result["html"]).read_text()
+        html_content = Path(result["html"]).read_text(encoding="utf-8")
         glb_filename  = Path(result["glb"]).name
         # The viewer should NOT load the GLB by filename — it's embedded
         assert f'"{glb_filename}"' not in html_content
@@ -392,7 +392,7 @@ class TestMangaScaleReference:
         glb = Path(data["glb"]).read_bytes()
         for k in range(5):
             assert f'"manga{k}"'.encode() in glb
-        html = Path(data["html"]).read_text()
+        html = Path(data["html"]).read_text(encoding="utf-8")
         assert "MANGA_NODE_RE" in html
         assert "cycleManga" in html
         assert "help-manga" in html

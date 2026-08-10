@@ -132,7 +132,7 @@ class TestBandingDocScope:
             {"project_name": "test_bandscope"}))
         payload = json.loads(res[0].text)
         csv_path = payload["files"]["banding_cutlist_csv"]
-        csv_text = Path(csv_path).read_text()
+        csv_text = Path(csv_path).read_text(encoding="utf-8")
         # The hot-melt cabinet is 800 wide → its top/bottom front edges are
         # 764 mm; the hardwood cabinet's are 564 mm. Only the latter may
         # appear in the chop plan.
@@ -161,7 +161,7 @@ class TestBandingDocScope:
         res = _run(_tool_generate_project_cutlist(
             {"project_name": "test_bandids"}))
         payload = json.loads(res[0].text)
-        csv_text = Path(payload["files"]["banding_cutlist_csv"]).read_text()
+        csv_text = Path(payload["files"]["banding_cutlist_csv"]).read_text(encoding="utf-8")
         layout_ids = {p["id"] for p in payload["panels_summary"] if p["id"]}
         assert any(pid in csv_text for pid in layout_ids)
 
@@ -185,7 +185,7 @@ class TestPipelineCosmetics:
             "sheet_size_overrides": {"baltic_birch": [2453, 1234]}}))
         payload = json.loads(res[0].text)
         cutlist = json.loads(
-            Path(payload["files"]["json"]).read_text())
+            Path(payload["files"]["json"]).read_text(encoding="utf-8"))
         lengths = {s["length"] for s in cutlist["stock"]}
         assert 2453.0 in lengths
         assert 2440.0 not in lengths

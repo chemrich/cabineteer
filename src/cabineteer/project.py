@@ -299,7 +299,7 @@ def save_project(project: CabinetProject) -> Path:
     """
     project_dir().mkdir(parents=True, exist_ok=True)
     path = project_path(project.name)
-    path.write_text(json.dumps(project_to_dict(project), indent=2))
+    path.write_text(json.dumps(project_to_dict(project), indent=2), encoding="utf-8")
     return path
 
 
@@ -312,7 +312,7 @@ def load_project(name: str) -> CabinetProject:
             "Run design_project first or pass the inline 'project' payload."
         )
     try:
-        return project_from_dict(json.loads(path.read_text()))
+        return project_from_dict(json.loads(path.read_text(encoding="utf-8")))
     except (ValueError, KeyError, TypeError) as exc:
         # Name the project and file — in a batch the bare JSON error gives
         # no clue which snapshot is broken.
@@ -366,7 +366,7 @@ def list_saved_projects(
         except OSError:
             modified = None  # dangling symlink / raced deletion
         try:
-            data = json.loads(path.read_text())
+            data = json.loads(path.read_text(encoding="utf-8"))
             cabinets = data.get("cabinets", [])
             entries.append({
                 "name": data.get("name", path.stem),
@@ -436,9 +436,9 @@ def rename_project(old_name: str, new_name: str) -> Path:
             f"Project {new_name!r} already exists at {new_path}; "
             "delete it first or pick another name."
         )
-    data = json.loads(old_path.read_text())
+    data = json.loads(old_path.read_text(encoding="utf-8"))
     data["name"] = new_name
-    new_path.write_text(json.dumps(data, indent=2))
+    new_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     old_path.unlink()
     return new_path
 
@@ -472,13 +472,13 @@ def duplicate_project(name: str, new_name: str, notes: str | None = None) -> Pat
             f"Project {new_name!r} already exists at {dst_path}; "
             "delete it first or pick another name."
         )
-    data = json.loads(src_path.read_text())
+    data = json.loads(src_path.read_text(encoding="utf-8"))
     data["name"] = new_name
     data["forked_from"] = name
     data["forked_at"] = datetime.now().isoformat(timespec="seconds")
     if notes is not None:
         data["notes"] = notes
-    dst_path.write_text(json.dumps(data, indent=2))
+    dst_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     return dst_path
 
 
@@ -734,7 +734,7 @@ def update_saved_project(patch: dict) -> tuple["CabinetProject", list[str]]:
         raise FileNotFoundError(
             f"Project {name!r} not found at {path}. See list_projects."
         )
-    base = json.loads(path.read_text())
+    base = json.loads(path.read_text(encoding="utf-8"))
     patched, changes = apply_project_patch(base, patch)
     project = build_project(patched)
     if changes:  # an empty patch shouldn't bump the snapshot's mtime

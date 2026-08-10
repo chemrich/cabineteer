@@ -70,12 +70,12 @@ class TestDuplicateProject:
     def test_fork_copies_and_stamps_lineage(self, store):
         path = duplicate_project("fork_src", "fork_dst")
         assert path.exists()
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
         assert data["name"] == "fork_dst"
         assert data["forked_from"] == "fork_src"
         assert data["forked_at"]  # ISO timestamp present
         # Source untouched — no lineage stamped there
-        src = json.loads((store / "fork_src.json").read_text())
+        src = json.loads((store / "fork_src.json").read_text(encoding="utf-8"))
         assert "forked_from" not in src
         # The fork resolves to the same designs as the source
         for (n1, c1), (n2, c2) in zip(
@@ -239,12 +239,12 @@ class TestUpdateSavedProject:
 
     def test_invalid_patch_leaves_snapshot_untouched(self, store):
         path = store / "fork_src.json"
-        before = path.read_text()
+        before = path.read_text(encoding="utf-8")
         with pytest.raises(ValueError):
             update_saved_project({
                 "name": "fork_src",
                 "cabinets": [{"name": "zz", "config": {"width": 1}}]})
-        assert path.read_text() == before
+        assert path.read_text(encoding="utf-8") == before
 
     def test_missing_project_raises(self, store):
         with pytest.raises(FileNotFoundError):
@@ -394,14 +394,14 @@ class TestPatchCanonicalization:
         import cabineteer.project as pmod
         name = self._saved(store, name="fork_canon_noop")
         path = pmod.project_path(name)
-        before = path.read_text()
+        before = path.read_text(encoding="utf-8")
         mtime = path.stat().st_mtime_ns
         _, changes = pmod.update_saved_project({
             "name": name,
             "cabinets": [{"name": "a", "config": {"width": 600}}]})
         assert changes == []
         assert path.stat().st_mtime_ns == mtime
-        assert path.read_text() == before
+        assert path.read_text(encoding="utf-8") == before
 
     def test_notes_null_clears(self, store):
         import cabineteer.project as pmod
