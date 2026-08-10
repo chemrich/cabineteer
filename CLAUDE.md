@@ -128,7 +128,7 @@ Baseline: 306 scenarios / 1150 assertions / 100% pass rate; the pytest suite is 
 | Key | Action |
 |-----|--------|
 | `X` | X-ray drawer and door fronts (transparent overlay) |
-| `O` | Open / close all drawers (slides box + face + pulls together) |
+| `O` | Cycle drawer open state: closed → partial → fully open → closed (slides box + face + pulls together). Partial is a vertical gradient by drawer height — bottom drawer 100% out, top drawer 20%, linear between — so it reads as an intentional bottom-heavy cascade |
 | `C` | Toggle clip plane (axis buttons + slider + mm readout) |
 | `V` | Toggle diagnostic colors: drawer sides → pink, drawer front/back → yellow, drawer bottom → green, carcass sides → blue, carcass top/bottom → orange, drawer faces / doors → purple |
 | `M` | Cycle the manga scale-reference stack per drawer (1…5 volumes, then hidden). Only present when the render was made with `manga=true`; the legend row and side-panel button hide themselves otherwise |

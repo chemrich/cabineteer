@@ -1098,7 +1098,7 @@ def _build_html(
   <title>{safe_title}</title>
   <style>
     * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-    body {{ background: #16162a; overflow: hidden; font-family: system-ui, -apple-system, sans-serif; }}
+    body {{ background: #f3f5f8; overflow: hidden; font-family: system-ui, -apple-system, sans-serif; }}
     canvas {{ display: block; }}
 
     #panel {{
@@ -1232,7 +1232,7 @@ def _build_html(
     Right-drag&nbsp;&nbsp;pan<br>
     Scroll&nbsp;&nbsp;zoom<br>
     <span style="color: rgba(240, 192, 96, 0.55);">X</span>&nbsp;&nbsp;x-ray fronts<br>
-    <span style="color: rgba(240, 192, 96, 0.55);">O</span>&nbsp;&nbsp;open drawers<br>
+    <span style="color: rgba(240, 192, 96, 0.55);">O</span>&nbsp;&nbsp;drawers: closed → staggered → open<br>
     <span style="color: rgba(240, 192, 96, 0.55);">C</span>&nbsp;&nbsp;clip plane<br>
     <span style="color: rgba(240, 192, 96, 0.55);">V</span>&nbsp;&nbsp;diag colors<span id="help-manga"><br>
     <span style="color: rgba(240, 192, 96, 0.55);">M</span>&nbsp;&nbsp;manga stack</span>
@@ -1296,7 +1296,9 @@ document.body.appendChild(renderer.domElement);
 
 // ── Scene ─────────────────────────────────────────────────────────────────────
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x16162a);
+// Light "graph paper" backdrop — a soft off-white so wood finishes read
+// like a product catalogue rather than a dark technical viewer.
+scene.background = new THREE.Color(0xf3f5f8);
 
 // ── Camera ────────────────────────────────────────────────────────────────────
 const camera = new THREE.PerspectiveCamera(
@@ -1325,7 +1327,9 @@ rim.position.set(0, -200, -1000);
 scene.add(rim);
 
 // ── Grid ──────────────────────────────────────────────────────────────────────
-const grid = new THREE.GridHelper(5000, 50, 0x2e2e50, 0x222238);
+// Graph-paper grid: a slightly stronger blue-grey major line + soft
+// minor lines on the off-white ground.
+const grid = new THREE.GridHelper(5000, 50, 0x9db4d0, 0xccd6e4);
 scene.add(grid);
 
 // ── Controls ──────────────────────────────────────────────────────────────────
@@ -1340,7 +1344,18 @@ controls.maxPolarAngle    = Math.PI / 2 + 0.18;
 // Automation/debug hook: the page is an ES module, so scene/camera/controls
 // are unreachable from outside without this. Used by
 // scripts/readme_screenshots.py to frame shots deterministically.
-window.cabineteerViewer = {{ scene, camera, controls, renderer, THREE }};
+window.cabineteerViewer = {{
+  scene, camera, controls, renderer, THREE,
+  // Lazy getters — drawerPairs/openState are defined later in the load
+  // callback but the closures resolve them at call time.
+  openState: () => (typeof openState !== 'undefined') ? openState : null,
+  drawerFractions: () => (typeof drawerPairs !== 'undefined')
+    ? [...drawerPairs.values()].map(p => p._applied || 0) : [],
+  // Set the drawer state directly (0 closed · 1 staggered · 2 open) —
+  // deterministic for scripted captures, vs. counting O presses.
+  setDrawerState: (n) => {{ openState = ((n % 3) + 3) % 3;
+                            setDrawersOpen(openState); }},
+}};
 
 // Suppress the browser context menu so right-drag pan works.
 renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
@@ -1458,6 +1473,27 @@ new GLTFLoader().parse(b64ToBuffer(GLB_B64), '', (gltf) => {{
     pair.pullVec = dir.multiplyScalar(depth * 0.70);
   }}
 
+  // Per-drawer fraction for the partial ("staggered") open state: a
+  // vertical GRADIENT by drawer height — bottom drawer fully out (100%),
+  // top drawer barely (20%), linear between. Reads as an intentional
+  // bottom-heavy cascade at any layout (world Y is vertical after the
+  // root's -90° X rotation).
+  {{
+    const ps = [...drawerPairs.values()]
+      .filter(p => p.pullVec && p.box && p.face);
+    let lo = Infinity, hi = -Infinity;
+    for (const p of ps) {{
+      const bb = new THREE.Box3().setFromObject(p.box);
+      p._cy = (bb.min.y + bb.max.y) / 2;   // world Y = vertical centre
+      lo = Math.min(lo, p._cy); hi = Math.max(hi, p._cy);
+    }}
+    const span = hi - lo;
+    for (const p of ps) {{
+      const t = span > 1e-6 ? (p._cy - lo) / span : 0;   // 0 bottom … 1 top
+      p.stagger = 1.0 - 0.8 * t;                          // 1.0 … 0.2
+    }}
+  }}
+
   classifyWood(model);
   initManga();
   // Apply the current selection (initialised to INITIAL_FINISH) rather than
@@ -1496,9 +1532,11 @@ new GLTFLoader().parse(b64ToBuffer(GLB_B64), '', (gltf) => {{
   console.error(err);
 }});
 
-// ── Toggles (X = x-ray fronts, O = open drawers) ──────────────────────────────
+// ── Toggles (X = x-ray fronts, O = cycle drawer open state) ───────────────────
 let xrayOn       = false;
-let drawersOpen  = false;
+// 0 = closed · 1 = staggered (partial cascade) · 2 = fully open. O cycles
+// 0 → 1 → 2 → 0.
+let openState    = 0;
 const xrayCache  = new WeakMap();    // mesh → {{ orig, xray }}
 
 function _makeXrayMaterial(src) {{
@@ -1528,18 +1566,30 @@ function toggleXray() {{
   }}
 }}
 
-function toggleOpenDrawers() {{
-  const sign = drawersOpen ? -1 : 1;
+// Move every drawer to the open fraction its `state` calls for. Each pair
+// tracks the fraction currently applied so we only add the difference —
+// state changes compose without drift.
+function setDrawersOpen(state) {{
   for (const pair of drawerPairs.values()) {{
     if (!pair.pullVec || !pair.box || !pair.face) continue;
-    const delta = pair.pullVec.clone().multiplyScalar(sign);
+    const frac = state === 2 ? 1
+               : state === 1 ? (pair.stagger != null ? pair.stagger : 0.6)
+               : 0;
+    const applied = pair._applied || 0;
+    if (Math.abs(frac - applied) < 1e-6) continue;
+    const delta = pair.pullVec.clone().multiplyScalar(frac - applied);
     pair.box.position.add(delta);
     pair.face.position.add(delta);
     if (pair.pulls) {{
       for (const pull of pair.pulls) pull.position.add(delta);
     }}
+    pair._applied = frac;
   }}
-  drawersOpen = !drawersOpen;
+}}
+
+function cycleOpenDrawers() {{
+  openState = (openState + 1) % 3;   // closed → staggered → open → closed
+  setDrawersOpen(openState);
 }}
 
 // ── Clipping plane ────────────────────────────────────────────────────────────
@@ -1615,7 +1665,7 @@ window.addEventListener('keydown', (e) => {{
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.target && /^(SELECT|INPUT|TEXTAREA|BUTTON)$/.test(e.target.tagName)) return;
   if (e.key === 'x' || e.key === 'X') {{ toggleXray();        e.preventDefault(); }}
-  if (e.key === 'o' || e.key === 'O') {{ toggleOpenDrawers(); e.preventDefault(); }}
+  if (e.key === 'o' || e.key === 'O') {{ cycleOpenDrawers(); e.preventDefault(); }}
   if (e.key === 'c' || e.key === 'C') {{ toggleClip();        e.preventDefault(); }}
   if (e.key === 'v' || e.key === 'V') {{ toggleDiagColors(); e.preventDefault(); }}
   if (e.key === 'm' || e.key === 'M') {{ if (mangaMeshes.length) {{ cycleManga(); e.preventDefault(); }} }}

@@ -83,6 +83,32 @@ class TestBuildHtml:
         assert "OrbitControls" in html
 
 
+class TestDrawerOpenCycle:
+    """O cycles closed → partial (gradient) → fully open → closed."""
+
+    def test_cycle_function_wired_to_o_key(self):
+        html = _build_html("Test", "ZmFrZQ==", {})
+        assert "cycleOpenDrawers" in html
+        assert "toggleOpenDrawers" not in html
+        assert "cycleOpenDrawers(); e.preventDefault();" in html
+
+    def test_three_state_machine(self):
+        html = _build_html("Test", "ZmFrZQ==", {})
+        assert "(openState + 1) % 3" in html
+        assert "setDrawersOpen" in html
+
+    def test_partial_state_is_vertical_gradient(self):
+        html = _build_html("Test", "ZmFrZQ==", {})
+        assert "p.stagger" in html
+        # bottom drawer 100% out, top 20%, linear by height
+        assert "1.0 - 0.8 * t" in html
+
+    def test_light_graph_paper_background(self):
+        html = _build_html("Test", "ZmFrZQ==", {})
+        assert "0xf3f5f8" in html   # scene background
+        assert "setDrawerState" in html   # automation hook
+
+
 # ── generate_viewer_html ──────────────────────────────────────────────────────
 
 class TestGenerateViewerHtml:
