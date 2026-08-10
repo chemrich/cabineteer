@@ -1,5 +1,9 @@
 # cabineteer
 
+[![CI](https://github.com/chemrich/cabineteer/actions/workflows/ci.yml/badge.svg)](https://github.com/chemrich/cabineteer/actions/workflows/ci.yml)
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
+![Construction: frameless](https://img.shields.io/badge/construction-frameless%2FEuro-8a6d3b)
+
 **Shop-ready cabinet paperwork without CAD.** Say what you want in plain English; get a validated 3D design, optimized cut sheets, sheet layouts, a priced hardware list with real part numbers, and Domino mortise maps — where every number comes from code, not a chatbot's guess.
 
 The AI is only the interface. Every millimetre comes from a deterministic engine that runs **on your own machine** and knows real slide clearances, hinge boring positions, joinery offsets, and sheet sizes.
@@ -101,13 +105,14 @@ You need [uv](https://docs.astral.sh/uv/getting-started/installation/) (a Python
 ```bash
 git clone https://github.com/chemrich/cabineteer.git
 cd cabineteer
-uv sync
+uv sync                                              # ~2 GB, a few minutes the first time (it builds CadQuery)
 claude mcp add cabineteer -- uv --directory $(pwd) run cabineteer
+claude mcp list                                      # confirm: cabineteer is listed
 ```
 
-> The last line is for **Claude Code**. Using the Claude Desktop app, Gemini CLI, Windows, or HTTP mode — or hitting a snag? See [docs/local-setup.md](docs/local-setup.md).
+> The `claude` command is **Claude Code**. On the Claude Desktop app, Gemini CLI, **Windows** (where `$(pwd)` needs a tweak), or HTTP mode — or if `uv sync` fails building CadQuery — see [docs/local-setup.md](docs/local-setup.md) (lite mode skips the heavy 3D dependency).
 
-Then just ask:
+Then start a session with `claude` and ask (run `/mcp` first if you want to see cabineteer's tools connected):
 
 > Design a 900 mm three-drawer kitchen base with soft-close undermount slides and a classic drawer graduation.
 
@@ -250,6 +255,8 @@ uv run python -m evals         # <!--stat:scenarios-->306<!--/stat:scenarios--> 
 ```
 
 The eval harness ([docs/evals.md](docs/evals.md)) drives the same tool handlers the MCP server and CLI expose, with scenarios written as natural-language prompts plus typed assertions — it's how every feature and bug fix is pinned down. Neither suite requires CadQuery. The counts above are regenerated from source by `scripts/readme_stats.py` and gated in CI, so they can't drift.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the dev workflow (adding a preset, a scenario, or a hardware spec). Pre-1.0 and actively developed — the tool API may still shift, so pin your checkout. Bugs and ideas → [GitHub Issues](https://github.com/chemrich/cabineteer/issues).
 
 ## License
 
