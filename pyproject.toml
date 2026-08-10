@@ -2,6 +2,7 @@
 name = "cabineteer"
 version = "0.1.0"
 description = "Parametric furniture design, evaluation, and cutlist optimization with CadQuery"
+license = "Apache-2.0"
 requires-python = ">=3.10"
 dependencies = [
     "mcp[cli]>=1.9.0,!=1.27.0",

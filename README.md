@@ -1,6 +1,7 @@
 # cabineteer
 
 [![CI](https://github.com/chemrich/cabineteer/actions/workflows/ci.yml/badge.svg)](https://github.com/chemrich/cabineteer/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
 ![Construction: frameless](https://img.shields.io/badge/construction-frameless%2FEuro-8a6d3b)
 
@@ -260,7 +261,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the dev workflow (adding a preset, a 
 
 ## License
 
-_License pending — see the repository owner. (TODO: add a `LICENSE` file.)_
+[Apache License 2.0](LICENSE) — free to use, modify, and distribute, including
+commercially. In return you must keep the copyright and [NOTICE](NOTICE)
+attribution and state any changes you make; the license also grants an explicit
+patent license. See [NOTICE](NOTICE) for how to credit the project.
 
 ## Attributions
 
