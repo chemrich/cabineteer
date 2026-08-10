@@ -1,81 +1,102 @@
 # cabineteer
 
-**Design real, buildable cabinets and furniture by talking to an AI — and walk away with the paperwork your shop actually needs.**
+**Shop-ready cabinet paperwork without CAD.** Say what you want in plain English; get a validated 3D design, optimized cut sheets, sheet layouts, a priced hardware list with real part numbers, and Domino mortise maps — where every number comes from code, not a chatbot's guess.
 
-Describe the piece you want in plain English. Claude (or another AI assistant) drives cabineteer's parametric engine and hands back a validated design, an interactive 3D preview, optimized cut sheets, a priced hardware shopping list with real part numbers, and step-by-step carcass assembly instructions.
+The AI is only the interface. Every millimetre comes from a deterministic engine that runs **on your own machine** and knows real slide clearances, hinge boring positions, joinery offsets, and sheet sizes.
+
+**Frameless / Euro casework** — cabinets, dressers, consoles, benches, bookcases. *Not* face frames, CNC toolpaths, curves, or photoreal renders.
 
 ![Animated tour of nine furniture types cabineteer designs](docs/images/grand-tour.gif)
 
-*Nine distinct furniture types — credenza, dresser, tall chest, nightstand, media console, bar cabinet, open shelving, console table, wardrobe — each a real cabineteer design in walnut, white oak, or birch, with pulls, knobs, and lifted stances. Every image in this README came from a real project that produced real cut sheets.*
+*Nine furniture types — credenza, dresser, tall chest, nightstand, media console, bar cabinet, open shelving, console table, wardrobe — each a real cabineteer design in walnut, white oak, or birch. Every image in this README came from a real project that produced real cut sheets.*
 
-You don't need to be a programmer. If you can install two command-line tools and paste one line into a terminal, you can use everything here from a chat window. And the dimensional math is never left to the AI's imagination — every number comes from deterministic code that knows slide clearances, hinge boring positions, joinery offsets, and sheet sizes.
+## What it is — and what it is not
+
+cabineteer designs **rectilinear frameless casework** extremely well: carcasses, drawers, doors, the hardware that hangs them, and every piece of paper you need to cut and glue them up. It was built alongside real projects — a dining-room sideboard run, a miter-saw station, kids' desks, a printer pedestal — and its outputs have been taped to a real table saw.
+
+It is **not** a CNC/CAM tool (no toolpaths, no DXF nesting export), a face-frame designer (frameless/Euro construction only), or a photorealistic renderer. It doesn't do curved work, chairs, or timber framing, and it doesn't pretend to.
 
 ## What you get out of a design session
 
-1. **A validated design.** Every configuration runs through dozens of checks — drawer-slide clearances, hinge overlay collisions, shelf deflection, panel geometry, joinery feasibility, pull fit — each returning a graded issue with the measured value and the limit, not just "invalid."
-2. **An interactive 3D preview.** A single HTML file you open in any browser — no software to install. Slide every drawer open with one key, x-ray the fronts, cut a section plane through the carcass, and switch between eight procedural wood finishes (rift white oak, walnut, cherry, bamboo…) live.
-3. **Cut sheets you can take to the saw.** Consolidated cutlist with part IDs, guillotine sheet layouts with numbered breakdown cuts, dimensions in bold metric *and* fractional inches to 1/32″, printable HTML and PDF.
-4. **A hardware shopping list with real SKUs.** Blum, Accuride, Salice, Richelieu — orderable part numbers, pack-quantity math ("5 pulls needed → 3 IKEA 2-packs → 1 leftover"), and list-price totals per line and per project.
-5. **Assembly instructions.** A printable, per-panel plan for carcass glue-up: which joints go where, Domino mortise positions measured from the front edge, machine setup values, a dry-fit step before any glue, and edge-banding steps in the right order.
+1. **A validated design.** Every configuration runs through the evaluator, which returns *graded issues with the measured value and the limit* — not just "invalid."
+2. **An interactive 3D preview.** One self-contained HTML file you open in any browser. Slide every drawer open, x-ray the fronts, cut a section plane, switch wood finishes live.
+3. **Cut sheets you can take to the saw.** Consolidated cutlist with part IDs, guillotine sheet layouts with numbered breakdown cuts, dimensions in bold metric *and* fractional inches to 1/32″, HTML and PDF.
+4. **A hardware shopping list with real part numbers.** Blum, Accuride, Salice, Richelieu — orderable numbers, pack-quantity math ("5 pulls → 3 IKEA 2-packs → 1 leftover"), and list-price totals (snapshots — verify at your supplier).
+5. **Assembly instructions.** A per-panel carcass glue-up plan: which joints go where, Domino mortise positions from the front edge, machine setup values, a dry-fit step before any glue.
 
-![Batch cut sheet with three projects colour-coded on one panel](docs/images/paper-batch-layout.png)
+And it's not marketing — here is the evaluator's actual output on a cabinet whose drawer opening is too short for its slides:
 
-*One 2440 × 1220 sheet from a five-project batch — parts from three different builds share the panel, colour-coded per project with lettered part IDs, and the numbered dashed lines are the guillotine breakdown cuts with their dimensions.*
+```
+$ cabineteer-cli evaluate my-vanity        # or just tell your assistant: "evaluate it"
+{
+  "summary": { "errors": 1, "warnings": 0, "pass": false },
+  "issues": [
+    { "severity": "error", "check": "hardware_clearance",
+      "message": "Drawer height 34.0mm < minimum 68mm for Blum Tandem 550H" }
+  ]
+}
+```
 
-## Gallery
+…and a few rows of a real cutlist (the `Notes` column carries the build detail — here, a back-capping top):
 
-### One engine, many pieces
+```
+ID   Name     L(mm)   W(mm)   T   Qty  Material       Notes
+S1   side     408     330.0   18   4   baltic_birch
+T1   top      355.6   330.0   18   2   baltic_birch   full depth — rear edge flush with sides, caps the back
+B1   bottom   355.6   324.0   18   2   baltic_birch
+SH1  shelf_1  355.6   324.0   18   2   baltic_birch
+```
 
-Every render below is a saved cabineteer project, not a mock-up.
+## How it works, in one breath
 
-| Kids' desk | Miter-saw station | Shelf trio |
-|---|---|---|
-| ![Two-tower desk with worktop](docs/images/gallery-desk.png) | ![Three-cabinet Kapex station](docs/images/gallery-kapex.png) | ![Twin cubbies and a step-tall shelf](docs/images/gallery-shelf.png) |
+You type what you want into an everyday chat app — the way you'd text a sketch to a buddy. cabineteer is the shop assistant plugged into that chat: it does the clearance math, draws the 3D model, and prints the cut sheets and shopping list. *You* make every design call; it does the arithmetic and the paperwork. (MCP — the standard those chat apps use to run local tools — is the only bit of plumbing, and the [Quick start](#quick-start) sets it up once.) Prefer no chat at all? Drive the same engine from the [command line or Python](#three-ways-to-drive-it).
 
-*Left to right: two drawer towers flanking a 48″ kneehole under one worktop; a mixed-height miter-saw station with wings; twin cubbies plus a step-tall shelf unit.*
+**Your data.** The engine — all dimensional math, evaluation, cut sheets, hardware BOMs, 3D previews, assembly docs — is deterministic Python that runs entirely on your machine and makes no network calls. It sends no telemetry. The only thing that ever leaves your computer is the chat you type, and it goes only to whichever AI provider *your own* client is configured to use — cabineteer embeds no vendor and never uploads your designs. Every saved project is a plain JSON file under `~/.cabineteer/` that stays there until you move or delete it. Want zero network? Use the CLI or the library — fully offline.
 
-### Same design, one line of config apart
+## Can I trust the numbers?
 
-| European walnut | Rift white oak | Bamboo |
-|---|---|---|
-| ![Sideboard in walnut](docs/images/finish-walnut.png) | ![Sideboard in rift oak](docs/images/finish-oak.png) | ![Sideboard in bamboo](docs/images/finish-bamboo.png) |
+The fear with any "AI CAD" tool is plausible-but-wrong output. cabineteer is built so the AI *can't* inject a dimension: it picks which tool to call and with what parameters, and the geometry is computed by pure-Python dataclasses the model never touches.
 
-*The identical sideboard project rendered with three `finish` values. Drawer boxes stay Baltic birch throughout — as they would in the shop.*
+> **Where a number comes from — one drawer, end to end.**
+> You ask for a 600 mm cabinet with a single 60 mm drawer opening on Blum Tandem 550H slides.
+> - The 550H datasheet fixes the clearances the box must give up top and bottom → the engine computes a **34 mm** drawer-box height.
+> - The same datasheet sets the slide's **68 mm** minimum drawer height.
+> - The evaluator flags it: `error — Drawer height 34.0mm < minimum 68mm for Blum Tandem 550H`, and the design does not pass.
+> - The eval scenario `drawer_carcass_clearances_short_opening` pins exactly this outcome, so the number can't silently change.
+>
+> Not one step in that chain is the AI's opinion.
 
-![The same sideboard cycling through wood finishes while it turns](docs/images/finish-carousel.gif)
+Issues carry the measured value against the limit, so you can act on them at the bench:
 
-*…or switch finishes live in the viewer — rift oak → walnut → bamboo → cherry — on one continuously revolving design.*
+```
+{ "severity": "warning", "check": "door_overlay_collision", "value": 17.5, "limit": 16.0,
+  "message": "column 2: door overlay 9.5 mm leaves only 0.5 mm reveal on the 18 mm interior
+              divider — use the hinge's side adjustment (±2 mm) to open the reveal." }
+```
 
-### See inside before you cut
+**Verify it yourself** — no chat window required:
 
-| | |
-|---|---|
-| ![X-ray fronts](docs/images/viewer-xray.png) | ![All drawers open](docs/images/viewer-open.png) |
-| *`X` — x-ray the fronts to check boxes and slides* | *`O` — every drawer slides open, faces and pulls along* |
-| ![Section cut](docs/images/viewer-clip.png) | ![Manga scale reference](docs/images/viewer-manga.png) |
-| *`C` — clip plane with live mm readout* | *`M` — a manga stack in the drawer answers "how big is it really?"* |
+```bash
+uv run python -m evals                       # <!--stat:scenarios-->306<!--/stat:scenarios--> scenarios / <!--stat:assertions-->1,150<!--/stat:assertions--> typed assertions on real output numbers
+uv run python scripts/readme_stats.py --check # the counts quoted in this file, regenerated from source
+python -c "from cabineteer.presets import get_preset; from cabineteer.evaluation import evaluate_cabinet, print_report; print_report(evaluate_cabinet(get_preset('kitchen_base_3_drawer').config))"
+```
 
-![Drawers gradient-open and x-rayed across five pieces](docs/images/open-xray-tour.gif)
+A hallucinated dimension would fail the eval suite — every one of those assertions checks a number the tools computed.
 
-*`O` then `X` together: drawers cascade open in a bottom-heavy gradient while the fronts turn transparent — the Baltic-birch boxes you'll actually build, visible in place.*
+## Who this is for
 
-### The paperwork follows the design automatically
+**Cabinet makers and serious hobbyists** who want the tedious parts — clearance math, cut planning, hardware takeoffs — done instantly and correctly, while every design decision stays theirs. The defaults encode working shop practice:
 
-Change one dimension and every document below regenerates to match.
-
-| Bench parts list | Mortise map | Registration drawing |
-|---|---|---|
-| ![Bench-format parts list](docs/images/paper-parts-table.png) | ![Per-panel mortise map](docs/images/paper-mortise-map.png) | ![Registration cross-section](docs/images/paper-registration.png) |
-
-*A bench-format cut parts page (bold metric, grey fractional-inch sub-rows); a bottom panel's Domino mortise map — red rows are face mortises, blue are edge mortises, centres measured from the front edge; and the machine-setup cross-section showing the one 10 mm registration reference every mortise shares.*
-
-![Hardware BOM with real part numbers](docs/images/paper-hardware-bom.png)
-
-*The batch hardware BOM: real Blum/Top Knobs/Richelieu part numbers, per-project piece counts, pack-quantity math, and list-price totals — ready to paste into an order.*
+- Drawer boxes default to Baltic birch with undermount-slide clearances from the manufacturer datasheets.
+- Drawer bottoms upgrade themselves from 6 mm to 12 mm when a box is big enough to need it (taller than 5″ *and* wider than 16″).
+- Hinge counts and cup positions follow Blum's published placement rules.
+- Adjustable shelves are modeled fixed for the BOM but noted to cut 2 mm narrow for 32 mm-system pins.
+- The sheet optimizer can mirror a real breakdown sequence: track-saw rips first, then cross-cuts, then table-saw rips that respect your fence capacity.
 
 ## Quick start
 
-You need [uv](https://docs.astral.sh/uv/getting-started/installation/) (a Python manager — it handles everything, you never touch Python yourself) and an MCP-capable AI client such as [Claude Code](https://claude.com/claude-code) or [Claude Desktop](https://claude.ai/download).
+You need [uv](https://docs.astral.sh/uv/getting-started/installation/) (a Python manager — it handles everything, you never touch Python yourself) and an AI chat app that speaks MCP, such as [Claude Code](https://claude.com/claude-code) or [Claude Desktop](https://claude.ai/download).
 
 ```bash
 git clone https://github.com/chemrich/cabineteer.git
@@ -84,36 +105,51 @@ uv sync
 claude mcp add cabineteer -- uv --directory $(pwd) run cabineteer
 ```
 
+> The last line is for **Claude Code**. Using the Claude Desktop app, Gemini CLI, Windows, or HTTP mode — or hitting a snag? See [docs/local-setup.md](docs/local-setup.md).
+
 Then just ask:
 
 > Design a 900 mm three-drawer kitchen base with soft-close undermount slides and a classic drawer graduation.
 
 > Make me a bathroom vanity with two doors and an inset shelf. Soft-close hinges.
 
-> I want a sideboard like the one in this photo — three bays, drawers flanking a door pair.
-
 > Generate the cutlist for the workshop cabinet we just designed. My sheets are 2440 × 1220.
 
-For Claude Desktop, Gemini CLI, HTTP mode, and troubleshooting, see [docs/local-setup.md](docs/local-setup.md).
+## Three ways to drive it
 
-## Who this is for
+cabineteer has exactly three front ends over one engine — there is no other magic:
 
-**Cabinet makers and serious hobbyists** who want the tedious parts — clearance math, cut planning, hardware takeoffs — done instantly and correctly, while every design decision stays theirs. cabineteer was built alongside real projects (a dining-room sideboard run, a miter-saw station, kids' desks, a printer pedestal) and its outputs have been taped to a real table saw. The defaults encode working shop practice:
+**1 · Your AI assistant** (the [Quick start](#quick-start) above) — the conversational path.
 
-- Drawer boxes default to Baltic birch with undermount-slide clearances from the manufacturer datasheets.
-- Drawer bottoms upgrade themselves from 6 mm to 12 mm when a box is big enough to need it (taller than 5″ and wider than 16″).
-- Hinge counts and cup positions follow Blum's published placement rules.
-- Adjustable shelves are modeled fixed for the BOM but noted to cut 2 mm narrow for 32 mm-system pins.
-- The sheet optimizer can mirror a real breakdown sequence: track-saw rips first, then cross-cuts, then table-saw rips that respect your fence capacity.
+**2 · The command line** — the same tools from a shell, no AI, no API key:
 
-**What it is not:** a CNC/CAM tool (no toolpaths, no DXF nesting exports), a face-frame designer (frameless/Euro construction only), or a photorealistic renderer. It designs rectilinear casework — cabinets, dressers, consoles, benches, bookcases — extremely well, and doesn't pretend to do curved work, chairs, or timber framing.
+```bash
+cabineteer-cli list-tools                              # every tool the engine exposes
+cabineteer-cli projects                                # your saved library
+cabineteer-cli evaluate  guest-room-dresser            # graded errors/warnings
+cabineteer-cli cutlist   guest-room-dresser --sheet-length 2453 --sheet-width 1234
+cabineteer-cli visualize guest-room-dresser --finish rift_white_oak
+cabineteer-cli run apply_preset --arg name=kitchen_base_3_drawer   # escape hatch to any tool
+```
+
+**3 · The Python library** — the whole engine is importable; script a build to files with nothing else running:
+
+```python
+from cabineteer.presets import get_preset
+from cabineteer.evaluation import evaluate_cabinet, print_report
+
+cfg = get_preset("kitchen_base_3_drawer").config
+print_report(evaluate_cabinet(cfg))          # → graded issues, value vs limit
+```
+
+See [docs/architecture.md](docs/architecture.md) for the module map.
 
 ## What it knows
 
 | Area | Depth | Docs |
 |---|---|---|
 | **Drawer slides** | <!--stat:slides-->10<!--/stat:slides--> models — Blum Tandem/Movento, Accuride, Salice — with clearances, load ratings, and length ranges | [hardware](docs/hardware.md) |
-| **Hinges** | Blum Clip Top catalog with real orderable SKUs (71T/71B series), mounting plates, and screw callouts | [hardware](docs/hardware.md) |
+| **Hinges** | Blum Clip Top catalog with real orderable part numbers (71T/71B series), mounting plates, and screw callouts | [hardware](docs/hardware.md) |
 | **Pulls & knobs** | <!--stat:pulls-->48<!--/stat:pulls--> entries (Top Knobs, Rockler, Richelieu, Häfele, IKEA) with placement policy and pack math | [pulls](docs/pulls.md) |
 | **Drawer joinery** | Butt, locking-rabbet (QQQ), half-lap, drawer-lock — all cut dimensions computed from stock thickness | [joinery](docs/joinery.md) |
 | **Carcass joinery** | Dado/rabbet, floating tenon (Domino), pocket screw, biscuit, dowel — plus mitered waterfall corners | [joinery](docs/joinery.md) |
@@ -122,50 +158,72 @@ For Claude Desktop, Gemini CLI, HTTP mode, and troubleshooting, see [docs/local-
 | **Presets** | <!--stat:presets-->26<!--/stat:presets--> pre-validated starting points: kitchen, workshop, bedroom, bathroom, office, entryway, living room | [presets](docs/presets.md) |
 | **Cut planning** | Four sheet-layout algorithms incl. a shop-sequence "rips first" mode; per-material sheet sizes; part IDs | [cutlists](docs/cutlists.md) |
 | **Assembly** | Carcass joint census, per-panel mortise maps, machine setup blocks, dry-fit-first step lists | [assembly](docs/assembly.md) |
-| **Projects** | Multi-cabinet runs with shared design tokens, saved library, delta edits, forking, batch cutlists, worktops | [projects](docs/projects.md) |
+| **Projects** | Multi-cabinet runs with shared design settings, saved library, delta edits, forking, batch cutlists, worktops | [projects](docs/projects.md) |
 | **3D viewer** | Self-contained HTML, keyboard shortcuts, live wood finishes, section plane, diagnostics | [viewer](docs/viewer.md) |
+
+The engine exposes <!--stat:tools-->30<!--/stat:tools--> tools in all; `cabineteer-cli list-tools` prints them.
 
 > **One cutlist caveat, stated plainly:** cut dimensions are exact for the *butt-joint* carcass methods — floating tenon (Domino), pocket screw, biscuit, dowel — which is how cabineteer is built to work. If you pick **dado/rabbet** construction, the 3D model draws the housed panels correctly but the cutlist does **not** yet add the dado/rabbet allowances (it emits butt-joint panel sizes, which run narrow for housed joints). Use a butt method for a saw-ready cutlist, or add the housing allowances yourself.
 
 ## A tour, in prompts
 
-**Start from a preset and make it yours:**
+One design, carried from idea to paperwork:
 
-> Show me the kitchen presets. … Apply the three-drawer base but 750 wide, with Movento slides.
+> **Start it.** A 44-inch armoire: two columns of three drawers with a tall door section above, classic graduation, walnut pulls.
 
-**Or start from nothing:**
+> **Check it before you commit.** Evaluate it. — *returns graded issues, e.g. "drawer_height 87.4 mm < slide minimum 89 mm"* — then: Fix what you can automatically.
 
-> A 44-inch armoire: two columns of three drawers with a tall door section above, classic graduation, walnut pulls.
+> **See it.** Visualize it in rift white oak, horizontal grain.
 
-**Check it before you commit:**
+> **Plan the build.** Cutlist, please — 18 mm Baltic birch carcass, my oak sheets are 2453 × 1234. … Assembly instructions for the carcass; I have a DF 500.
 
-> Evaluate it. — *returns errors/warnings with measured values, e.g. "drawer_height 87.4 mm < slide minimum 89 mm"*
+> **Keep it.** Save this as guest-room-dresser. … Fork it as a walnut version. … Change the top drawer to 150 mm.
 
-> Fix what you can automatically.
+> **Batch the shopping.** One combined cutlist for the dresser and the hall tree — I'm buying plywood once.
 
-**See it:**
+Panels from both projects pack onto shared sheets for minimum waste, but each keeps its own colour on every sheet drawing, its own column in the parts list, and its own count on every hardware line.
 
-> Visualize it in rift white oak, horizontal grain.
+## Vs. what you already use
 
-**Plan the build:**
+Already in **SketchUp + OpenCutList**, **CutList Optimizer**, or **Fusion**? Keep them — they nest and render well, and OpenCutList is free. cabineteer owns everything *upstream* of the cutlist: it builds the parametric model, validates that every drawer clears its slide and every door clears its neighbour, and does the hardware takeoff with real part numbers — all from one sentence, before OpenCutList ever sees a panel. Change one dimension and the cutlist, the hardware BOM, the mortise map, and the assembly steps all regenerate together. That's the modeling you'd otherwise do by hand.
 
-> Cutlist, please — 18 mm Baltic birch carcass, my oak sheets are 2453 × 1234.
+## Gallery
 
-> Assembly instructions for the carcass. I have a DF 500.
+Every render below is a saved cabineteer project, not a mock-up.
 
-**Keep it:**
+| Kids' desk | Miter-saw station | Shelf trio |
+|---|---|---|
+| ![Two-tower desk with worktop](docs/images/gallery-desk.png) | ![Three-cabinet Kapex station](docs/images/gallery-kapex.png) | ![Twin cubbies and a step-tall shelf](docs/images/gallery-shelf.png) |
 
-> Save this as guest-room-dresser. … Fork it as a walnut version. … Change the top drawer to 150 mm.
+*Two drawer towers flanking a 48″ kneehole under one worktop; a mixed-height miter-saw station with wings; twin cubbies plus a step-tall shelf unit.*
 
-**Batch the shopping:**
+**Same design, one line of config apart** — the identical sideboard rendered with three `finish` values. Drawer boxes stay Baltic birch throughout, as they would in the shop.
 
-> One combined cutlist for the dresser and the hall tree — I'm buying plywood once.
+| European walnut | Rift white oak | Bamboo |
+|---|---|---|
+| ![Sideboard in walnut](docs/images/finish-walnut.png) | ![Sideboard in rift oak](docs/images/finish-oak.png) | ![Sideboard in bamboo](docs/images/finish-bamboo.png) |
 
-Panels from both projects pack onto shared sheets for minimum waste, but each project keeps its own color on every sheet drawing, its own column in the parts list, and its own count on every hardware line.
+**See inside before you cut.** The viewer is a build-checking tool, not a renderer: press `X` to x-ray the fronts and confirm the boxes and slides fit, `O` to slide every drawer open, `C` to cut a section plane with a live mm readout. Keys and finishes are documented in [docs/viewer.md](docs/viewer.md).
+
+| X-ray fronts (`X`) | Section cut (`C`) |
+|---|---|
+| ![X-ray fronts](docs/images/viewer-xray.png) | ![Section cut](docs/images/viewer-clip.png) |
+
+**The paperwork follows the design automatically** — change one dimension and every document below regenerates to match.
+
+| Bench parts list | Mortise map | Hardware BOM |
+|---|---|---|
+| ![Bench-format parts list](docs/images/paper-parts-table.png) | ![Per-panel mortise map](docs/images/paper-mortise-map.png) | ![Hardware BOM with real part numbers](docs/images/paper-hardware-bom.png) |
+
+*A bench-format cut-parts page (bold metric, grey fractional-inch sub-rows); a bottom panel's Domino mortise map (red = face mortises, blue = edge mortises, centres from the front edge); and the batch hardware BOM with real Blum/Top Knobs/Richelieu part numbers, per-project counts, and pack math.*
+
+![Batch cut sheet with three projects colour-coded on one panel](docs/images/paper-batch-layout.png)
+
+*One 2440 × 1220 sheet from a five-project batch — parts from three builds share the panel, told apart by both colour **and** a per-project letter on every part ID, with numbered dashed guillotine breakdown cuts and their dimensions.*
 
 ## Where files land
 
-Everything durable is written under `~/.cabineteer/`:
+Everything durable is written under `~/.cabineteer/` — plain local files you can back up, diff, or delete; nothing is uploaded.
 
 | Folder | Contents |
 |---|---|
@@ -178,25 +236,11 @@ Everything durable is written under `~/.cabineteer/`:
 
 | Command | What you get |
 |---|---|
-| `uv sync` | **Recommended.** Everything: CadQuery (3D), opcut + rectpack (sheet nesting), reportlab (PDF) |
+| `uv sync` | **Recommended.** Everything: CadQuery (the 3D geometry engine), opcut + rectpack (sheet nesting), reportlab (PDF) |
 | `uv pip install -e ".[full]"` | Same, via pip-style extras |
-| `uv pip install -e .` | **Lite.** Pure-Python: design, evaluation, cutlist BOM, MCP server — no 3D, no PDF |
+| `uv pip install -e .` | **Lite.** Pure-Python: design, evaluation, cutlist BOM, CLI, MCP server — no 3D, no PDF |
 
-Lite mode exists because CadQuery is a heavy native dependency; everything except 3D geometry, interference checks, PDF export, and the advanced nesting algorithms works without it. Run lite with `uv run --no-group full cabineteer`.
-
-## Using it from Python
-
-The MCP server is the front door, but the whole engine is an importable library:
-
-```python
-from cabineteer.presets import get_preset
-from cabineteer.evaluation import evaluate_cabinet, print_report
-
-cfg = get_preset("kitchen_base_3_drawer").config
-print_report(evaluate_cabinet(cfg))
-```
-
-See [docs/architecture.md](docs/architecture.md) for the module map.
+Lite mode exists because CadQuery is a heavy native dependency; everything except 3D geometry, interference checks, PDF export, and the advanced nesting algorithms works without it — and it's a much smaller set of dependencies to install and audit. Run lite with `uv run --no-group full cabineteer`.
 
 ## For contributors
 
@@ -205,7 +249,11 @@ uv run pytest tests/ -v        # 1,500+ unit + integration tests
 uv run python -m evals         # <!--stat:scenarios-->306<!--/stat:scenarios--> scenarios / <!--stat:assertions-->1,150<!--/stat:assertions--> assertions, runs in ~1 second
 ```
 
-The eval harness ([docs/evals.md](docs/evals.md)) drives the same tool handlers the MCP server exposes, with scenarios written as natural-language prompts plus typed assertions — it's how every feature and bug fix is pinned down. Neither suite requires CadQuery.
+The eval harness ([docs/evals.md](docs/evals.md)) drives the same tool handlers the MCP server and CLI expose, with scenarios written as natural-language prompts plus typed assertions — it's how every feature and bug fix is pinned down. Neither suite requires CadQuery. The counts above are regenerated from source by `scripts/readme_stats.py` and gated in CI, so they can't drift.
+
+## License
+
+_License pending — see the repository owner. (TODO: add a `LICENSE` file.)_
 
 ## Attributions
 
