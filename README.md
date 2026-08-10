@@ -112,18 +112,20 @@ For Claude Desktop, Gemini CLI, HTTP mode, and troubleshooting, see [docs/local-
 
 | Area | Depth | Docs |
 |---|---|---|
-| **Drawer slides** | 10 models — Blum Tandem/Movento, Accuride, Salice — with clearances, load ratings, and length ranges | [hardware](docs/hardware.md) |
+| **Drawer slides** | <!--stat:slides-->10<!--/stat:slides--> models — Blum Tandem/Movento, Accuride, Salice — with clearances, load ratings, and length ranges | [hardware](docs/hardware.md) |
 | **Hinges** | Blum Clip Top catalog with real orderable SKUs (71T/71B series), mounting plates, and screw callouts | [hardware](docs/hardware.md) |
-| **Pulls & knobs** | 45 entries (Top Knobs, Rockler, Richelieu, Häfele, IKEA) with placement policy and pack math | [pulls](docs/pulls.md) |
+| **Pulls & knobs** | <!--stat:pulls-->48<!--/stat:pulls--> entries (Top Knobs, Rockler, Richelieu, Häfele, IKEA) with placement policy and pack math | [pulls](docs/pulls.md) |
 | **Drawer joinery** | Butt, locking-rabbet (QQQ), half-lap, drawer-lock — all cut dimensions computed from stock thickness | [joinery](docs/joinery.md) |
 | **Carcass joinery** | Dado/rabbet, floating tenon (Domino), pocket screw, biscuit, dowel — plus mitered waterfall corners | [joinery](docs/joinery.md) |
 | **Edge banding** | Iron-on hot-melt or shop-ripped hardwood banding, with core-size compensation and its own cutlist | [edge-banding](docs/edge-banding.md) |
 | **Proportions** | Graduated drawer heights and column widths via named ratios (equal / subtle / classic / golden) | [proportions](docs/proportions.md) |
-| **Presets** | 26 pre-validated starting points: kitchen, workshop, bedroom, bathroom, office, entryway, living room | [presets](docs/presets.md) |
+| **Presets** | <!--stat:presets-->26<!--/stat:presets--> pre-validated starting points: kitchen, workshop, bedroom, bathroom, office, entryway, living room | [presets](docs/presets.md) |
 | **Cut planning** | Four sheet-layout algorithms incl. a shop-sequence "rips first" mode; per-material sheet sizes; part IDs | [cutlists](docs/cutlists.md) |
 | **Assembly** | Carcass joint census, per-panel mortise maps, machine setup blocks, dry-fit-first step lists | [assembly](docs/assembly.md) |
 | **Projects** | Multi-cabinet runs with shared design tokens, saved library, delta edits, forking, batch cutlists, worktops | [projects](docs/projects.md) |
 | **3D viewer** | Self-contained HTML, keyboard shortcuts, live wood finishes, section plane, diagnostics | [viewer](docs/viewer.md) |
+
+> **One cutlist caveat, stated plainly:** cut dimensions are exact for the *butt-joint* carcass methods — floating tenon (Domino), pocket screw, biscuit, dowel — which is how cabineteer is built to work. If you pick **dado/rabbet** construction, the 3D model draws the housed panels correctly but the cutlist does **not** yet add the dado/rabbet allowances (it emits butt-joint panel sizes, which run narrow for housed joints). Use a butt method for a saw-ready cutlist, or add the housing allowances yourself.
 
 ## A tour, in prompts
 
@@ -200,7 +202,7 @@ See [docs/architecture.md](docs/architecture.md) for the module map.
 
 ```bash
 uv run pytest tests/ -v        # 1,500+ unit + integration tests
-uv run python -m evals         # 305 scenarios / 1,139 assertions, runs in ~1 second
+uv run python -m evals         # <!--stat:scenarios-->306<!--/stat:scenarios--> scenarios / <!--stat:assertions-->1,150<!--/stat:assertions--> assertions, runs in ~1 second
 ```
 
 The eval harness ([docs/evals.md](docs/evals.md)) drives the same tool handlers the MCP server exposes, with scenarios written as natural-language prompts plus typed assertions — it's how every feature and bug fix is pinned down. Neither suite requires CadQuery.
