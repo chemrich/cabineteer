@@ -38,74 +38,9 @@ from .scenarios import (
     SCENARIOS,
 )
 
-from cabineteer.server import (
-    _tool_list_hardware,
-    _tool_list_joinery,
-    _tool_design_cabinet,
-    _tool_design_multi_column_cabinet,
-    _tool_evaluate_cabinet,
-    _tool_design_door,
-    _tool_design_drawer,
-    _tool_generate_cutlist,
-    _tool_compare_joinery,
-    _tool_list_presets,
-    _tool_apply_preset,
-    _tool_identify_furniture_type,
-    _tool_auto_fix_cabinet,
-    _tool_describe_design,
-    _tool_design_legs,
-    _tool_design_pulls,
-    _tool_suggest_proportions,
-    _tool_list_pull_presets,
-    _tool_design_project,
-    _tool_update_project,
-    _tool_list_projects,
-    _tool_rename_project,
-    _tool_duplicate_project,
-    _tool_delete_project,
-    _tool_load_project,
-    _tool_evaluate_project,
-    _tool_generate_project_cutlist,
-    _tool_generate_assembly_instructions,
-    _tool_visualize_cabinet,
-    _tool_visualize_project,
-)
-
-# ─── Tool dispatch ────────────────────────────────────────────────────────────
-
-TOOL_DISPATCH = {
-    "list_hardware":        _tool_list_hardware,
-    "list_joinery_options": _tool_list_joinery,
-    "design_cabinet":       _tool_design_cabinet,
-    "evaluate_cabinet":     _tool_evaluate_cabinet,
-    "design_door":          _tool_design_door,
-    "design_drawer":        _tool_design_drawer,
-    "generate_cutlist":     _tool_generate_cutlist,
-    "compare_joinery":      _tool_compare_joinery,
-    "list_presets":              _tool_list_presets,
-    "apply_preset":              _tool_apply_preset,
-    "identify_furniture_type":   _tool_identify_furniture_type,
-    "auto_fix_cabinet":          _tool_auto_fix_cabinet,
-    "describe_design":              _tool_describe_design,
-    "design_legs":                  _tool_design_legs,
-    "design_multi_column_cabinet":  _tool_design_multi_column_cabinet,
-    "design_pulls":                 _tool_design_pulls,
-    "suggest_proportions":          _tool_suggest_proportions,
-    "list_pull_presets":            _tool_list_pull_presets,
-    "design_project":               _tool_design_project,
-    "update_project":               _tool_update_project,
-    "list_projects":                _tool_list_projects,
-    "rename_project":               _tool_rename_project,
-    "duplicate_project":            _tool_duplicate_project,
-    "delete_project":               _tool_delete_project,
-    "load_project":                 _tool_load_project,
-    "evaluate_project":             _tool_evaluate_project,
-    "generate_project_cutlist":     _tool_generate_project_cutlist,
-    "generate_assembly_instructions": _tool_generate_assembly_instructions,
-    "visualize_cabinet":            _tool_visualize_cabinet,
-    "visualize_project":            _tool_visualize_project,
-}
-
+# The name→handler map is owned by the server (its MCP path and the CLI use the
+# same dict), so the harness drives the exact tools the server exposes.
+from cabineteer.server import TOOL_DISPATCH
 
 # ─── Result types ─────────────────────────────────────────────────────────────
 
