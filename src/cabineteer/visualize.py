@@ -1337,6 +1337,11 @@ controls.minDistance      = 50;
 controls.maxDistance      = 20000;
 controls.maxPolarAngle    = Math.PI / 2 + 0.18;
 
+// Automation/debug hook: the page is an ES module, so scene/camera/controls
+// are unreachable from outside without this. Used by
+// scripts/readme_screenshots.py to frame shots deterministically.
+window.cabineteerViewer = {{ scene, camera, controls, renderer, THREE }};
+
 // Suppress the browser context menu so right-drag pan works.
 renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
 
