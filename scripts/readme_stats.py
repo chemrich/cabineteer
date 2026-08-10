@@ -38,7 +38,7 @@ README = REPO / "README.md"
 # Only these counts are wrapped in <!--stat:NAME--> markers today. compute_stats
 # knows how to derive more (tools, finishes); add the name here and place the
 # marker in README to bring it under CI's honesty gate.
-MANAGED = ("pulls", "presets", "slides", "scenarios", "assertions")
+MANAGED = ("pulls", "presets", "slides", "tools", "scenarios", "assertions")
 
 
 def compute_stats() -> dict[str, int]:
