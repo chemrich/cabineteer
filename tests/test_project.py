@@ -615,7 +615,7 @@ class TestProjectLibrary:
         from cabineteer.project import list_saved_projects
         self._redirect(tmp_path, monkeypatch)
         save_project(build_project(_sample_payload(name="lib_good")))
-        (tmp_path / "lib_bad.json").write_text("{not json")
+        (tmp_path / "lib_bad.json").write_text("{not json", encoding="utf-8")
         entries = list_saved_projects()
         by_name = {e["name"]: e for e in entries}
         assert "error" in by_name["lib_bad"]
@@ -664,7 +664,7 @@ class TestProjectLibrary:
         assert legs and legs[0]["by_project"] == {"lib_a": 12, "lib_b": 12}
         # Layout HTML colours by project and legends the batch.
         html = (tmp_path / ".cabineteer" / "cutlists" / "lib_a-lib_b"
-                / "lib_a-lib_b_layout.html").read_text()
+                / "lib_a-lib_b_layout.html").read_text(encoding="utf-8")
         assert "Projects: " in html and "lib_a" in html and "lib_b" in html
         # CSV gains the Project column in batch mode.
         assert data["cutlist_csv"].splitlines()[0].startswith("Project,")
@@ -705,7 +705,7 @@ class TestProjectLibrary:
             save_project(build_project(_sample_payload(name=dev)))
         # "_"-prefixed names predate name validation and exist only as
         # legacy files on disk — write one directly, as those were.
-        (tmp_path / "_probe.json").write_text('{"name": "_probe", "cabinets": []}')
+        (tmp_path / "_probe.json").write_text('{"name": "_probe", "cabinets": []}', encoding="utf-8")
         assert [e["name"] for e in list_saved_projects()] == ["real_project"]
         assert len(list_saved_projects(include_all=True)) == 5
         # An explicit query searches everything.

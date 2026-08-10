@@ -209,7 +209,7 @@ class TestScenarioCatalogue:
         import cabineteer.server as srv
         from evals.harness import TOOL_DISPATCH
 
-        src = open(srv.__file__).read()
+        src = open(srv.__file__, encoding="utf-8").read()
         server_tools = set(re.findall(r'types\.Tool\(\s*name="([^"]+)"', src))
         assert server_tools, "could not extract any tool names from server.py"
         missing = server_tools - set(TOOL_DISPATCH)
