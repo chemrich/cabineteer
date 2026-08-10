@@ -8,7 +8,7 @@ Send the file to a client, open it on the shop laptop, or keep it next to the cu
 
 | Key | Action |
 |-----|--------|
-| `O` | Open / close all drawers — boxes, faces, and pulls slide together |
+| `O` | Cycle drawer open state: closed → partial → fully open → closed. Partial is a vertical gradient (bottom drawer 100% out, top 20%); boxes, faces, and pulls slide together |
 | `X` | X-ray the drawer and door fronts (transparent overlay) so you can see the boxes behind them |
 | `C` | Clip plane — slice through the model on any axis with a slider and a live mm readout |
 | `V` | Diagnostic colors — every panel family gets a flat vivid color (drawer sides pink, fronts/backs yellow, bottoms green, carcass sides blue, tops/bottoms orange, faces/doors purple) for checking that parts are where they should be |
