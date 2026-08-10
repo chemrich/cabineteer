@@ -1,1015 +1,1082 @@
 {
-    "version": "1.7.0",
-    "metadata": {
-        "description": "Full hardware catalog for cabineteer. Each pull has an explicit mount_style: surface | edge | flush | knob.",
-        "total_items": 45,
-        "brands": [
-            "Top Knobs",
-            "Richelieu",
-            "IKEA",
-            "Hafele",
-            "Rockler"
-        ]
-    },
-    "pulls": [
-        {
-            "id": "topknobs-hb-76",
-            "name": "Kinney Pull - Honey Bronze (76mm)",
-            "brand": "Top Knobs",
-            "model_number": "TK76HB",
-            "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
-            "style": "Transitional",
-            "material": "Zinc Alloy",
-            "finish": "Honey Bronze",
-            "mount_style": "surface",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 76,
-                "length_mm": 92,
-                "projection_mm": 30
-            },
-            "tags": [
-                "warm",
-                "oak-pairing",
-                "transitional"
-            ]
-        },
-        {
-            "id": "topknobs-hb-96",
-            "name": "Kinney Pull - Honey Bronze (96mm)",
-            "brand": "Top Knobs",
-            "model_number": "TK96HB",
-            "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
-            "style": "Transitional",
-            "material": "Zinc Alloy",
-            "finish": "Honey Bronze",
-            "mount_style": "surface",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 96,
-                "length_mm": 112,
-                "projection_mm": 30
-            },
-            "tags": [
-                "warm",
-                "oak-pairing",
-                "transitional"
-            ]
-        },
-        {
-            "id": "topknobs-hb-128",
-            "name": "Kinney Pull - Honey Bronze (128mm)",
-            "brand": "Top Knobs",
-            "model_number": "TK128HB",
-            "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
-            "style": "Transitional",
-            "material": "Zinc Alloy",
-            "finish": "Honey Bronze",
-            "mount_style": "surface",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 128,
-                "length_mm": 144,
-                "projection_mm": 30
-            },
-            "tags": [
-                "warm",
-                "oak-pairing",
-                "transitional"
-            ]
-        },
-        {
-            "id": "topknobs-hb-160",
-            "name": "Kinney Pull - Honey Bronze (160mm)",
-            "brand": "Top Knobs",
-            "model_number": "TK160HB",
-            "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
-            "style": "Transitional",
-            "material": "Zinc Alloy",
-            "finish": "Honey Bronze",
-            "mount_style": "surface",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 160,
-                "length_mm": 176,
-                "projection_mm": 30
-            },
-            "tags": [
-                "warm",
-                "oak-pairing",
-                "transitional"
-            ]
-        },
-        {
-            "id": "topknobs-hb-305",
-            "name": "Kinney Pull - Honey Bronze (305mm)",
-            "brand": "Top Knobs",
-            "model_number": "TK305HB",
-            "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
-            "style": "Transitional",
-            "material": "Zinc Alloy",
-            "finish": "Honey Bronze",
-            "mount_style": "surface",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 305,
-                "length_mm": 316,
-                "projection_mm": 30
-            },
-            "tags": [
-                "warm",
-                "oak-pairing",
-                "transitional"
-            ]
-        },
-        {
-            "id": "topknobs-ag-76",
-            "name": "Kinney Pull - Ash Gray (76mm)",
-            "brand": "Top Knobs",
-            "model_number": "TK76AG",
-            "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
-            "style": "Transitional",
-            "material": "Zinc Alloy",
-            "finish": "Ash Gray",
-            "mount_style": "surface",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 76,
-                "length_mm": 92,
-                "projection_mm": 30
-            },
-            "tags": [
-                "cool",
-                "cerused-oak",
-                "transitional"
-            ]
-        },
-        {
-            "id": "topknobs-ag-96",
-            "name": "Kinney Pull - Ash Gray (96mm)",
-            "brand": "Top Knobs",
-            "model_number": "TK96AG",
-            "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
-            "style": "Transitional",
-            "material": "Zinc Alloy",
-            "finish": "Ash Gray",
-            "mount_style": "surface",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 96,
-                "length_mm": 112,
-                "projection_mm": 30
-            },
-            "tags": [
-                "cool",
-                "cerused-oak",
-                "transitional"
-            ]
-        },
-        {
-            "id": "topknobs-ag-128",
-            "name": "Kinney Pull - Ash Gray (128mm)",
-            "brand": "Top Knobs",
-            "model_number": "TK128AG",
-            "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
-            "style": "Transitional",
-            "material": "Zinc Alloy",
-            "finish": "Ash Gray",
-            "mount_style": "surface",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 128,
-                "length_mm": 144,
-                "projection_mm": 30
-            },
-            "tags": [
-                "cool",
-                "cerused-oak",
-                "transitional"
-            ]
-        },
-        {
-            "id": "topknobs-ag-160",
-            "name": "Kinney Pull - Ash Gray (160mm)",
-            "brand": "Top Knobs",
-            "model_number": "TK160AG",
-            "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
-            "style": "Transitional",
-            "material": "Zinc Alloy",
-            "finish": "Ash Gray",
-            "mount_style": "surface",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 160,
-                "length_mm": 176,
-                "projection_mm": 30
-            },
-            "tags": [
-                "cool",
-                "cerused-oak",
-                "transitional"
-            ]
-        },
-        {
-            "id": "topknobs-ag-305",
-            "name": "Kinney Pull - Ash Gray (305mm)",
-            "brand": "Top Knobs",
-            "model_number": "TK305AG",
-            "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
-            "style": "Transitional",
-            "material": "Zinc Alloy",
-            "finish": "Ash Gray",
-            "mount_style": "surface",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 305,
-                "length_mm": 316,
-                "projection_mm": 30
-            },
-            "tags": [
-                "cool",
-                "cerused-oak",
-                "transitional"
-            ]
-        },
-        {
-            "id": "topknobs-blk-76",
-            "name": "Kinney Pull - Flat Black (76mm)",
-            "brand": "Top Knobs",
-            "model_number": "TK76BLK",
-            "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
-            "style": "Transitional",
-            "material": "Zinc Alloy",
-            "finish": "Flat Black",
-            "mount_style": "surface",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 76,
-                "length_mm": 92,
-                "projection_mm": 30
-            },
-            "tags": [
-                "high-contrast",
-                "modern",
-                "transitional"
-            ]
-        },
-        {
-            "id": "topknobs-blk-96",
-            "name": "Kinney Pull - Flat Black (96mm)",
-            "brand": "Top Knobs",
-            "model_number": "TK96BLK",
-            "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
-            "style": "Transitional",
-            "material": "Zinc Alloy",
-            "finish": "Flat Black",
-            "mount_style": "surface",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 96,
-                "length_mm": 112,
-                "projection_mm": 30
-            },
-            "tags": [
-                "high-contrast",
-                "modern",
-                "transitional"
-            ]
-        },
-        {
-            "id": "topknobs-blk-128",
-            "name": "Kinney Pull - Flat Black (128mm)",
-            "brand": "Top Knobs",
-            "model_number": "TK128BLK",
-            "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
-            "style": "Transitional",
-            "material": "Zinc Alloy",
-            "finish": "Flat Black",
-            "mount_style": "surface",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 128,
-                "length_mm": 144,
-                "projection_mm": 30
-            },
-            "tags": [
-                "high-contrast",
-                "modern",
-                "transitional"
-            ]
-        },
-        {
-            "id": "topknobs-blk-160",
-            "name": "Kinney Pull - Flat Black (160mm)",
-            "brand": "Top Knobs",
-            "model_number": "TK160BLK",
-            "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
-            "style": "Transitional",
-            "material": "Zinc Alloy",
-            "finish": "Flat Black",
-            "mount_style": "surface",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 160,
-                "length_mm": 176,
-                "projection_mm": 30
-            },
-            "tags": [
-                "high-contrast",
-                "modern",
-                "transitional"
-            ]
-        },
-        {
-            "id": "topknobs-blk-305",
-            "name": "Kinney Pull - Flat Black (305mm)",
-            "brand": "Top Knobs",
-            "model_number": "TK305BLK",
-            "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
-            "style": "Transitional",
-            "material": "Zinc Alloy",
-            "finish": "Flat Black",
-            "mount_style": "surface",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 305,
-                "length_mm": 316,
-                "projection_mm": 30
-            },
-            "tags": [
-                "high-contrast",
-                "modern",
-                "transitional"
-            ]
-        },
-        {
-            "id": "topknobs-bsn-76",
-            "name": "Kinney Pull - Satin Nickel (76mm)",
-            "brand": "Top Knobs",
-            "model_number": "TK76BSN",
-            "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
-            "style": "Transitional",
-            "material": "Zinc Alloy",
-            "finish": "Satin Nickel",
-            "mount_style": "surface",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 76,
-                "length_mm": 92,
-                "projection_mm": 30
-            },
-            "tags": [
-                "classic",
-                "workshop",
-                "transitional"
-            ]
-        },
-        {
-            "id": "topknobs-bsn-96",
-            "name": "Kinney Pull - Satin Nickel (96mm)",
-            "brand": "Top Knobs",
-            "model_number": "TK96BSN",
-            "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
-            "style": "Transitional",
-            "material": "Zinc Alloy",
-            "finish": "Satin Nickel",
-            "mount_style": "surface",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 96,
-                "length_mm": 112,
-                "projection_mm": 30
-            },
-            "tags": [
-                "classic",
-                "workshop",
-                "transitional"
-            ]
-        },
-        {
-            "id": "topknobs-bsn-128",
-            "name": "Kinney Pull - Satin Nickel (128mm)",
-            "brand": "Top Knobs",
-            "model_number": "TK128BSN",
-            "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
-            "style": "Transitional",
-            "material": "Zinc Alloy",
-            "finish": "Satin Nickel",
-            "mount_style": "surface",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 128,
-                "length_mm": 144,
-                "projection_mm": 30
-            },
-            "tags": [
-                "classic",
-                "workshop",
-                "transitional"
-            ]
-        },
-        {
-            "id": "topknobs-bsn-160",
-            "name": "Kinney Pull - Satin Nickel (160mm)",
-            "brand": "Top Knobs",
-            "model_number": "TK160BSN",
-            "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
-            "style": "Transitional",
-            "material": "Zinc Alloy",
-            "finish": "Satin Nickel",
-            "mount_style": "surface",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 160,
-                "length_mm": 176,
-                "projection_mm": 30
-            },
-            "tags": [
-                "classic",
-                "workshop",
-                "transitional"
-            ]
-        },
-        {
-            "id": "topknobs-bsn-305",
-            "name": "Kinney Pull - Satin Nickel (305mm)",
-            "brand": "Top Knobs",
-            "model_number": "TK305BSN",
-            "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
-            "style": "Transitional",
-            "material": "Zinc Alloy",
-            "finish": "Satin Nickel",
-            "mount_style": "surface",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 305,
-                "length_mm": 316,
-                "projection_mm": 30
-            },
-            "tags": [
-                "classic",
-                "workshop",
-                "transitional"
-            ]
-        },
-        {
-            "id": "rockler-wnl-160",
-            "name": "Urban Designer Wood Pull - Walnut (160mm)",
-            "brand": "Rockler",
-            "model_number": "MN-160-WNL",
-            "url": "https://www.rockler.com/9-3-4-ashley-norton-urban-designer-wood-cabinet-pull-walnut",
-            "style": "Contemporary",
-            "material": "Solid Wood",
-            "finish": "Walnut",
-            "mount_style": "surface",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 160,
-                "length_mm": 184,
-                "projection_mm": 32
-            },
-            "tags": [
-                "wood",
-                "walnut",
-                "premium",
-                "contemporary"
-            ]
-        },
-        {
-            "id": "rockler-wnl-224",
-            "name": "Urban Designer Wood Pull - Walnut (224mm)",
-            "brand": "Rockler",
-            "model_number": "MN-224-WNL",
-            "url": "https://www.rockler.com/9-3-4-ashley-norton-urban-designer-wood-cabinet-pull-walnut",
-            "style": "Contemporary",
-            "material": "Solid Wood",
-            "finish": "Walnut",
-            "mount_style": "surface",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 224,
-                "length_mm": 248,
-                "projection_mm": 32
-            },
-            "tags": [
-                "wood",
-                "walnut",
-                "premium",
-                "contemporary"
-            ]
-        },
-        {
-            "id": "rockler-wnl-288",
-            "name": "Urban Designer Wood Pull - Walnut (288mm)",
-            "brand": "Rockler",
-            "model_number": "MN-288-WNL",
-            "url": "https://www.rockler.com/9-3-4-ashley-norton-urban-designer-wood-cabinet-pull-walnut",
-            "style": "Contemporary",
-            "material": "Solid Wood",
-            "finish": "Walnut",
-            "mount_style": "surface",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 288,
-                "length_mm": 312,
-                "projection_mm": 32
-            },
-            "tags": [
-                "wood",
-                "walnut",
-                "premium",
-                "contemporary"
-            ]
-        },
-        {
-            "id": "rockler-okl-160",
-            "name": "Urban Designer Wood Pull - Oak (160mm)",
-            "brand": "Rockler",
-            "model_number": "MN-160-OKL",
-            "url": "https://www.rockler.com/9-3-4-ashley-norton-urban-designer-wood-cabinet-pull-walnut",
-            "style": "Contemporary",
-            "material": "Solid Wood",
-            "finish": "Oak",
-            "mount_style": "surface",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 160,
-                "length_mm": 184,
-                "projection_mm": 32
-            },
-            "tags": [
-                "wood",
-                "oak",
-                "white-oak-compatible",
-                "contemporary"
-            ]
-        },
-        {
-            "id": "rockler-okl-224",
-            "name": "Urban Designer Wood Pull - Oak (224mm)",
-            "brand": "Rockler",
-            "model_number": "MN-224-OKL",
-            "url": "https://www.rockler.com/9-3-4-ashley-norton-urban-designer-wood-cabinet-pull-walnut",
-            "style": "Contemporary",
-            "material": "Solid Wood",
-            "finish": "Oak",
-            "mount_style": "surface",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 224,
-                "length_mm": 248,
-                "projection_mm": 32
-            },
-            "tags": [
-                "wood",
-                "oak",
-                "white-oak-compatible",
-                "contemporary"
-            ]
-        },
-        {
-            "id": "rockler-okl-288",
-            "name": "Urban Designer Wood Pull - Oak (288mm)",
-            "brand": "Rockler",
-            "model_number": "MN-288-OKL",
-            "url": "https://www.rockler.com/9-3-4-ashley-norton-urban-designer-wood-cabinet-pull-walnut",
-            "style": "Contemporary",
-            "material": "Solid Wood",
-            "finish": "Oak",
-            "mount_style": "surface",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 288,
-                "length_mm": 312,
-                "projection_mm": 32
-            },
-            "tags": [
-                "wood",
-                "oak",
-                "white-oak-compatible",
-                "contemporary"
-            ]
-        },
-        {
-            "id": "richelieu-chbrz-32",
-            "name": "Modern Aluminum Edge Pull - Champagne Bronze (32mm)",
-            "brand": "Richelieu",
-            "model_number": "MN-32-CHBRZ",
-            "url": "https://www.richelieu.com/us/en/product/decorative-hardware/cabinet-hardware/pulls-and-knobs/pulls/modern-aluminum-edge-pull-9898/1063166",
-            "style": "Minimalist",
-            "material": "Aluminum",
-            "finish": "Champagne Bronze",
-            "mount_style": "edge",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 32,
-                "length_mm": 52,
-                "projection_mm": 42
-            },
-            "tags": [
-                "metal",
-                "champagne-bronze",
-                "warm",
-                "minimalist"
-            ]
-        },
-        {
-            "id": "richelieu-chbrz-96",
-            "name": "Modern Aluminum Edge Pull - Champagne Bronze (96mm)",
-            "brand": "Richelieu",
-            "model_number": "MN-96-CHBRZ",
-            "url": "https://www.richelieu.com/us/en/product/decorative-hardware/cabinet-hardware/pulls-and-knobs/pulls/modern-aluminum-edge-pull-9898/1063166",
-            "style": "Minimalist",
-            "material": "Aluminum",
-            "finish": "Champagne Bronze",
-            "mount_style": "edge",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 96,
-                "length_mm": 116,
-                "projection_mm": 42
-            },
-            "tags": [
-                "metal",
-                "champagne-bronze",
-                "warm",
-                "minimalist"
-            ]
-        },
-        {
-            "id": "richelieu-chbrz-128",
-            "name": "Modern Aluminum Edge Pull - Champagne Bronze (128mm)",
-            "brand": "Richelieu",
-            "model_number": "MN-128-CHBRZ",
-            "url": "https://www.richelieu.com/us/en/product/decorative-hardware/cabinet-hardware/pulls-and-knobs/pulls/modern-aluminum-edge-pull-9898/1063166",
-            "style": "Minimalist",
-            "material": "Aluminum",
-            "finish": "Champagne Bronze",
-            "mount_style": "edge",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 128,
-                "length_mm": 148,
-                "projection_mm": 42
-            },
-            "tags": [
-                "metal",
-                "champagne-bronze",
-                "warm",
-                "minimalist"
-            ]
-        },
-        {
-            "id": "richelieu-chbrz-416",
-            "name": "Modern Aluminum Edge Pull - Champagne Bronze (416mm)",
-            "brand": "Richelieu",
-            "model_number": "MN-416-CHBRZ",
-            "url": "https://www.richelieu.com/us/en/product/decorative-hardware/cabinet-hardware/pulls-and-knobs/pulls/modern-aluminum-edge-pull-9898/1063166",
-            "style": "Minimalist",
-            "material": "Aluminum",
-            "finish": "Champagne Bronze",
-            "mount_style": "edge",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 416,
-                "length_mm": 436,
-                "projection_mm": 42
-            },
-            "tags": [
-                "metal",
-                "champagne-bronze",
-                "warm",
-                "minimalist"
-            ]
-        },
-        {
-            "id": "richelieu-900-32",
-            "name": "Modern Aluminum Edge Pull - Matte Black (32mm)",
-            "brand": "Richelieu",
-            "model_number": "MN-32-900",
-            "url": "https://www.richelieu.com/us/en/product/decorative-hardware/cabinet-hardware/pulls-and-knobs/pulls/modern-aluminum-edge-pull-9898/1063166",
-            "style": "Minimalist",
-            "material": "Aluminum",
-            "finish": "Matte Black",
-            "mount_style": "edge",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 32,
-                "length_mm": 52,
-                "projection_mm": 42
-            },
-            "tags": [
-                "metal",
-                "black",
-                "modern",
-                "minimalist"
-            ]
-        },
-        {
-            "id": "richelieu-900-96",
-            "name": "Modern Aluminum Edge Pull - Matte Black (96mm)",
-            "brand": "Richelieu",
-            "model_number": "MN-96-900",
-            "url": "https://www.richelieu.com/us/en/product/decorative-hardware/cabinet-hardware/pulls-and-knobs/pulls/modern-aluminum-edge-pull-9898/1063166",
-            "style": "Minimalist",
-            "material": "Aluminum",
-            "finish": "Matte Black",
-            "mount_style": "edge",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 96,
-                "length_mm": 116,
-                "projection_mm": 42
-            },
-            "tags": [
-                "metal",
-                "black",
-                "modern",
-                "minimalist"
-            ]
-        },
-        {
-            "id": "richelieu-900-128",
-            "name": "Modern Aluminum Edge Pull - Matte Black (128mm)",
-            "brand": "Richelieu",
-            "model_number": "MN-128-900",
-            "url": "https://www.richelieu.com/us/en/product/decorative-hardware/cabinet-hardware/pulls-and-knobs/pulls/modern-aluminum-edge-pull-9898/1063166",
-            "style": "Minimalist",
-            "material": "Aluminum",
-            "finish": "Matte Black",
-            "mount_style": "edge",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 128,
-                "length_mm": 148,
-                "projection_mm": 42
-            },
-            "tags": [
-                "metal",
-                "black",
-                "modern",
-                "minimalist"
-            ]
-        },
-        {
-            "id": "richelieu-900-416",
-            "name": "Modern Aluminum Edge Pull - Matte Black (416mm)",
-            "brand": "Richelieu",
-            "model_number": "MN-416-900",
-            "url": "https://www.richelieu.com/us/en/product/decorative-hardware/cabinet-hardware/pulls-and-knobs/pulls/modern-aluminum-edge-pull-9898/1063166",
-            "style": "Minimalist",
-            "material": "Aluminum",
-            "finish": "Matte Black",
-            "mount_style": "edge",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 416,
-                "length_mm": 436,
-                "projection_mm": 42
-            },
-            "tags": [
-                "metal",
-                "black",
-                "modern",
-                "minimalist"
-            ]
-        },
-        {
-            "id": "richelieu-30-32",
-            "name": "Modern Aluminum Edge Pull - White (32mm)",
-            "brand": "Richelieu",
-            "model_number": "MN-32-30",
-            "url": "https://www.richelieu.com/us/en/product/decorative-hardware/cabinet-hardware/pulls-and-knobs/pulls/modern-aluminum-edge-pull-9898/1063166",
-            "style": "Minimalist",
-            "material": "Aluminum",
-            "finish": "White",
-            "mount_style": "edge",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 32,
-                "length_mm": 52,
-                "projection_mm": 42
-            },
-            "tags": [
-                "metal",
-                "white",
-                "minimalist"
-            ]
-        },
-        {
-            "id": "richelieu-30-96",
-            "name": "Modern Aluminum Edge Pull - White (96mm)",
-            "brand": "Richelieu",
-            "model_number": "MN-96-30",
-            "url": "https://www.richelieu.com/us/en/product/decorative-hardware/cabinet-hardware/pulls-and-knobs/pulls/modern-aluminum-edge-pull-9898/1063166",
-            "style": "Minimalist",
-            "material": "Aluminum",
-            "finish": "White",
-            "mount_style": "edge",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 96,
-                "length_mm": 116,
-                "projection_mm": 42
-            },
-            "tags": [
-                "metal",
-                "white",
-                "minimalist"
-            ]
-        },
-        {
-            "id": "richelieu-30-128",
-            "name": "Modern Aluminum Edge Pull - White (128mm)",
-            "brand": "Richelieu",
-            "model_number": "MN-128-30",
-            "url": "https://www.richelieu.com/us/en/product/decorative-hardware/cabinet-hardware/pulls-and-knobs/pulls/modern-aluminum-edge-pull-9898/1063166",
-            "style": "Minimalist",
-            "material": "Aluminum",
-            "finish": "White",
-            "mount_style": "edge",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 128,
-                "length_mm": 148,
-                "projection_mm": 42
-            },
-            "tags": [
-                "metal",
-                "white",
-                "minimalist"
-            ]
-        },
-        {
-            "id": "richelieu-30-416",
-            "name": "Modern Aluminum Edge Pull - White (416mm)",
-            "brand": "Richelieu",
-            "model_number": "MN-416-30",
-            "url": "https://www.richelieu.com/us/en/product/decorative-hardware/cabinet-hardware/pulls-and-knobs/pulls/modern-aluminum-edge-pull-9898/1063166",
-            "style": "Minimalist",
-            "material": "Aluminum",
-            "finish": "White",
-            "mount_style": "edge",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 416,
-                "length_mm": 436,
-                "projection_mm": 42
-            },
-            "tags": [
-                "metal",
-                "white",
-                "minimalist"
-            ]
-        },
-        {
-            "id": "hafele-193.18.766",
-            "name": "Contact Handle - Walnut",
-            "brand": "Hafele",
-            "model_number": "193.18.766",
-            "url": "https://www.hafele.com",
-            "style": "Modern Wood",
-            "material": "Solid Walnut",
-            "finish": "Natural Walnut",
-            "mount_style": "surface",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 160,
-                "length_mm": 182,
-                "projection_mm": 35
-            },
-            "tags": [
-                "wood",
-                "walnut",
-                "premium"
-            ]
-        },
-        {
-            "id": "hafele-151.35.665",
-            "name": "Inset Flush Pull",
-            "brand": "Hafele",
-            "model_number": "151.35.665",
-            "url": "https://www.hafele.com",
-            "style": "Minimalist",
-            "material": "Zinc",
-            "finish": "Matt Nickel",
-            "mount_style": "flush",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 96,
-                "length_mm": 110,
-                "projection_mm": 1.5
-            },
-            "tags": [
-                "metal",
-                "recessed"
-            ]
-        },
-        {
-            "id": "rockler-42250",
-            "name": "White Oak Mission Pull",
-            "brand": "Rockler",
-            "model_number": "42250",
-            "url": "https://www.rockler.com/unfinished-white-oak-mission-pulls",
-            "style": "Mission",
-            "material": "White Oak",
-            "finish": "Unfinished",
-            "mount_style": "surface",
-            "pack_quantity": 1,
-            "dimensions": {
-                "cc_mm": 96,
-                "length_mm": 128,
-                "projection_mm": 28
-            },
-            "tags": [
-                "wood",
-                "white-oak"
-            ]
-        },
-        {
-            "id": "ikea-bagganas-black-128",
-            "name": "BAGGANÄS Handle - Black",
-            "brand": "IKEA",
-            "model_number": "803.384.11",
-            "url": "https://www.ikea.com/us/en/p/bagganaes-handle-black-80338411/",
-            "style": "Modern",
-            "material": "Steel",
-            "finish": "Black",
-            "mount_style": "surface",
-            "pack_quantity": 2,
-            "dimensions": {
-                "cc_mm": 128,
-                "length_mm": 143,
-                "projection_mm": 35
-            },
-            "tags": [
-                "metal",
-                "black",
-                "modern"
-            ]
-        },
-        {
-            "id": "ikea-hackas-anthracite-128",
-            "name": "HACKÅS Handle - Anthracite",
-            "brand": "IKEA",
-            "model_number": "303.424.77",
-            "url": "https://www.ikea.com/us/en/p/hackas-handle-anthracite-30342477/",
-            "style": "Modern",
-            "material": "Aluminum",
-            "finish": "Anthracite",
-            "mount_style": "surface",
-            "pack_quantity": 2,
-            "dimensions": {
-                "cc_mm": 128,
-                "length_mm": 150,
-                "projection_mm": 24
-            },
-            "tags": [
-                "metal",
-                "minimalist"
-            ]
-        },
-        {
-            "id": "ikea-borghamn-black-416",
-            "name": "BORGHAMN Handle - Black",
-            "brand": "IKEA",
-            "model_number": "203.160.49",
-            "url": "https://www.ikea.com/us/en/p/borghamn-handle-black-20316049/",
-            "style": "Industrial",
-            "material": "Steel",
-            "finish": "Black",
-            "mount_style": "surface",
-            "pack_quantity": 2,
-            "dimensions": {
-                "cc_mm": 416,
-                "length_mm": 426,
-                "projection_mm": 36
-            },
-            "tags": [
-                "metal",
-                "long-pull"
-            ]
-        },
-        {
-            "id": "ikea-billsbro-white-120",
-            "name": "BILLSBRO Handle - White",
-            "brand": "IKEA",
-            "model_number": "203.235.92",
-            "url": "https://www.ikea.com/us/en/p/billsbro-handle-white-20323592/",
-            "style": "Minimalist Edge",
-            "material": "Aluminum",
-            "finish": "White",
-            "mount_style": "edge",
-            "pack_quantity": 2,
-            "dimensions": {
-                "cc_mm": 96,
-                "length_mm": 120,
-                "projection_mm": 45
-            },
-            "tags": [
-                "metal",
-                "edge-mount"
-            ]
-        }
+  "version": "1.7.0",
+  "metadata": {
+    "description": "Full hardware catalog for cabineteer. Each pull has an explicit mount_style: surface | edge | flush | knob.",
+    "total_items": 48,
+    "brands": [
+      "Top Knobs",
+      "Richelieu",
+      "IKEA",
+      "Hafele",
+      "Rockler",
+      "Generic"
     ]
+  },
+  "pulls": [
+    {
+      "id": "topknobs-hb-76",
+      "name": "Kinney Pull - Honey Bronze (76mm)",
+      "brand": "Top Knobs",
+      "model_number": "TK76HB",
+      "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
+      "style": "Transitional",
+      "material": "Zinc Alloy",
+      "finish": "Honey Bronze",
+      "mount_style": "surface",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 76,
+        "length_mm": 92,
+        "projection_mm": 30
+      },
+      "tags": [
+        "warm",
+        "oak-pairing",
+        "transitional"
+      ]
+    },
+    {
+      "id": "topknobs-hb-96",
+      "name": "Kinney Pull - Honey Bronze (96mm)",
+      "brand": "Top Knobs",
+      "model_number": "TK96HB",
+      "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
+      "style": "Transitional",
+      "material": "Zinc Alloy",
+      "finish": "Honey Bronze",
+      "mount_style": "surface",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 96,
+        "length_mm": 112,
+        "projection_mm": 30
+      },
+      "tags": [
+        "warm",
+        "oak-pairing",
+        "transitional"
+      ]
+    },
+    {
+      "id": "topknobs-hb-128",
+      "name": "Kinney Pull - Honey Bronze (128mm)",
+      "brand": "Top Knobs",
+      "model_number": "TK128HB",
+      "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
+      "style": "Transitional",
+      "material": "Zinc Alloy",
+      "finish": "Honey Bronze",
+      "mount_style": "surface",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 128,
+        "length_mm": 144,
+        "projection_mm": 30
+      },
+      "tags": [
+        "warm",
+        "oak-pairing",
+        "transitional"
+      ]
+    },
+    {
+      "id": "topknobs-hb-160",
+      "name": "Kinney Pull - Honey Bronze (160mm)",
+      "brand": "Top Knobs",
+      "model_number": "TK160HB",
+      "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
+      "style": "Transitional",
+      "material": "Zinc Alloy",
+      "finish": "Honey Bronze",
+      "mount_style": "surface",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 160,
+        "length_mm": 176,
+        "projection_mm": 30
+      },
+      "tags": [
+        "warm",
+        "oak-pairing",
+        "transitional"
+      ]
+    },
+    {
+      "id": "topknobs-hb-305",
+      "name": "Kinney Pull - Honey Bronze (305mm)",
+      "brand": "Top Knobs",
+      "model_number": "TK305HB",
+      "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
+      "style": "Transitional",
+      "material": "Zinc Alloy",
+      "finish": "Honey Bronze",
+      "mount_style": "surface",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 305,
+        "length_mm": 316,
+        "projection_mm": 30
+      },
+      "tags": [
+        "warm",
+        "oak-pairing",
+        "transitional"
+      ]
+    },
+    {
+      "id": "topknobs-ag-76",
+      "name": "Kinney Pull - Ash Gray (76mm)",
+      "brand": "Top Knobs",
+      "model_number": "TK76AG",
+      "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
+      "style": "Transitional",
+      "material": "Zinc Alloy",
+      "finish": "Ash Gray",
+      "mount_style": "surface",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 76,
+        "length_mm": 92,
+        "projection_mm": 30
+      },
+      "tags": [
+        "cool",
+        "cerused-oak",
+        "transitional"
+      ]
+    },
+    {
+      "id": "topknobs-ag-96",
+      "name": "Kinney Pull - Ash Gray (96mm)",
+      "brand": "Top Knobs",
+      "model_number": "TK96AG",
+      "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
+      "style": "Transitional",
+      "material": "Zinc Alloy",
+      "finish": "Ash Gray",
+      "mount_style": "surface",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 96,
+        "length_mm": 112,
+        "projection_mm": 30
+      },
+      "tags": [
+        "cool",
+        "cerused-oak",
+        "transitional"
+      ]
+    },
+    {
+      "id": "topknobs-ag-128",
+      "name": "Kinney Pull - Ash Gray (128mm)",
+      "brand": "Top Knobs",
+      "model_number": "TK128AG",
+      "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
+      "style": "Transitional",
+      "material": "Zinc Alloy",
+      "finish": "Ash Gray",
+      "mount_style": "surface",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 128,
+        "length_mm": 144,
+        "projection_mm": 30
+      },
+      "tags": [
+        "cool",
+        "cerused-oak",
+        "transitional"
+      ]
+    },
+    {
+      "id": "topknobs-ag-160",
+      "name": "Kinney Pull - Ash Gray (160mm)",
+      "brand": "Top Knobs",
+      "model_number": "TK160AG",
+      "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
+      "style": "Transitional",
+      "material": "Zinc Alloy",
+      "finish": "Ash Gray",
+      "mount_style": "surface",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 160,
+        "length_mm": 176,
+        "projection_mm": 30
+      },
+      "tags": [
+        "cool",
+        "cerused-oak",
+        "transitional"
+      ]
+    },
+    {
+      "id": "topknobs-ag-305",
+      "name": "Kinney Pull - Ash Gray (305mm)",
+      "brand": "Top Knobs",
+      "model_number": "TK305AG",
+      "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
+      "style": "Transitional",
+      "material": "Zinc Alloy",
+      "finish": "Ash Gray",
+      "mount_style": "surface",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 305,
+        "length_mm": 316,
+        "projection_mm": 30
+      },
+      "tags": [
+        "cool",
+        "cerused-oak",
+        "transitional"
+      ]
+    },
+    {
+      "id": "topknobs-blk-76",
+      "name": "Kinney Pull - Flat Black (76mm)",
+      "brand": "Top Knobs",
+      "model_number": "TK76BLK",
+      "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
+      "style": "Transitional",
+      "material": "Zinc Alloy",
+      "finish": "Flat Black",
+      "mount_style": "surface",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 76,
+        "length_mm": 92,
+        "projection_mm": 30
+      },
+      "tags": [
+        "high-contrast",
+        "modern",
+        "transitional"
+      ]
+    },
+    {
+      "id": "topknobs-blk-96",
+      "name": "Kinney Pull - Flat Black (96mm)",
+      "brand": "Top Knobs",
+      "model_number": "TK96BLK",
+      "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
+      "style": "Transitional",
+      "material": "Zinc Alloy",
+      "finish": "Flat Black",
+      "mount_style": "surface",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 96,
+        "length_mm": 112,
+        "projection_mm": 30
+      },
+      "tags": [
+        "high-contrast",
+        "modern",
+        "transitional"
+      ]
+    },
+    {
+      "id": "topknobs-blk-128",
+      "name": "Kinney Pull - Flat Black (128mm)",
+      "brand": "Top Knobs",
+      "model_number": "TK128BLK",
+      "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
+      "style": "Transitional",
+      "material": "Zinc Alloy",
+      "finish": "Flat Black",
+      "mount_style": "surface",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 128,
+        "length_mm": 144,
+        "projection_mm": 30
+      },
+      "tags": [
+        "high-contrast",
+        "modern",
+        "transitional"
+      ]
+    },
+    {
+      "id": "topknobs-blk-160",
+      "name": "Kinney Pull - Flat Black (160mm)",
+      "brand": "Top Knobs",
+      "model_number": "TK160BLK",
+      "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
+      "style": "Transitional",
+      "material": "Zinc Alloy",
+      "finish": "Flat Black",
+      "mount_style": "surface",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 160,
+        "length_mm": 176,
+        "projection_mm": 30
+      },
+      "tags": [
+        "high-contrast",
+        "modern",
+        "transitional"
+      ]
+    },
+    {
+      "id": "topknobs-blk-305",
+      "name": "Kinney Pull - Flat Black (305mm)",
+      "brand": "Top Knobs",
+      "model_number": "TK305BLK",
+      "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
+      "style": "Transitional",
+      "material": "Zinc Alloy",
+      "finish": "Flat Black",
+      "mount_style": "surface",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 305,
+        "length_mm": 316,
+        "projection_mm": 30
+      },
+      "tags": [
+        "high-contrast",
+        "modern",
+        "transitional"
+      ]
+    },
+    {
+      "id": "topknobs-bsn-76",
+      "name": "Kinney Pull - Satin Nickel (76mm)",
+      "brand": "Top Knobs",
+      "model_number": "TK76BSN",
+      "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
+      "style": "Transitional",
+      "material": "Zinc Alloy",
+      "finish": "Satin Nickel",
+      "mount_style": "surface",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 76,
+        "length_mm": 92,
+        "projection_mm": 30
+      },
+      "tags": [
+        "classic",
+        "workshop",
+        "transitional"
+      ]
+    },
+    {
+      "id": "topknobs-bsn-96",
+      "name": "Kinney Pull - Satin Nickel (96mm)",
+      "brand": "Top Knobs",
+      "model_number": "TK96BSN",
+      "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
+      "style": "Transitional",
+      "material": "Zinc Alloy",
+      "finish": "Satin Nickel",
+      "mount_style": "surface",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 96,
+        "length_mm": 112,
+        "projection_mm": 30
+      },
+      "tags": [
+        "classic",
+        "workshop",
+        "transitional"
+      ]
+    },
+    {
+      "id": "topknobs-bsn-128",
+      "name": "Kinney Pull - Satin Nickel (128mm)",
+      "brand": "Top Knobs",
+      "model_number": "TK128BSN",
+      "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
+      "style": "Transitional",
+      "material": "Zinc Alloy",
+      "finish": "Satin Nickel",
+      "mount_style": "surface",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 128,
+        "length_mm": 144,
+        "projection_mm": 30
+      },
+      "tags": [
+        "classic",
+        "workshop",
+        "transitional"
+      ]
+    },
+    {
+      "id": "topknobs-bsn-160",
+      "name": "Kinney Pull - Satin Nickel (160mm)",
+      "brand": "Top Knobs",
+      "model_number": "TK160BSN",
+      "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
+      "style": "Transitional",
+      "material": "Zinc Alloy",
+      "finish": "Satin Nickel",
+      "mount_style": "surface",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 160,
+        "length_mm": 176,
+        "projection_mm": 30
+      },
+      "tags": [
+        "classic",
+        "workshop",
+        "transitional"
+      ]
+    },
+    {
+      "id": "topknobs-bsn-305",
+      "name": "Kinney Pull - Satin Nickel (305mm)",
+      "brand": "Top Knobs",
+      "model_number": "TK305BSN",
+      "url": "https://www.topknobs.com/catalogsearch/result/?q=Kinney",
+      "style": "Transitional",
+      "material": "Zinc Alloy",
+      "finish": "Satin Nickel",
+      "mount_style": "surface",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 305,
+        "length_mm": 316,
+        "projection_mm": 30
+      },
+      "tags": [
+        "classic",
+        "workshop",
+        "transitional"
+      ]
+    },
+    {
+      "id": "rockler-wnl-160",
+      "name": "Urban Designer Wood Pull - Walnut (160mm)",
+      "brand": "Rockler",
+      "model_number": "MN-160-WNL",
+      "url": "https://www.rockler.com/9-3-4-ashley-norton-urban-designer-wood-cabinet-pull-walnut",
+      "style": "Contemporary",
+      "material": "Solid Wood",
+      "finish": "Walnut",
+      "mount_style": "surface",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 160,
+        "length_mm": 184,
+        "projection_mm": 32
+      },
+      "tags": [
+        "wood",
+        "walnut",
+        "premium",
+        "contemporary"
+      ]
+    },
+    {
+      "id": "rockler-wnl-224",
+      "name": "Urban Designer Wood Pull - Walnut (224mm)",
+      "brand": "Rockler",
+      "model_number": "MN-224-WNL",
+      "url": "https://www.rockler.com/9-3-4-ashley-norton-urban-designer-wood-cabinet-pull-walnut",
+      "style": "Contemporary",
+      "material": "Solid Wood",
+      "finish": "Walnut",
+      "mount_style": "surface",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 224,
+        "length_mm": 248,
+        "projection_mm": 32
+      },
+      "tags": [
+        "wood",
+        "walnut",
+        "premium",
+        "contemporary"
+      ]
+    },
+    {
+      "id": "rockler-wnl-288",
+      "name": "Urban Designer Wood Pull - Walnut (288mm)",
+      "brand": "Rockler",
+      "model_number": "MN-288-WNL",
+      "url": "https://www.rockler.com/9-3-4-ashley-norton-urban-designer-wood-cabinet-pull-walnut",
+      "style": "Contemporary",
+      "material": "Solid Wood",
+      "finish": "Walnut",
+      "mount_style": "surface",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 288,
+        "length_mm": 312,
+        "projection_mm": 32
+      },
+      "tags": [
+        "wood",
+        "walnut",
+        "premium",
+        "contemporary"
+      ]
+    },
+    {
+      "id": "rockler-okl-160",
+      "name": "Urban Designer Wood Pull - Oak (160mm)",
+      "brand": "Rockler",
+      "model_number": "MN-160-OKL",
+      "url": "https://www.rockler.com/9-3-4-ashley-norton-urban-designer-wood-cabinet-pull-walnut",
+      "style": "Contemporary",
+      "material": "Solid Wood",
+      "finish": "Oak",
+      "mount_style": "surface",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 160,
+        "length_mm": 184,
+        "projection_mm": 32
+      },
+      "tags": [
+        "wood",
+        "oak",
+        "white-oak-compatible",
+        "contemporary"
+      ]
+    },
+    {
+      "id": "rockler-okl-224",
+      "name": "Urban Designer Wood Pull - Oak (224mm)",
+      "brand": "Rockler",
+      "model_number": "MN-224-OKL",
+      "url": "https://www.rockler.com/9-3-4-ashley-norton-urban-designer-wood-cabinet-pull-walnut",
+      "style": "Contemporary",
+      "material": "Solid Wood",
+      "finish": "Oak",
+      "mount_style": "surface",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 224,
+        "length_mm": 248,
+        "projection_mm": 32
+      },
+      "tags": [
+        "wood",
+        "oak",
+        "white-oak-compatible",
+        "contemporary"
+      ]
+    },
+    {
+      "id": "rockler-okl-288",
+      "name": "Urban Designer Wood Pull - Oak (288mm)",
+      "brand": "Rockler",
+      "model_number": "MN-288-OKL",
+      "url": "https://www.rockler.com/9-3-4-ashley-norton-urban-designer-wood-cabinet-pull-walnut",
+      "style": "Contemporary",
+      "material": "Solid Wood",
+      "finish": "Oak",
+      "mount_style": "surface",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 288,
+        "length_mm": 312,
+        "projection_mm": 32
+      },
+      "tags": [
+        "wood",
+        "oak",
+        "white-oak-compatible",
+        "contemporary"
+      ]
+    },
+    {
+      "id": "richelieu-chbrz-32",
+      "name": "Modern Aluminum Edge Pull - Champagne Bronze (32mm)",
+      "brand": "Richelieu",
+      "model_number": "MN-32-CHBRZ",
+      "url": "https://www.richelieu.com/us/en/product/decorative-hardware/cabinet-hardware/pulls-and-knobs/pulls/modern-aluminum-edge-pull-9898/1063166",
+      "style": "Minimalist",
+      "material": "Aluminum",
+      "finish": "Champagne Bronze",
+      "mount_style": "edge",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 32,
+        "length_mm": 52,
+        "projection_mm": 42
+      },
+      "tags": [
+        "metal",
+        "champagne-bronze",
+        "warm",
+        "minimalist"
+      ]
+    },
+    {
+      "id": "richelieu-chbrz-96",
+      "name": "Modern Aluminum Edge Pull - Champagne Bronze (96mm)",
+      "brand": "Richelieu",
+      "model_number": "MN-96-CHBRZ",
+      "url": "https://www.richelieu.com/us/en/product/decorative-hardware/cabinet-hardware/pulls-and-knobs/pulls/modern-aluminum-edge-pull-9898/1063166",
+      "style": "Minimalist",
+      "material": "Aluminum",
+      "finish": "Champagne Bronze",
+      "mount_style": "edge",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 96,
+        "length_mm": 116,
+        "projection_mm": 42
+      },
+      "tags": [
+        "metal",
+        "champagne-bronze",
+        "warm",
+        "minimalist"
+      ]
+    },
+    {
+      "id": "richelieu-chbrz-128",
+      "name": "Modern Aluminum Edge Pull - Champagne Bronze (128mm)",
+      "brand": "Richelieu",
+      "model_number": "MN-128-CHBRZ",
+      "url": "https://www.richelieu.com/us/en/product/decorative-hardware/cabinet-hardware/pulls-and-knobs/pulls/modern-aluminum-edge-pull-9898/1063166",
+      "style": "Minimalist",
+      "material": "Aluminum",
+      "finish": "Champagne Bronze",
+      "mount_style": "edge",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 128,
+        "length_mm": 148,
+        "projection_mm": 42
+      },
+      "tags": [
+        "metal",
+        "champagne-bronze",
+        "warm",
+        "minimalist"
+      ]
+    },
+    {
+      "id": "richelieu-chbrz-416",
+      "name": "Modern Aluminum Edge Pull - Champagne Bronze (416mm)",
+      "brand": "Richelieu",
+      "model_number": "MN-416-CHBRZ",
+      "url": "https://www.richelieu.com/us/en/product/decorative-hardware/cabinet-hardware/pulls-and-knobs/pulls/modern-aluminum-edge-pull-9898/1063166",
+      "style": "Minimalist",
+      "material": "Aluminum",
+      "finish": "Champagne Bronze",
+      "mount_style": "edge",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 416,
+        "length_mm": 436,
+        "projection_mm": 42
+      },
+      "tags": [
+        "metal",
+        "champagne-bronze",
+        "warm",
+        "minimalist"
+      ]
+    },
+    {
+      "id": "richelieu-900-32",
+      "name": "Modern Aluminum Edge Pull - Matte Black (32mm)",
+      "brand": "Richelieu",
+      "model_number": "MN-32-900",
+      "url": "https://www.richelieu.com/us/en/product/decorative-hardware/cabinet-hardware/pulls-and-knobs/pulls/modern-aluminum-edge-pull-9898/1063166",
+      "style": "Minimalist",
+      "material": "Aluminum",
+      "finish": "Matte Black",
+      "mount_style": "edge",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 32,
+        "length_mm": 52,
+        "projection_mm": 42
+      },
+      "tags": [
+        "metal",
+        "black",
+        "modern",
+        "minimalist"
+      ]
+    },
+    {
+      "id": "richelieu-900-96",
+      "name": "Modern Aluminum Edge Pull - Matte Black (96mm)",
+      "brand": "Richelieu",
+      "model_number": "MN-96-900",
+      "url": "https://www.richelieu.com/us/en/product/decorative-hardware/cabinet-hardware/pulls-and-knobs/pulls/modern-aluminum-edge-pull-9898/1063166",
+      "style": "Minimalist",
+      "material": "Aluminum",
+      "finish": "Matte Black",
+      "mount_style": "edge",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 96,
+        "length_mm": 116,
+        "projection_mm": 42
+      },
+      "tags": [
+        "metal",
+        "black",
+        "modern",
+        "minimalist"
+      ]
+    },
+    {
+      "id": "richelieu-900-128",
+      "name": "Modern Aluminum Edge Pull - Matte Black (128mm)",
+      "brand": "Richelieu",
+      "model_number": "MN-128-900",
+      "url": "https://www.richelieu.com/us/en/product/decorative-hardware/cabinet-hardware/pulls-and-knobs/pulls/modern-aluminum-edge-pull-9898/1063166",
+      "style": "Minimalist",
+      "material": "Aluminum",
+      "finish": "Matte Black",
+      "mount_style": "edge",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 128,
+        "length_mm": 148,
+        "projection_mm": 42
+      },
+      "tags": [
+        "metal",
+        "black",
+        "modern",
+        "minimalist"
+      ]
+    },
+    {
+      "id": "richelieu-900-416",
+      "name": "Modern Aluminum Edge Pull - Matte Black (416mm)",
+      "brand": "Richelieu",
+      "model_number": "MN-416-900",
+      "url": "https://www.richelieu.com/us/en/product/decorative-hardware/cabinet-hardware/pulls-and-knobs/pulls/modern-aluminum-edge-pull-9898/1063166",
+      "style": "Minimalist",
+      "material": "Aluminum",
+      "finish": "Matte Black",
+      "mount_style": "edge",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 416,
+        "length_mm": 436,
+        "projection_mm": 42
+      },
+      "tags": [
+        "metal",
+        "black",
+        "modern",
+        "minimalist"
+      ]
+    },
+    {
+      "id": "richelieu-30-32",
+      "name": "Modern Aluminum Edge Pull - White (32mm)",
+      "brand": "Richelieu",
+      "model_number": "MN-32-30",
+      "url": "https://www.richelieu.com/us/en/product/decorative-hardware/cabinet-hardware/pulls-and-knobs/pulls/modern-aluminum-edge-pull-9898/1063166",
+      "style": "Minimalist",
+      "material": "Aluminum",
+      "finish": "White",
+      "mount_style": "edge",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 32,
+        "length_mm": 52,
+        "projection_mm": 42
+      },
+      "tags": [
+        "metal",
+        "white",
+        "minimalist"
+      ]
+    },
+    {
+      "id": "richelieu-30-96",
+      "name": "Modern Aluminum Edge Pull - White (96mm)",
+      "brand": "Richelieu",
+      "model_number": "MN-96-30",
+      "url": "https://www.richelieu.com/us/en/product/decorative-hardware/cabinet-hardware/pulls-and-knobs/pulls/modern-aluminum-edge-pull-9898/1063166",
+      "style": "Minimalist",
+      "material": "Aluminum",
+      "finish": "White",
+      "mount_style": "edge",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 96,
+        "length_mm": 116,
+        "projection_mm": 42
+      },
+      "tags": [
+        "metal",
+        "white",
+        "minimalist"
+      ]
+    },
+    {
+      "id": "richelieu-30-128",
+      "name": "Modern Aluminum Edge Pull - White (128mm)",
+      "brand": "Richelieu",
+      "model_number": "MN-128-30",
+      "url": "https://www.richelieu.com/us/en/product/decorative-hardware/cabinet-hardware/pulls-and-knobs/pulls/modern-aluminum-edge-pull-9898/1063166",
+      "style": "Minimalist",
+      "material": "Aluminum",
+      "finish": "White",
+      "mount_style": "edge",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 128,
+        "length_mm": 148,
+        "projection_mm": 42
+      },
+      "tags": [
+        "metal",
+        "white",
+        "minimalist"
+      ]
+    },
+    {
+      "id": "richelieu-30-416",
+      "name": "Modern Aluminum Edge Pull - White (416mm)",
+      "brand": "Richelieu",
+      "model_number": "MN-416-30",
+      "url": "https://www.richelieu.com/us/en/product/decorative-hardware/cabinet-hardware/pulls-and-knobs/pulls/modern-aluminum-edge-pull-9898/1063166",
+      "style": "Minimalist",
+      "material": "Aluminum",
+      "finish": "White",
+      "mount_style": "edge",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 416,
+        "length_mm": 436,
+        "projection_mm": 42
+      },
+      "tags": [
+        "metal",
+        "white",
+        "minimalist"
+      ]
+    },
+    {
+      "id": "hafele-193.18.766",
+      "name": "Contact Handle - Walnut",
+      "brand": "Hafele",
+      "model_number": "193.18.766",
+      "url": "https://www.hafele.com",
+      "style": "Modern Wood",
+      "material": "Solid Walnut",
+      "finish": "Natural Walnut",
+      "mount_style": "surface",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 160,
+        "length_mm": 182,
+        "projection_mm": 35
+      },
+      "tags": [
+        "wood",
+        "walnut",
+        "premium"
+      ]
+    },
+    {
+      "id": "hafele-151.35.665",
+      "name": "Inset Flush Pull",
+      "brand": "Hafele",
+      "model_number": "151.35.665",
+      "url": "https://www.hafele.com",
+      "style": "Minimalist",
+      "material": "Zinc",
+      "finish": "Matt Nickel",
+      "mount_style": "flush",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 96,
+        "length_mm": 110,
+        "projection_mm": 1.5
+      },
+      "tags": [
+        "metal",
+        "recessed"
+      ]
+    },
+    {
+      "id": "rockler-42250",
+      "name": "White Oak Mission Pull",
+      "brand": "Rockler",
+      "model_number": "42250",
+      "url": "https://www.rockler.com/unfinished-white-oak-mission-pulls",
+      "style": "Mission",
+      "material": "White Oak",
+      "finish": "Unfinished",
+      "mount_style": "surface",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 96,
+        "length_mm": 128,
+        "projection_mm": 28
+      },
+      "tags": [
+        "wood",
+        "white-oak"
+      ]
+    },
+    {
+      "id": "ikea-bagganas-black-128",
+      "name": "BAGGAN\u00c4S Handle - Black",
+      "brand": "IKEA",
+      "model_number": "803.384.11",
+      "url": "https://www.ikea.com/us/en/p/bagganaes-handle-black-80338411/",
+      "style": "Modern",
+      "material": "Steel",
+      "finish": "Black",
+      "mount_style": "surface",
+      "pack_quantity": 2,
+      "dimensions": {
+        "cc_mm": 128,
+        "length_mm": 143,
+        "projection_mm": 35
+      },
+      "tags": [
+        "metal",
+        "black",
+        "modern"
+      ]
+    },
+    {
+      "id": "ikea-hackas-anthracite-128",
+      "name": "HACK\u00c5S Handle - Anthracite",
+      "brand": "IKEA",
+      "model_number": "303.424.77",
+      "url": "https://www.ikea.com/us/en/p/hackas-handle-anthracite-30342477/",
+      "style": "Modern",
+      "material": "Aluminum",
+      "finish": "Anthracite",
+      "mount_style": "surface",
+      "pack_quantity": 2,
+      "dimensions": {
+        "cc_mm": 128,
+        "length_mm": 150,
+        "projection_mm": 24
+      },
+      "tags": [
+        "metal",
+        "minimalist"
+      ]
+    },
+    {
+      "id": "ikea-borghamn-black-416",
+      "name": "BORGHAMN Handle - Black",
+      "brand": "IKEA",
+      "model_number": "203.160.49",
+      "url": "https://www.ikea.com/us/en/p/borghamn-handle-black-20316049/",
+      "style": "Industrial",
+      "material": "Steel",
+      "finish": "Black",
+      "mount_style": "surface",
+      "pack_quantity": 2,
+      "dimensions": {
+        "cc_mm": 416,
+        "length_mm": 426,
+        "projection_mm": 36
+      },
+      "tags": [
+        "metal",
+        "long-pull"
+      ]
+    },
+    {
+      "id": "ikea-billsbro-white-120",
+      "name": "BILLSBRO Handle - White",
+      "brand": "IKEA",
+      "model_number": "203.235.92",
+      "url": "https://www.ikea.com/us/en/p/billsbro-handle-white-20323592/",
+      "style": "Minimalist Edge",
+      "material": "Aluminum",
+      "finish": "White",
+      "mount_style": "edge",
+      "pack_quantity": 2,
+      "dimensions": {
+        "cc_mm": 96,
+        "length_mm": 120,
+        "projection_mm": 45
+      },
+      "tags": [
+        "metal",
+        "edge-mount"
+      ]
+    },
+    {
+      "id": "generic-knob-blk-32",
+      "name": "Round Cabinet Knob 32 mm - Matte Black",
+      "brand": "Generic",
+      "model_number": "",
+      "url": "",
+      "style": "Modern",
+      "material": "Steel",
+      "finish": "Matte Black",
+      "mount_style": "knob",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 0,
+        "length_mm": 32,
+        "projection_mm": 28
+      },
+      "tags": [
+        "modern",
+        "black",
+        "knob"
+      ]
+    },
+    {
+      "id": "generic-knob-bsn-32",
+      "name": "Round Cabinet Knob 32 mm - Satin Nickel",
+      "brand": "Generic",
+      "model_number": "",
+      "url": "",
+      "style": "Modern",
+      "material": "Steel",
+      "finish": "Satin Nickel",
+      "mount_style": "knob",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 0,
+        "length_mm": 32,
+        "projection_mm": 28
+      },
+      "tags": [
+        "modern",
+        "nickel",
+        "knob"
+      ]
+    },
+    {
+      "id": "generic-knob-brs-30",
+      "name": "Round Cabinet Knob 30 mm - Brushed Brass",
+      "brand": "Generic",
+      "model_number": "",
+      "url": "",
+      "style": "Modern",
+      "material": "Brass",
+      "finish": "Brushed Brass",
+      "mount_style": "knob",
+      "pack_quantity": 1,
+      "dimensions": {
+        "cc_mm": 0,
+        "length_mm": 30,
+        "projection_mm": 26
+      },
+      "tags": [
+        "modern",
+        "brass",
+        "knob"
+      ]
+    }
+  ]
 }

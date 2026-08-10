@@ -28,7 +28,7 @@ from cabineteer.pulls import (
 
 class TestCatalogLoad:
     def test_registry_populated(self):
-        assert len(PULLS) == 45
+        assert len(PULLS) == 48
 
     def test_all_ids_unique(self):
         ids = [p.id for p in PULLS.values()]
