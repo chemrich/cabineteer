@@ -168,6 +168,13 @@ def _ref_offset(t: float) -> float:
     return DF500_BASE_HEIGHT_MM if t >= BASE_REF_MIN_THICKNESS_MM else t / 2.0
 
 
+def _and_list(items: list[str]) -> str:
+    """Join part names for step prose: "a", "a and b", "a, b, and c"."""
+    if len(items) < 3:
+        return " and ".join(items)
+    return ", ".join(items[:-1]) + ", and " + items[-1]
+
+
 # ─── Plan construction ────────────────────────────────────────────────────────
 
 
@@ -514,15 +521,24 @@ def _build_steps(plan: AssemblyPlan, cab_cfg) -> list[AssemblyStep]:
     # Every carcass this doc covers is floating-tenon (butt), so the back is
     # never rabbeted in: the sides run full depth while the top, bottom,
     # dividers, and shelves stop at depth − back_thickness, and that setback
-    # IS the pocket the back seats in.
+    # IS the pocket the back seats in. Name only the parts this cabinet has —
+    # a plain box has no dividers or fixed shelves to glue the back to.
+    has_divider = any("divider" in pm.panel for pm in plan.panels)
+    has_shelf = any("shelf" in pm.panel for pm in plan.panels)
+    # "under_top" caps the back with the top panel, so the top is a landing
+    # face there, not a glue edge.
+    back_edges = _and_list(
+        (["top"] if not under_top else []) + ["bottom"]
+        + (["dividers"] if has_divider else [])
+        + (["fixed shelves"] if has_shelf else []))
     back_seat_txt = (
         "slide the back panel up into its pocket from the carcass's bottom "
-        "end (it runs behind the bottom, dividers, and shelves) until it "
-        "seats against the underside of the full-depth top"
+        f"end (it runs behind the {back_edges}) until it seats against the "
+        "underside of the full-depth top"
         if under_top else
         "test-fit the back panel in its rear pocket — it drops in from "
-        "behind against the rear edges of the top, bottom, dividers, and "
-        "shelves, flush with the back edges of the sides")
+        f"behind against the rear edges of the {back_edges}, flush with the "
+        "back edges of the sides")
     # Panels that actually carry face (red) rows — drives the face-mortise
     # step text so it never claims rows that don't exist (or vice versa).
     face_panels = [pm.panel for pm in plan.panels
@@ -679,7 +695,7 @@ def _build_steps(plan: AssemblyPlan, cab_cfg) -> list[AssemblyStep]:
             ("While the clamps are on, slide the back panel up into its "
              "pocket from the carcass's bottom end until it seats against "
              "the underside of the full-depth top, then glue/pin it into "
-             "the rear edges of the bottom, dividers, and fixed shelves — "
+             f"the rear edges of the {back_edges} — "
              "a square back holds the carcass square as it cures. Its top "
              "edge is capped by the top panel: nothing shows from above. "
              "Re-check diagonals, wipe squeeze-out, leave clamped for the "
@@ -687,7 +703,7 @@ def _build_steps(plan: AssemblyPlan, cab_cfg) -> list[AssemblyStep]:
              if under_top else
              "While the clamps are on, drop the back panel into the rear "
              "pocket from behind and glue/pin it to the rear edges of the "
-             "top, bottom, dividers, and fixed shelves, flush with the back "
+             f"{back_edges}, flush with the back "
              "edges of the sides — a square back holds the carcass square as "
              "it cures. Its top edge lands in the top plane, so it IS visible "
              "from above. Re-check diagonals, wipe squeeze-out, leave clamped "
