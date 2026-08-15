@@ -133,9 +133,13 @@ class TestAssemblyDoc:
         assert "underside of the full-depth top" in text
         assert "rabbet" not in text
 
-    def test_full_height_steps_unchanged(self):
+    def test_full_height_steps_describe_the_rear_pocket(self):
         plan = build_assembly_plan(_cfg())
         top_map = next(p for p in plan.panels if p.panel == "top")
         assert top_map.draw_height == pytest.approx(457 - 6)
         text = " ".join(s.body for s in plan.steps)
-        assert "test-fit the back panel in its rabbet" in text
+        assert "test-fit the back panel in its rear pocket" in text
+        assert "drop the back panel into the rear pocket" in text
+        # Assembly plans are floating-tenon (butt) only, so no carcass this
+        # doc covers has a back rabbet to seat the panel in.
+        assert "rabbet" not in text

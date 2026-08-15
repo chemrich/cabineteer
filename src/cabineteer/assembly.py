@@ -511,11 +511,18 @@ def _build_steps(plan: AssemblyPlan, cab_cfg) -> list[AssemblyStep]:
     n_butt = sum(1 for j in plan.joints if j.kind == "butt")
     under_top = (getattr(cab_cfg, "back_style", "full_height") == "under_top"
                  and not miter)
+    # Every carcass this doc covers is floating-tenon (butt), so the back is
+    # never rabbeted in: the sides run full depth while the top, bottom,
+    # dividers, and shelves stop at depth − back_thickness, and that setback
+    # IS the pocket the back seats in.
     back_seat_txt = (
         "slide the back panel up into its pocket from the carcass's bottom "
         "end (it runs behind the bottom, dividers, and shelves) until it "
         "seats against the underside of the full-depth top"
-        if under_top else "test-fit the back panel in its rabbet")
+        if under_top else
+        "test-fit the back panel in its rear pocket — it drops in from "
+        "behind against the rear edges of the top, bottom, dividers, and "
+        "shelves, flush with the back edges of the sides")
     # Panels that actually carry face (red) rows — drives the face-mortise
     # step text so it never claims rows that don't exist (or vice versa).
     face_panels = [pm.panel for pm in plan.panels
@@ -678,10 +685,14 @@ def _build_steps(plan: AssemblyPlan, cab_cfg) -> list[AssemblyStep]:
              "Re-check diagonals, wipe squeeze-out, leave clamped for the "
              "glue's clamp time (30–60 min PVA) and unstressed for 24 h."
              if under_top else
-             "While the clamps are on, glue/pin the back panel into its "
-             "rabbet — a square back holds the carcass square as it cures. "
-             "Re-check diagonals, wipe squeeze-out, leave clamped for the "
-             "glue's clamp time (30–60 min PVA) and unstressed for 24 h.")),
+             "While the clamps are on, drop the back panel into the rear "
+             "pocket from behind and glue/pin it to the rear edges of the "
+             "top, bottom, dividers, and fixed shelves, flush with the back "
+             "edges of the sides — a square back holds the carcass square as "
+             "it cures. Its top edge lands in the top plane, so it IS visible "
+             "from above. Re-check diagonals, wipe squeeze-out, leave clamped "
+             "for the glue's clamp time (30–60 min PVA) and unstressed for "
+             "24 h.")),
     ])
 
     if plan.edge_band_mode == "hot_melt":
