@@ -465,3 +465,24 @@ class TestSolidGeometry:
         assert bb.xmin == pytest.approx(top.xmin - 6)
         assert bb.xmax == pytest.approx(top.xmax + 6)
         assert bb.ymax == pytest.approx(D - 12)
+
+
+class TestLegacyChecksDoNotMisfire:
+    """back_rabbet_depth means the ENGAGEMENT under a machined capture, not
+    a pocket the back's thickness must fit inside. The legacy fit check
+    reads it the old way, so it must stand down for those captures."""
+
+    def test_thick_back_in_a_half_lap_is_not_a_protrusion(self):
+        from cabineteer.evaluation import check_back_panel_fit
+        cfg = _cfg(back_capture="half_lap", back_thickness=12.0)
+        assert check_back_panel_fit(cfg) == []
+        # …and the whole evaluator agrees: this is a legal design.
+        from cabineteer.evaluation import Severity, evaluate_cabinet
+        errors = [i for i in evaluate_cabinet(cfg)
+                  if i.severity == Severity.ERROR]
+        assert errors == []
+
+    def test_pocket_keeps_the_legacy_check(self):
+        from cabineteer.evaluation import check_back_panel_fit
+        issues = check_back_panel_fit(_cfg(back_thickness=12.0))
+        assert any("will protrude" in i.message for i in issues)
