@@ -133,9 +133,31 @@ class TestAssemblyDoc:
         assert "underside of the full-depth top" in text
         assert "rabbet" not in text
 
-    def test_full_height_steps_unchanged(self):
+    def test_full_height_steps_describe_the_rear_pocket(self):
         plan = build_assembly_plan(_cfg())
         top_map = next(p for p in plan.panels if p.panel == "top")
         assert top_map.draw_height == pytest.approx(457 - 6)
         text = " ".join(s.body for s in plan.steps)
-        assert "test-fit the back panel in its rabbet" in text
+        assert "test-fit the back panel in its rear pocket" in text
+        assert "drop the back panel into the rear pocket" in text
+        # Assembly plans are floating-tenon (butt) only, so no carcass this
+        # doc covers has a back rabbet to seat the panel in.
+        assert "rabbet" not in text
+
+    def test_back_glue_edges_name_only_the_parts_present(self):
+        """A plain box has no dividers or fixed shelves to glue the back to."""
+        plain = build_assembly_plan(_cfg())
+        plain_text = " ".join(s.body for s in plain.steps)
+        assert plain_text.count("rear edges of the top and bottom") == 2
+        assert "rear edges of the top, bottom, and dividers" not in plain_text
+
+        shelved = build_assembly_plan(_cfg(fixed_shelf_positions=(300.0,)))
+        shelved_text = " ".join(s.body for s in shelved.steps)
+        assert "rear edges of the top, bottom, and fixed shelves" in shelved_text
+
+    def test_under_top_back_glue_edges_exclude_the_capping_top(self):
+        """under_top: the top is the back's landing face, not a glue edge."""
+        plan = build_assembly_plan(_cfg(back_style="under_top",
+                                        fixed_shelf_positions=(300.0,)))
+        text = " ".join(s.body for s in plan.steps)
+        assert "rear edges of the bottom and fixed shelves" in text
