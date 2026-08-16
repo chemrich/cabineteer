@@ -509,6 +509,39 @@ def _fence_text(plan: AssemblyPlan) -> str:
             f"THIN stock exception: {per}")
 
 
+def _back_capture_step(geo) -> AssemblyStep:
+    """The router work a machined back capture adds, with real numbers.
+
+    Same profile in all three case members, so it is one setup: the fence
+    and cutter never move between the sides, the top and the bottom.
+    """
+    cut = (f"{geo.cut_run:g} mm wide × {geo.cut_depth:g} mm deep")
+    if geo.capture == "dado":
+        where = (f"a groove {cut}, held {geo.setback:g} mm in from the rear "
+                 "edge so there is meat behind it")
+        extra = ("The back is trapped once the case closes, so this groove "
+                 "is the one cut you cannot fix later — run a test groove "
+                 "in scrap and check the back slides without forcing.")
+    elif geo.capture == "half_lap":
+        where = (f"a rabbet {cut} at the rear edge — half the back's "
+                 "thickness, the back's own perimeter rabbet takes the "
+                 "other half")
+        extra = (f"Then rabbet the BACK panel itself: {geo.lap_run:g} mm in "
+                 f"from each of its four edges × {geo.lap_depth:g} mm deep, "
+                 "on its FRONT face. The two rabbets lap; test the fit on "
+                 "scrap before you cut the real panel.")
+    else:
+        where = f"a rabbet {cut} at the rear edge"
+        extra = ("Cut it a hair deep rather than shallow — the back sitting "
+                 "a few tenths proud reads as a bump against the wall.")
+    return AssemblyStep(
+        "Machine the back capture",
+        f"On the INNER face of both sides, the underside of the top and the "
+        f"top face of the bottom, cut {where}. Run it right through each "
+        "panel — the ends are covered by the panels they meet. One fence "
+        f"setting covers all four. {extra}")
+
+
 def _build_steps(plan: AssemblyPlan, cab_cfg) -> list[AssemblyStep]:
     s = plan.size
     t = plan.stock_thickness
@@ -531,14 +564,29 @@ def _build_steps(plan: AssemblyPlan, cab_cfg) -> list[AssemblyStep]:
         (["top"] if not under_top else []) + ["bottom"]
         + (["dividers"] if has_divider else [])
         + (["fixed shelves"] if has_shelf else []))
-    back_seat_txt = (
-        "slide the back panel up into its pocket from the carcass's bottom "
-        f"end (it runs behind the {back_edges}) until it seats against the "
-        "underside of the full-depth top"
-        if under_top else
-        "test-fit the back panel in its rear pocket — it drops in from "
-        f"behind against the rear edges of the {back_edges}, flush with the "
-        "back edges of the sides")
+    # back_capture: a machined capture seats the back INSIDE the case
+    # perimeter, in grooves or rabbets cut in the sides, top and bottom —
+    # so it is held by those four members, not glued onto the rear edges of
+    # the interior panels.
+    from .cabinet import back_capture_geometry
+    geo = back_capture_geometry(cab_cfg)
+    if geo.machined:
+        seat = "grooves" if geo.capture == "dado" else "rabbets"
+        back_seat_txt = (
+            f"test-fit the back panel in its {seat} — it seats "
+            f"{geo.engagement:g} mm into all four members"
+            + (", and it must go in NOW: once the case is closed it cannot "
+               "be fitted" if geo.captive else
+               ", dropping in from behind"))
+    else:
+        back_seat_txt = (
+            "slide the back panel up into its pocket from the carcass's "
+            f"bottom end (it runs behind the {back_edges}) until it seats "
+            "against the underside of the full-depth top"
+            if under_top else
+            "test-fit the back panel in its rear pocket — it drops in from "
+            f"behind against the rear edges of the {back_edges}, flush with "
+            "the back edges of the sides")
     # Panels that actually carry face (red) rows — drives the face-mortise
     # step text so it never claims rows that don't exist (or vice versa).
     face_panels = [pm.panel for pm in plan.panels
@@ -653,6 +701,8 @@ def _build_steps(plan: AssemblyPlan, cab_cfg) -> list[AssemblyStep]:
         "Vacuum every mortise. Sand interior faces now — flat panels "
         "sand and finish far easier than an assembled box. If the "
         "interiors get finish, mask the glue faces at each joint."))
+    if geo.machined:
+        steps.append(_back_capture_step(geo))
     steps.extend([
         AssemblyStep(
             "DRY FIT — full carcass, no glue",
@@ -692,7 +742,23 @@ def _build_steps(plan: AssemblyPlan, cab_cfg) -> list[AssemblyStep]:
              "in one stage.")),
         AssemblyStep(
             "Square with the back, then cure",
-            ("While the clamps are on, slide the back panel up into its "
+            (("Set the back into its grooves as the case goes together — it "
+              "cannot go in afterwards. Glue only the top and bottom edges "
+              "if the back is solid wood, so it can move in the grooves; "
+              "plywood can be glued all round. A square back holds the "
+              "carcass square as it cures, and its edges are buried in the "
+              "grooves, so nothing shows from any angle. Re-check "
+              "diagonals, wipe squeeze-out, leave clamped for the glue's "
+              "clamp time (30–60 min PVA) and unstressed for 24 h."
+              if geo.captive else
+              "While the clamps are on, drop the back panel into its "
+              "rabbets from behind and glue/pin it home — a square back "
+              "holds the carcass square as it cures. Its edges are buried "
+              "in the rabbets, so nothing shows from any angle. Re-check "
+              "diagonals, wipe squeeze-out, leave clamped for the glue's "
+              "clamp time (30–60 min PVA) and unstressed for 24 h.")
+             if geo.machined else
+             "While the clamps are on, slide the back panel up into its "
              "pocket from the carcass's bottom end until it seats against "
              "the underside of the full-depth top, then glue/pin it into "
              f"the rear edges of the {back_edges} — "

@@ -55,6 +55,8 @@ _SHARED_FIELDS = (
     "carcass_joinery",
     "carcass_corner_style",
     "back_style",
+    "back_capture",
+    "back_groove_setback",
     "drawer_joinery",
     "domino_spec",
     "pocket_screw_spec",
@@ -95,6 +97,10 @@ class SharedDesign:
     carcass_joinery:  Optional[CarcassJoinery]     = None
     carcass_corner_style: Optional[str] = None     # butt | miter
     back_style: Optional[str] = None               # full_height | under_top
+    # pocket | rabbet | half_lap | dado — how the back is HELD, independent
+    # of back_style (where its top edge lands) and carcass_joinery.
+    back_capture: Optional[str] = None
+    back_groove_setback: Optional[float] = None    # "dado" capture only
     drawer_joinery:   Optional[DrawerJoineryStyle] = None
     domino_spec:        Optional[DominoSpec]       = None
     pocket_screw_spec:  Optional[PocketScrewSpec]  = None
@@ -809,6 +815,13 @@ def _config_to_dict(cfg: CabinetConfig) -> dict:
         "leg_inset": cfg.leg_inset,
         "carcass_joinery": cfg.carcass_joinery.value,
         "carcass_corner_style": cfg.carcass_corner_style,
+        # Back treatment. back_style was missing here until back_capture
+        # landed, so a per-cabinet override of it was dropped on save —
+        # Charlie's projects only ever set it as a shared token, which is
+        # why nothing caught it.
+        "back_style": cfg.back_style,
+        "back_capture": cfg.back_capture,
+        "back_groove_setback": cfg.back_groove_setback,
         "drawer_joinery":  cfg.drawer_joinery.value,
         # Per-method joinery specs — serialized as field dicts;
         # build_cabinet_config reconstructs the spec objects on load.

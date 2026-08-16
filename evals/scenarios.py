@@ -9338,6 +9338,91 @@ SCENARIOS.append(Scenario(
 ))
 
 
+SCENARIOS.append(Scenario(
+    name="back_capture_joinery",
+    prompt=(
+        "back_capture holds the back in real joinery instead of the let-in "
+        "pocket: a rabbet the back drops into from behind, a half lap where "
+        "both halves are rabbeted, or a dado the back slides into and is "
+        "trapped by. All three seat the back inside the case perimeter, so "
+        "the top and bottom run full depth and the panel is cut oversize by "
+        "its engagement. A 6 mm back is too thin to half-lap."
+    ),
+    tags=["cutlist", "project", "evaluation", "joinery"],
+    difficulty="advanced",
+    tool_calls=[
+        ToolCall(
+            tool="design_cabinet",
+            args={"width": 600, "height": 720, "depth": 550,
+                  "back_capture": "dado",
+                  "drawer_config": [[340, "drawer"], [344, "drawer"]]},
+            label="grooved back: trapped on four edges, held forward",
+            assertions=[
+                Assertion("back_capture", Op.EQ, "dado"),
+                Assertion("back_seat.captive", Op.IS_TRUE),
+                # 6 mm into each member: 564 interior → 576.
+                Assertion("panels.back_panel.width_mm", Op.APPROX, 576),
+                Assertion("panels.back_panel.height_mm", Op.APPROX, 696),
+                # Top and bottom both carry the groove, so both run full depth.
+                Assertion("panels.top_panel.depth_mm", Op.APPROX, 550),
+                Assertion("panels.bottom_panel.depth_mm", Op.APPROX, 550),
+                # setback 12 + 6 thickness held off the rear, not 6.
+                Assertion("back_seat.clear_depth_mm", Op.APPROX, 18),
+            ],
+        ),
+        ToolCall(
+            tool="design_cabinet",
+            args={"width": 600, "height": 720, "depth": 550,
+                  "back_capture": "half_lap", "back_thickness": 12,
+                  "drawer_config": [[340, "drawer"], [344, "drawer"]]},
+            label="half lap: the case takes half the thickness, the back the rest",
+            assertions=[
+                Assertion("back_seat.case_cut.run_mm", Op.APPROX, 6),
+                Assertion("back_seat.case_cut.depth_mm", Op.APPROX, 6),
+                # Drops in from behind — nothing to sequence at glue-up.
+                Assertion("back_seat.captive", Op.IS_FALSE),
+                Assertion("back_seat.setback_mm", Op.APPROX, 0),
+            ],
+        ),
+        ToolCall(
+            tool="evaluate_cabinet",
+            args={"width": 600, "height": 720, "depth": 550,
+                  "back_capture": "half_lap", "back_thickness": 6,
+                  "drawer_config": [[340, "drawer"], [344, "drawer"]]},
+            label="a 6 mm back leaves a 3 mm lap — rejected",
+            assertions=[
+                Assertion("summary.errors", Op.GTE, 1),
+                Assertion("summary.pass", Op.IS_FALSE),
+            ],
+        ),
+        ToolCall(
+            tool="design_project",
+            args={"name": "eval_backcapture", "overwrite": True,
+                  "shared": {"back_capture": "rabbet"},
+                  "cabinets": [
+                      {"name": "a", "config": {
+                          "width": 600, "height": 720, "depth": 550,
+                          "drawer_config": [[340, "drawer"],
+                                            [344, "drawer"]]}},
+                  ]},
+            label="save a project with the shared back_capture token",
+            assertions=[Assertion("cabinet_count", Op.EQ, 1)],
+        ),
+        ToolCall(
+            tool="generate_project_cutlist",
+            args={"project_name": "eval_backcapture"},
+            label="cutlist: full-depth top and bottom, oversize back",
+            assertions=[
+                Assertion("panels_summary.1.name", Op.EQ, "bottom"),
+                Assertion("panels_summary.1.width_mm", Op.APPROX, 550),
+                Assertion("panels_summary.2.name", Op.EQ, "top"),
+                Assertion("panels_summary.2.width_mm", Op.APPROX, 550),
+            ],
+        ),
+    ],
+))
+
+
 def scenarios_by_difficulty(difficulty: str) -> list[Scenario]:
     return [s for s in SCENARIOS if s.difficulty == difficulty]
 

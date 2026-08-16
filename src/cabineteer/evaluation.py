@@ -878,6 +878,91 @@ def check_back_style(cab_cfg: CabinetConfig) -> list[Issue]:
     return issues
 
 
+def check_back_capture(cab_cfg: CabinetConfig) -> list[Issue]:
+    """Validate ``back_capture`` — how the back is held in the carcass.
+
+    "pocket" is the legacy let-in back and machines nothing, so it always
+    passes. The three machined captures cut into the case members, which
+    puts real limits on the stock: the cut must leave a wall standing, a
+    half lap needs enough thickness to split in two, and a dado needs meat
+    behind the groove.
+    """
+    from .cabinet import (BACK_CAPTURES, HALF_LAP_MIN_BACK_MM,
+                          MIN_CAPTURE_WALL_MM, back_capture_geometry)
+    from .joinery import CarcassJoinery as _CJ
+
+    issues: list[Issue] = []
+    capture = getattr(cab_cfg, "back_capture", "pocket")
+    if capture == "pocket":
+        return issues
+    if capture not in BACK_CAPTURES:
+        issues.append(Issue(
+            check="back_capture",
+            severity=Severity.ERROR,
+            message=(f"Unknown back_capture {capture!r} — use one of "
+                     f"{', '.join(repr(c) for c in BACK_CAPTURES)}."),
+            value=capture,
+        ))
+        return issues
+
+    if cab_cfg.carcass_joinery == _CJ.DADO_RABBET:
+        issues.append(Issue(
+            check="back_capture",
+            severity=Severity.ERROR,
+            message=(f"back_capture {capture!r} conflicts with dado/rabbet "
+                     "carcass joinery, which already houses the back in its "
+                     "own side rabbets. Use a butt-joint carcass (floating "
+                     "tenon / pocket screw / biscuit / dowel)."),
+        ))
+    if getattr(cab_cfg, "carcass_corner_style", "butt") == "miter":
+        issues.append(Issue(
+            check="back_capture",
+            severity=Severity.ERROR,
+            message=(f"back_capture {capture!r} requires butt corners — a "
+                     "groove or rabbet run across a mitered panel exits "
+                     "through the 45° end and shows in the corner seam."),
+        ))
+
+    geo = back_capture_geometry(cab_cfg)
+    wall = cab_cfg.side_thickness - geo.cut_depth
+    if wall < MIN_CAPTURE_WALL_MM:
+        issues.append(Issue(
+            check="back_capture",
+            severity=Severity.ERROR,
+            message=(f"back_rabbet_depth {geo.cut_depth:g} mm leaves only "
+                     f"{wall:g} mm of the {cab_cfg.side_thickness:g} mm side "
+                     f"standing (min {MIN_CAPTURE_WALL_MM:g} mm) — the wall "
+                     "will blow out. Cut the engagement or use thicker "
+                     "stock."),
+            value=wall,
+            limit=MIN_CAPTURE_WALL_MM,
+        ))
+    if capture == "half_lap" and cab_cfg.back_thickness < HALF_LAP_MIN_BACK_MM:
+        issues.append(Issue(
+            check="back_capture",
+            severity=Severity.ERROR,
+            message=(f"A half lap splits the back's thickness in two: a "
+                     f"{cab_cfg.back_thickness:g} mm back leaves a "
+                     f"{cab_cfg.back_thickness / 2:g} mm lap. Use a back at "
+                     f"least {HALF_LAP_MIN_BACK_MM:g} mm thick, or capture "
+                     "'rabbet' instead."),
+            value=cab_cfg.back_thickness,
+            limit=HALF_LAP_MIN_BACK_MM,
+        ))
+    if capture == "dado" and geo.setback < MIN_CAPTURE_WALL_MM:
+        issues.append(Issue(
+            check="back_capture",
+            severity=Severity.ERROR,
+            message=(f"back_groove_setback {geo.setback:g} mm leaves too "
+                     f"little behind the groove (min "
+                     f"{MIN_CAPTURE_WALL_MM:g} mm) — the back wall of the "
+                     "groove will break out."),
+            value=geo.setback,
+            limit=MIN_CAPTURE_WALL_MM,
+        ))
+    return issues
+
+
 def check_miter_corners(cab_cfg: CabinetConfig) -> list[Issue]:
     """Validate mitered exterior corners.
 
@@ -2190,6 +2275,7 @@ def evaluate_cabinet(
     all_issues.extend(check_edge_band_face_gap(cab_cfg))
     all_issues.extend(check_miter_corners(cab_cfg))
     all_issues.extend(check_back_style(cab_cfg))
+    all_issues.extend(check_back_capture(cab_cfg))
     all_issues.extend(check_carcass_joinery(cab_cfg))
     if cab_cfg.columns:
         # Run carcass clearance checks per-column using correct per-column width.
