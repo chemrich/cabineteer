@@ -450,7 +450,14 @@ def back_capture_geometry(cfg: CabinetConfig) -> BackCapture:
     bottom as well as the sides — so the top and bottom both run full depth
     and no back edge is visible from any angle.
     """
-    capture = getattr(cfg, "back_capture", "pocket")
+    capture = getattr(cfg, "back_capture", "pocket") or "pocket"
+    # An unknown value must not resolve as "some machined capture" — the
+    # cutlist and visualize tools don't run the evaluator, so a typo would
+    # otherwise ship full-depth tops and an oversize back with no warning.
+    # Fall back to the capture that machines nothing; check_back_capture
+    # reports the typo itself.
+    if capture not in BACK_CAPTURES:
+        capture = "pocket"
     t = float(cfg.back_thickness)
     depth = float(cfg.depth)
 
@@ -687,6 +694,13 @@ def _cut_back_capture(
     for a bottom panel, "under_z" for a top panel. ``length`` is the panel's
     extent along the axis the cut runs. No-op for the "pocket" capture,
     which machines nothing.
+
+    The SIDE cut is STOPPED at both ends. Butt corners seat the top and
+    bottom BETWEEN the sides, so a side's end grain is part of the finished
+    top and bottom surfaces — run the groove through and it exits there as
+    an open notch at the back corner, in plain view from above. The top and
+    bottom panels' cuts do run through: their ends butt against the sides'
+    inner faces, which cover them.
     """
     geo = back_capture_geometry(cfg)
     if not geo.machined:
@@ -696,9 +710,13 @@ def _cut_back_capture(
     y0 = cfg.depth - geo.cut_offset - geo.cut_run
     if face == "inner_x":
         x0 = 0.0 if mirror else cfg.side_thickness - geo.cut_depth
+        # Span exactly what the back occupies: it runs into the bottom and
+        # the top by the engagement, and no further.
+        z0 = cfg.bottom_thickness - geo.engagement
+        z1 = cfg.height - cfg.top_thickness + geo.engagement
         cutter = (cq.Workplane("XY")
-                  .transformed(offset=(x0, y0, 0))
-                  .box(geo.cut_depth, geo.cut_run, length, centered=False))
+                  .transformed(offset=(x0, y0, z0))
+                  .box(geo.cut_depth, geo.cut_run, z1 - z0, centered=False))
     else:
         z0 = 0.0 if face == "under_z" else length - geo.cut_depth
         cutter = (cq.Workplane("XY")
@@ -750,7 +768,11 @@ def make_side_panel(cfg: CabinetConfig, mirror: bool = False) -> "cq.Workplane":
         if cfg.adj_shelf_holes:
             x_start = (cfg.side_thickness - cfg.shelf_pin_depth) if not mirror else 0
             z = cfg.shelf_pin_start_z
-            rear_ref = cfg.depth - cfg.back_thickness
+            # The rear pin row references the shelf's rear edge, which sits
+            # at the back's front face — a deep groove setback moves it
+            # forward, and a row measured off back_thickness alone would
+            # land behind the shelf (or bore into the groove).
+            rear_ref = cfg.depth - back_capture_geometry(cfg).clear_depth
             while z <= cfg.shelf_pin_end_z:
                 for y_inset in [cfg.shelf_pin_row_inset,
                                 rear_ref - cfg.shelf_pin_row_inset]:
@@ -971,7 +993,9 @@ def make_interior_divider(
         # bottom panel (caller places it at z = bottom_thickness) — interior
         # height up to the top, or up to height_override for clipped
         # armoire dividers. Matches the cutlist's column_divider row.
-        panel_depth = cfg.depth - cfg.back_thickness
+        # Depth stops at the back's FRONT face, which the capture sets — a
+        # groove holds the back further forward than its thickness alone.
+        panel_depth = cfg.depth - back_capture_geometry(cfg).clear_depth
         top_z = cfg.height - cfg.top_thickness if height_override is None \
             else height_override
         height = top_z - cfg.bottom_thickness
@@ -1498,7 +1522,10 @@ def build_multi_bay_cabinet(
         shelf_colour_ts = cq.Color(0.87, 0.72, 0.53, 1.0)
         ts_cfg  = bay_configs[0]
         ts_w    = total_width - 2 * ts_cfg.side_thickness
-        ts_dep  = ts_cfg.depth - (ts_cfg.back_thickness if _is_butt(ts_cfg)
+        # Like every other interior panel, a transition shelf stops at the
+        # back's front face — which back_capture sets, not back_thickness.
+        ts_dep  = ts_cfg.depth - (back_capture_geometry(ts_cfg).clear_depth
+                                  if _is_butt(ts_cfg)
                                   else ts_cfg.back_rabbet_width)
         ts_thk  = ts_cfg.shelf_thickness
         for ts_idx, ts_z in enumerate(transition_shelf_zs):

@@ -60,6 +60,16 @@ def _fmt_dim(mm: float) -> str:
     return f"{mm:.0f} mm ({_mm_to_ft_in(mm)})"
 
 
+def _capture_name(cfg) -> str:
+    """Plain-English adjective for how the back is held, or "" for the
+    let-in pocket (the default, which needs no explaining)."""
+    return {
+        "rabbet":   "rabbeted-in ",
+        "half_lap": "half-lapped ",
+        "dado":     "grooved-in ",
+    }.get(getattr(cfg, "back_capture", "pocket"), "")
+
+
 def _joinery_name(j: CarcassJoinery) -> str:
     return {
         CarcassJoinery.DADO_RABBET:    "dado-and-rabbet",
@@ -263,6 +273,7 @@ def describe_design(cfg: CabinetConfig) -> dict:
     materials = {
         "carcass_joinery":        cfg.carcass_joinery.value,
         "drawer_box_joinery":     drawer_joinery.value,
+        "back_capture":           getattr(cfg, "back_capture", "pocket"),
         "side_thickness_mm":      cfg.side_thickness,
         "back_thickness_mm":      cfg.back_thickness,
         "shelf_thickness_mm":     cfg.shelf_thickness,
@@ -272,7 +283,7 @@ def describe_design(cfg: CabinetConfig) -> dict:
     }
     material_phrase = (
         f"{_mm_to_ft_in(cfg.side_thickness)} carcass panels with a "
-        f"{_mm_to_ft_in(cfg.back_thickness)} back, "
+        f"{_mm_to_ft_in(cfg.back_thickness)} {_capture_name(cfg)}back, "
         f"{_joinery_name(cfg.carcass_joinery)} carcass joinery"
     )
     if has_drawers:

@@ -534,12 +534,20 @@ def _back_capture_step(geo) -> AssemblyStep:
         where = f"a rabbet {cut} at the rear edge"
         extra = ("Cut it a hair deep rather than shallow — the back sitting "
                  "a few tenths proud reads as a bump against the wall.")
+    stop = ("STOP the two side cuts: start them level with the top face of "
+            "the bottom panel and end them level with the underside of the "
+            "top, running "
+            f"{geo.engagement:g} mm past each so the back's corners seat. "
+            "Run them through and they exit through the side's end grain "
+            "as an open notch at the back corner — which is in plain sight "
+            "on the finished top and bottom surfaces, since the top and "
+            "bottom sit BETWEEN the sides. The top and bottom cuts DO run "
+            "right through; their ends butt into the sides and are covered.")
     return AssemblyStep(
         "Machine the back capture",
         f"On the INNER face of both sides, the underside of the top and the "
-        f"top face of the bottom, cut {where}. Run it right through each "
-        "panel — the ends are covered by the panels they meet. One fence "
-        f"setting covers all four. {extra}")
+        f"top face of the bottom, cut {where}. {stop} One fence setting "
+        f"covers all four. {extra}")
 
 
 def _build_steps(plan: AssemblyPlan, cab_cfg) -> list[AssemblyStep]:

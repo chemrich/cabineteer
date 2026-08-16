@@ -125,6 +125,15 @@ class TestGeometry:
         assert _cfg().interior_depth == pytest.approx(D - 9)
         assert _cfg(back_capture="dado").interior_depth == pytest.approx(D - 18)
 
+    @pytest.mark.parametrize("bad", ["rebate", "", None])
+    def test_unknown_capture_resolves_as_pocket_not_as_machined(self, bad):
+        """The cutlist and visualize tools don't run the evaluator, so a
+        typo must not silently ship full-depth tops and an oversize back."""
+        geo = back_capture_geometry(_cfg(back_capture=bad))
+        assert not geo.machined
+        assert geo.width == pytest.approx(INTERIOR_W)
+        assert geo.top_depth == pytest.approx(D - 6)
+
     def test_interior_depth_never_grows(self):
         """A shallower capture must not silently deepen boxes already cut."""
         for capture in BACK_CAPTURES:
@@ -176,6 +185,38 @@ class TestCutlistPanels:
         assert "from behind" in _panel(six_mm, "back").notes
 
 
+class TestToolsAgree:
+    """design_multi_column_cabinet and generate_cutlist must never report
+    different cut sizes for one design."""
+
+    @staticmethod
+    def _multi_column(**kw):
+        import asyncio
+        import json
+
+        from cabineteer.server import _tool_design_multi_column_cabinet
+        args = {"width": 900, "height": 760, "depth": 560,
+                "columns": [{"width_mm": 432, "openings": [[724, "drawer"]]},
+                            {"width_mm": 432, "openings": [[724, "drawer"]]}]}
+        args.update(kw)
+        out = asyncio.get_event_loop().run_until_complete(
+            _tool_design_multi_column_cabinet(args))
+        return json.loads(out[0].text)
+
+    @pytest.mark.parametrize("capture", ["pocket", "rabbet", "dado"])
+    def test_panel_depths_match_the_cutlist(self, capture):
+        described = self._multi_column(back_capture=capture)["panels"]
+        cfg = CabinetConfig(
+            width=900, height=760, depth=560, back_capture=capture,
+            carcass_joinery=CarcassJoinery.FLOATING_TENON)
+        geo = back_capture_geometry(cfg)
+        assert described["top_panel"]["depth_mm"] == pytest.approx(geo.top_depth)
+        assert described["bottom_panel"]["depth_mm"] == pytest.approx(
+            geo.bottom_depth)
+        assert described["back_panel"]["width_mm"] == pytest.approx(geo.width)
+        assert described["back_panel"]["height_mm"] == pytest.approx(geo.height)
+
+
 class TestEvaluator:
     def test_pocket_silent(self):
         assert check_back_capture(_cfg()) == []
@@ -205,6 +246,15 @@ class TestEvaluator:
         issues = check_back_capture(_cfg(back_capture="dado",
                                          back_rabbet_depth=14.0))
         assert any("blow out" in i.message for i in issues)
+
+    def test_wall_check_uses_the_thinnest_member_not_just_the_side(self):
+        """The same cut goes into the top and bottom, so a thin top fails
+        even when the sides are fine."""
+        issues = check_back_capture(_cfg(back_capture="dado",
+                                         back_rabbet_depth=9.0,
+                                         top_thickness=12.0))
+        assert [i.severity for i in issues] == [Severity.ERROR]
+        assert "12 mm top" in issues[0].message
 
     def test_dado_needs_meat_behind_the_groove(self):
         issues = check_back_capture(_cfg(back_capture="dado",
@@ -354,11 +404,50 @@ class TestSolidGeometry:
         assert s["back"].BoundingBox().ymax == pytest.approx(D - 12)
 
     def test_side_cut_matches_the_declared_profile(self):
+        """Stopped at both ends, so it spans exactly the back's height."""
         for capture, run in (("rabbet", 12.0), ("half_lap", 6.0),
                              ("dado", 12.0)):
             s = self._build(back_capture=capture, back_thickness=12.0)
             removed = 18 * D * H - s["left_side"].Volume()
-            assert removed == pytest.approx(6.0 * run * H), capture
+            assert removed == pytest.approx(6.0 * run * ENGAGED_H), capture
+
+    @pytest.mark.parametrize("capture", ["rabbet", "half_lap", "dado"])
+    def test_side_cut_does_not_exit_through_the_end_grain(self, capture):
+        """Butt corners put the sides' ends in the finished top and bottom
+        surfaces, so a through cut would show as an open notch there."""
+        s = self._build(back_capture=capture, back_thickness=12.0)
+        geo = back_capture_geometry(_cfg(back_capture=capture,
+                                         back_thickness=12.0))
+        y0 = D - geo.cut_offset - geo.cut_run
+        for z0, dz in ((H - 1.0, 1.0), (0.0, 1.0)):     # top and bottom ends
+            probe = (cq.Workplane("XY")
+                     .transformed(offset=(18 - geo.cut_depth, y0, z0))
+                     .box(geo.cut_depth, geo.cut_run, dz, centered=False)
+                     .val())
+            common = s["left_side"].intersect(probe)
+            solid = common.Volume() if common.Solids() else 0.0
+            assert solid == pytest.approx(geo.cut_depth * geo.cut_run * dz), (
+                f"{capture}: cut exits through the side's end grain")
+
+    @pytest.mark.parametrize("capture", ["rabbet", "half_lap", "dado"])
+    def test_dividers_and_shelves_clear_the_back(self, capture):
+        """Every interior panel stops at the back's front face — a groove
+        holds the back further forward than its thickness alone."""
+        from cabineteer.cabinet import OpeningConfig, build_multi_bay_cabinet
+        bays = [_cfg(back_capture=capture, back_thickness=12.0,
+                     openings=[OpeningConfig(height_mm=680.0,
+                                             opening_type="drawer")])
+                for _ in range(2)]
+        assy, _ = build_multi_bay_cabinet(bays)
+        solids = self._solids(assy)
+        for name, solid in solids.items():
+            if not (name.startswith("divider") or name.startswith("shelf")
+                    or name.startswith("transition")):
+                continue
+            common = solids["back"].intersect(solid)
+            volume = common.Volume() if common.Solids() else 0.0
+            assert volume == pytest.approx(0.0, abs=1e-6), (
+                f"{capture}: {name} runs into the back by {volume:g} mm³")
 
     def test_multi_bay_back_engages_the_outer_sides(self):
         from cabineteer.cabinet import OpeningConfig, build_multi_bay_cabinet

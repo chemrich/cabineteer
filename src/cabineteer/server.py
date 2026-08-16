@@ -3526,7 +3526,11 @@ async def _tool_design_multi_column_cabinet(args: dict) -> list[types.TextConten
 
     interior_width  = cfg.interior_width
     interior_height = cfg.interior_height
-    interior_depth  = cfg.depth - cfg.back_thickness
+    # Panel depths follow back_capture, the same source generate_cutlist
+    # reads — the two tools must never report different cut sizes for one
+    # design.
+    _geo = back_capture_geometry(cfg)
+    interior_depth  = cfg.depth - _geo.clear_depth
 
     # Build per-column breakdown
     col_x = 0.0  # running interior x from left column
@@ -3549,10 +3553,10 @@ async def _tool_design_multi_column_cabinet(args: dict) -> list[types.TextConten
 
     panels = {
         "side_panel":    {"qty": 2, "height_mm": cfg.height, "depth_mm": cfg.depth, "thickness_mm": cfg.side_thickness},
-        "bottom_panel":  {"qty": 1, "width_mm": interior_width, "depth_mm": interior_depth, "thickness_mm": cfg.bottom_thickness},
-        "top_panel":     {"qty": 1, "width_mm": interior_width, "depth_mm": interior_depth, "thickness_mm": cfg.top_thickness},
-        "back_panel":    {"qty": 1, "width_mm": interior_width, "height_mm": cfg.height,    "thickness_mm": cfg.back_thickness},
-        "column_divider": {"qty": n_dividers, "height_mm": cfg.height, "depth_mm": cfg.depth - cfg.back_rabbet_width, "thickness_mm": cfg.side_thickness},
+        "bottom_panel":  {"qty": 1, "width_mm": interior_width, "depth_mm": _geo.bottom_depth, "thickness_mm": cfg.bottom_thickness},
+        "top_panel":     {"qty": 1, "width_mm": interior_width, "depth_mm": _geo.top_depth, "thickness_mm": cfg.top_thickness},
+        "back_panel":    {"qty": 1, "width_mm": _geo.width, "height_mm": _geo.height,    "thickness_mm": cfg.back_thickness},
+        "column_divider": {"qty": n_dividers, "height_mm": cfg.height, "depth_mm": interior_depth, "thickness_mm": cfg.side_thickness},
     }
 
     result = {
@@ -3826,13 +3830,19 @@ def _raw_panels_for_cabinet(
         where = {"side": "inner face", "top": "underside",
                  "bottom": "top face"}[panel]
         run = f"{geo.cut_run:g} mm wide × {geo.cut_depth:g} mm deep"
+        # A side's ends show on the finished top and bottom surfaces (butt
+        # corners seat the top and bottom between the sides), so its cut is
+        # STOPPED; the top and bottom cuts run through into the sides.
+        stop = ("; STOPPED — from the bottom panel's top face to the top "
+                f"panel's underside, {geo.engagement:g} mm past each"
+                if panel == "side" else "; runs through")
         if geo.capture == "dado":
             return (f"back groove: {run} in the {where}, "
-                    f"{geo.setback:g} mm in from the rear edge")
+                    f"{geo.setback:g} mm in from the rear edge{stop}")
         if geo.capture == "half_lap":
             return (f"back lap: {run} rabbet at the rear edge of the "
-                    f"{where} (back is rabbeted to match)")
-        return f"back rabbet: {run} at the rear edge of the {where}"
+                    f"{where} (back is rabbeted to match){stop}")
+        return f"back rabbet: {run} at the rear edge of the {where}{stop}"
 
     side_bevel = "45° bevels top+bottom ends (long-point dims)" if miter else ""
     tb_bevel = "45° bevels both ends (long-point dims)" if miter else ""

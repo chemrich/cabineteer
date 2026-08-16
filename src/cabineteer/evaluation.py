@@ -924,16 +924,23 @@ def check_back_capture(cab_cfg: CabinetConfig) -> list[Issue]:
         ))
 
     geo = back_capture_geometry(cab_cfg)
-    wall = cab_cfg.side_thickness - geo.cut_depth
+    # The same cut goes into all three perimeter members, so the thinnest
+    # of them is what decides whether a wall is left standing — a 12 mm top
+    # over 18 mm sides fails on the top, not the sides.
+    thinnest, member = min(
+        ((cab_cfg.side_thickness, "side"),
+         (cab_cfg.top_thickness, "top"),
+         (cab_cfg.bottom_thickness, "bottom")),
+        key=lambda pair: pair[0])
+    wall = thinnest - geo.cut_depth
     if wall < MIN_CAPTURE_WALL_MM:
         issues.append(Issue(
             check="back_capture",
             severity=Severity.ERROR,
             message=(f"back_rabbet_depth {geo.cut_depth:g} mm leaves only "
-                     f"{wall:g} mm of the {cab_cfg.side_thickness:g} mm side "
-                     f"standing (min {MIN_CAPTURE_WALL_MM:g} mm) — the wall "
-                     "will blow out. Cut the engagement or use thicker "
-                     "stock."),
+                     f"{wall:g} mm of the {thinnest:g} mm {member} standing "
+                     f"(min {MIN_CAPTURE_WALL_MM:g} mm) — the wall will blow "
+                     "out. Cut the engagement or use thicker stock."),
             value=wall,
             limit=MIN_CAPTURE_WALL_MM,
         ))
