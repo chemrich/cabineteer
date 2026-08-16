@@ -52,6 +52,40 @@ INNER_FACE_OVERLAY_MM: float = 8.0
 #: between adjacent faces that hot-melt banding growth eats into.
 DEFAULT_FACE_GAP_MM: float = 4.0
 
+#: How the back panel is held in the carcass — an axis independent of both
+#: ``carcass_joinery`` (how the corners go together) and ``back_style``
+#: (where the back's top edge lands).
+#:
+#:   "pocket"   — the legacy let-in back. Sides run full depth, everything
+#:                else stops short, and the back is glued onto the rear edges
+#:                it finds there. Nothing is machined. The only capture whose
+#:                back sits OUTSIDE the top/bottom panels, so the only one
+#:                where ``back_style`` changes what you see.
+#:   "rabbet"   — a rabbet in the rear inner edge of the sides, top and
+#:                bottom. The back drops in from BEHIND after glue-up and
+#:                finishes flush with the case rear. Screw it instead of
+#:                gluing it and the back comes out again.
+#:   "half_lap" — both halves rabbeted to half the back's thickness so they
+#:                lap. Twice the glue area of a plain rabbet, the panel is
+#:                trapped fore-and-aft by the step rather than by glue alone,
+#:                and the lap self-registers the panel square during glue-up.
+#:                Still drops in from behind.
+#:   "dado"     — a groove plowed in the inner faces of all four members,
+#:                set in from the rear edge. The back SLIDES IN during
+#:                glue-up and is trapped on four edges: nothing shows from
+#:                any angle, no fasteners, and an unglued solid-wood back can
+#:                float in the groove and move seasonally.
+BACK_CAPTURES: tuple[str, ...] = ("pocket", "rabbet", "half_lap", "dado")
+
+#: A half lap splits the back's thickness in two, so a thin back leaves
+#: nothing to lap. Below this the evaluator rejects "half_lap".
+HALF_LAP_MIN_BACK_MM: float = 9.0
+
+#: Material a machined capture must leave standing: ``side_thickness −
+#: back_rabbet_depth`` for the case member's wall, and the wall behind a
+#: dado groove (``back_groove_setback``).
+MIN_CAPTURE_WALL_MM: float = 6.0
+
 
 @dataclass(frozen=True)
 class OpeningConfig:
@@ -281,6 +315,20 @@ class CabinetConfig:
     # bottom end during glue-up. Cutlist/assembly-doc effect; the 3D
     # viewer has always drawn under_top geometry. Also a SharedDesign token.
     back_style: str = "full_height"       # full_height | under_top
+    # How the back is HELD — see BACK_CAPTURES. Independent of both
+    # carcass_joinery and back_style; any combination is legal except the
+    # ones check_back_capture rejects. Also a SharedDesign token.
+    #
+    # NOTE the three machined captures seat the back INSIDE the case
+    # perimeter (rabbeted or grooved into the top and bottom as well as the
+    # sides), so its top edge is covered whatever ``back_style`` says, and
+    # the top and bottom both run full depth. back_style only changes what
+    # you see under "pocket".
+    back_capture: str = "pocket"          # pocket | rabbet | half_lap | dado
+    # "dado" only: material left standing BEHIND the groove, i.e. how far
+    # the back's rear face sits forward of the case's rear edge. Wants
+    # enough meat that the wall doesn't blow out when the groove is plowed.
+    back_groove_setback: float = 12.0
 
     # Drawer box corner joinery
     drawer_joinery: DrawerJoineryStyle = DrawerJoineryStyle.HALF_LAP
@@ -314,8 +362,18 @@ class CabinetConfig:
 
     @property
     def interior_depth(self) -> float:
-        """Depth from front edge to back panel face."""
-        return self.depth - self.back_rabbet_width
+        """Depth from front edge to back panel face.
+
+        A machined capture can sit the back further forward than the legacy
+        allowance does — a dado holds it ``back_groove_setback`` in from the
+        rear — so the usable depth follows the capture. Never returns MORE
+        than the legacy allowance: drawer boxes and slides size off this,
+        and a capture must not silently deepen boxes already in the shop.
+        """
+        legacy = self.depth - self.back_rabbet_width
+        if getattr(self, "back_capture", "pocket") == "pocket":
+            return legacy
+        return min(legacy, self.depth - back_capture_geometry(self).clear_depth)
 
     @property
     def interior_height(self) -> float:
@@ -331,6 +389,115 @@ class CabinetConfig:
     def back_panel_height(self) -> float:
         """Back panel height — spans from carcass floor to underside of top panel."""
         return self.height - self.top_thickness
+
+
+# ─── Back capture geometry ────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class BackCapture:
+    """Every dimension that follows from ``cfg.back_capture``.
+
+    Single source of truth: the cutlist, the 3D panel makers, the evaluator
+    and the assembly doc all read this rather than each re-deriving the
+    back's geometry from the config. Distances are mm, measured from the
+    carcass's REAR face unless stated.
+    """
+    capture: str
+    thickness: float
+    #: Cut size of the back panel itself.
+    width: float
+    height: float
+    #: How far the back's edge runs into each case member (0 for "pocket",
+    #: which laps onto their rear edges instead of into them).
+    engagement: float
+    #: What to machine in the sides / top / bottom: ``cut_depth`` into the
+    #: inner FACE, ``cut_run`` along the depth, starting ``cut_offset`` in
+    #: from the rear edge. All zero for "pocket".
+    cut_depth: float
+    cut_run: float
+    cut_offset: float
+    #: The back's OWN perimeter rabbet ("half_lap" only) — ``lap_depth``
+    #: off its front face, ``lap_run`` in from each edge.
+    lap_depth: float
+    lap_run: float
+    #: Where the back's rear face sits, forward of the carcass rear edge.
+    setback: float
+    #: Total depth consumed: carcass rear edge → the back's front face.
+    #: Bottom, shelves and dividers stop at ``depth − clear_depth``.
+    clear_depth: float
+    #: Cut depth of the top and bottom panels.
+    top_depth: float
+    bottom_depth: float
+    #: True when the back cannot be fitted after glue-up and must go in
+    #: with the case — a grooved back slides in, and a capped pocket back
+    #: comes up from the carcass's bottom end.
+    captive: bool
+
+    @property
+    def machined(self) -> bool:
+        """True when the capture cuts into the case members."""
+        return self.capture != "pocket"
+
+
+def back_capture_geometry(cfg: CabinetConfig) -> BackCapture:
+    """Resolve ``cfg.back_capture`` into concrete dimensions.
+
+    "pocket" keeps the legacy let-in geometry exactly: the back laps over
+    the rear edges of the top and bottom, so it is the only capture where
+    ``back_style`` changes anything. The three machined captures seat the
+    back INSIDE the case perimeter — rabbeted or grooved into the top and
+    bottom as well as the sides — so the top and bottom both run full depth
+    and no back edge is visible from any angle.
+    """
+    capture = getattr(cfg, "back_capture", "pocket") or "pocket"
+    # An unknown value must not resolve as "some machined capture" — the
+    # cutlist and visualize tools don't run the evaluator, so a typo would
+    # otherwise ship full-depth tops and an oversize back with no warning.
+    # Fall back to the capture that machines nothing; check_back_capture
+    # reports the typo itself.
+    if capture not in BACK_CAPTURES:
+        capture = "pocket"
+    t = float(cfg.back_thickness)
+    depth = float(cfg.depth)
+
+    if capture == "pocket":
+        # Mitered tops are cut long-point on their own convention, so the
+        # full-depth cap never applies to them — the evaluator errors on the
+        # combination and the geometry must not half-apply it meanwhile.
+        under_top = (cfg.back_style == "under_top"
+                     and getattr(cfg, "carcass_corner_style", "butt") != "miter")
+        return BackCapture(
+            capture="pocket", thickness=t,
+            width=cfg.interior_width,
+            height=cfg.height - (cfg.top_thickness if under_top else 0.0),
+            engagement=0.0,
+            cut_depth=0.0, cut_run=0.0, cut_offset=0.0,
+            lap_depth=0.0, lap_run=0.0,
+            setback=0.0, clear_depth=t,
+            top_depth=depth if under_top else depth - t,
+            bottom_depth=depth - t,
+            captive=under_top,
+        )
+
+    eng = float(cfg.back_rabbet_depth)
+    setback = float(cfg.back_groove_setback) if capture == "dado" else 0.0
+    # A half lap splits the back's thickness: the case member is only cut
+    # halfway through it, and the back's own perimeter rabbet takes the
+    # other half. A plain rabbet takes the back's full thickness.
+    cut_run = t / 2.0 if capture == "half_lap" else t
+    return BackCapture(
+        capture=capture, thickness=t,
+        width=cfg.interior_width + 2 * eng,
+        height=cfg.interior_height + 2 * eng,
+        engagement=eng,
+        cut_depth=eng, cut_run=cut_run, cut_offset=setback,
+        lap_depth=t / 2.0 if capture == "half_lap" else 0.0,
+        lap_run=eng if capture == "half_lap" else 0.0,
+        setback=setback, clear_depth=setback + t,
+        top_depth=depth, bottom_depth=depth,
+        captive=capture == "dado",
+    )
 
 
 # ─── Dict → config builders ───────────────────────────────────────────────────
@@ -513,6 +680,59 @@ def _require_cq():
         )
 
 
+def _cut_back_capture(
+    panel: "cq.Workplane",
+    cfg: CabinetConfig,
+    face: str,
+    length: float,
+    mirror: bool = False,
+) -> "cq.Workplane":
+    """Machine the back's groove or rabbet into one case panel.
+
+    ``face`` names which face of the panel the back seats against, in that
+    panel's own coordinates: "inner_x" for a side (thickness on X), "top_z"
+    for a bottom panel, "under_z" for a top panel. ``length`` is the panel's
+    extent along the axis the cut runs. No-op for the "pocket" capture,
+    which machines nothing.
+
+    The SIDE cut is STOPPED at both ends. Butt corners seat the top and
+    bottom BETWEEN the sides, so a side's end grain is part of the finished
+    top and bottom surfaces — run the groove through and it exits there as
+    an open notch at the back corner, in plain view from above. The top and
+    bottom panels' cuts do run through: their ends butt against the sides'
+    inner faces, which cover them.
+    """
+    geo = back_capture_geometry(cfg)
+    if not geo.machined:
+        return panel
+    # Measured from the panel's REAR edge forward: a rabbet opens at the
+    # rear (offset 0), a dado groove is held back by its setback.
+    y0 = cfg.depth - geo.cut_offset - geo.cut_run
+    if face == "inner_x":
+        x0 = 0.0 if mirror else cfg.side_thickness - geo.cut_depth
+        # Span exactly what the back occupies: it runs into the bottom and
+        # the top by the engagement, and no further.
+        z0 = cfg.bottom_thickness - geo.engagement
+        z1 = cfg.height - cfg.top_thickness + geo.engagement
+        cutter = (cq.Workplane("XY")
+                  .transformed(offset=(x0, y0, z0))
+                  .box(geo.cut_depth, geo.cut_run, z1 - z0, centered=False))
+    else:
+        z0 = 0.0 if face == "under_z" else length - geo.cut_depth
+        cutter = (cq.Workplane("XY")
+                  .transformed(offset=(0, y0, z0))
+                  .box(_CAPTURE_CUT_SPAN, geo.cut_run, geo.cut_depth,
+                       centered=False))
+    return panel.cut(cutter)
+
+
+#: Width of the cutter used for top/bottom back grooves. The groove runs
+#: right through the panel's length (its ends are covered by the sides), so
+#: the cutter only has to be at least as long as any panel — it is trimmed
+#: by the boolean.
+_CAPTURE_CUT_SPAN: float = 10_000.0
+
+
 def _is_butt(cfg: CabinetConfig) -> bool:
     """Butt-joint construction (floating tenon / pocket screw / biscuit /
     dowel): interior panels seat BETWEEN plain-slab sides at their cutlist
@@ -548,7 +768,11 @@ def make_side_panel(cfg: CabinetConfig, mirror: bool = False) -> "cq.Workplane":
         if cfg.adj_shelf_holes:
             x_start = (cfg.side_thickness - cfg.shelf_pin_depth) if not mirror else 0
             z = cfg.shelf_pin_start_z
-            rear_ref = cfg.depth - cfg.back_thickness
+            # The rear pin row references the shelf's rear edge, which sits
+            # at the back's front face — a deep groove setback moves it
+            # forward, and a row measured off back_thickness alone would
+            # land behind the shelf (or bore into the groove).
+            rear_ref = cfg.depth - back_capture_geometry(cfg).clear_depth
             while z <= cfg.shelf_pin_end_z:
                 for y_inset in [cfg.shelf_pin_row_inset,
                                 rear_ref - cfg.shelf_pin_row_inset]:
@@ -563,7 +787,7 @@ def make_side_panel(cfg: CabinetConfig, mirror: bool = False) -> "cq.Workplane":
                     )
                     panel = panel.cut(pin_hole)
                 z += cfg.shelf_pin_spacing
-        return panel
+        return _cut_back_capture(panel, cfg, "inner_x", cfg.height, mirror)
 
     # Cut rabbet for back panel along the back edge.
     # The rabbet runs the full height on the inside-back edge.
@@ -639,22 +863,27 @@ def make_bottom_panel(cfg: CabinetConfig) -> "cq.Workplane":
     """Create the bottom panel.
 
     Dado/rabbet: extends into the side dados, stops at the back rabbet.
-    Butt: cut to interior width × (depth − back_thickness) — the cutlist
-    dims; the 6 mm rear setback is the back panel's seat.
+    Butt: cut to interior width × the depth ``back_capture`` calls for —
+    the cutlist dims. Under "pocket" the panel stops short and its rear
+    setback is the back's seat; the machined captures run it full depth and
+    take the back in a groove or rabbet in its top face.
     """
     _require_cq()
     if _is_butt(cfg):
         panel_width = cfg.interior_width
-        panel_depth = cfg.depth - cfg.back_thickness
+        panel_depth = back_capture_geometry(cfg).bottom_depth
     else:
         # Width: interior width + dado depth on each side (extends into dados)
         panel_width = cfg.interior_width + (cfg.dado_depth * 2)
         panel_depth = cfg.depth - cfg.back_rabbet_width
 
-    return (
+    panel = (
         cq.Workplane("XY")
         .box(panel_width, panel_depth, cfg.bottom_thickness, centered=False)
     )
+    if _is_butt(cfg):
+        panel = _cut_back_capture(panel, cfg, "top_z", cfg.bottom_thickness)
+    return panel
 
 
 def make_top_panel(cfg: CabinetConfig) -> "cq.Workplane":
@@ -669,16 +898,18 @@ def make_top_panel(cfg: CabinetConfig) -> "cq.Workplane":
     _require_cq()
     if _is_butt(cfg):
         panel_width = cfg.interior_width
-        panel_depth = (cfg.depth if cfg.back_style == "under_top"
-                       else cfg.depth - cfg.back_thickness)
+        panel_depth = back_capture_geometry(cfg).top_depth
     else:
         panel_width = cfg.interior_width + (cfg.dado_depth * 2)
         panel_depth = cfg.depth
 
-    return (
+    panel = (
         cq.Workplane("XY")
         .box(panel_width, panel_depth, cfg.top_thickness, centered=False)
     )
+    if _is_butt(cfg):
+        panel = _cut_back_capture(panel, cfg, "under_z", cfg.top_thickness)
+    return panel
 
 
 def make_shelf(cfg: CabinetConfig) -> "cq.Workplane":
@@ -686,7 +917,9 @@ def make_shelf(cfg: CabinetConfig) -> "cq.Workplane":
     _require_cq()
     if _is_butt(cfg):
         panel_width = cfg.interior_width
-        panel_depth = cfg.depth - cfg.back_thickness
+        # Shelves stop at the back's FRONT face whatever the capture — only
+        # the perimeter members (sides, top, bottom) hold the back.
+        panel_depth = cfg.depth - back_capture_geometry(cfg).clear_depth
     else:
         panel_width = cfg.interior_width + (cfg.dado_depth * 2)
         panel_depth = cfg.depth - cfg.back_rabbet_width
@@ -701,21 +934,40 @@ def make_back_panel(cfg: CabinetConfig) -> "cq.Workplane":
     """Create the back panel.
 
     Dado/rabbet: rabbet-width panel stopping under the full-depth top.
-    Butt: interior width; height follows ``back_style`` — "full_height"
-    runs the full carcass height (its top edge reaches the top plane),
-    "under_top" stops at the underside of the full-depth top.
+    Butt: sized by ``back_capture``. "pocket" laps onto the rear edges it
+    finds, at interior width and a height following ``back_style``; the
+    machined captures seat INSIDE the case perimeter, so the panel is cut
+    oversize by the engagement on all four edges. "half_lap" additionally
+    carries its own perimeter rabbet on the FRONT face, which is what laps
+    into the matching rabbets in the case.
     """
     _require_cq()
     if _is_butt(cfg):
-        width = cfg.interior_width
-        height = (cfg.height - cfg.top_thickness
-                  if cfg.back_style == "under_top" else cfg.height)
+        geo = back_capture_geometry(cfg)
+        width, height = geo.width, geo.height
     else:
+        geo = None
         width, height = cfg.back_panel_width, cfg.back_panel_height
-    return (
+    panel = (
         cq.Workplane("XY")
         .box(width, cfg.back_thickness, height, centered=False)
     )
+    if geo is not None and geo.lap_depth:
+        # Panel-local axes: X across the back, Y its thickness (0 = front
+        # face, since the back faces forward into the case), Z its height.
+        # The lap comes off the FRONT face around all four edges.
+        for x0, z0, dx, dz in (
+            (0.0, 0.0, geo.lap_run, height),                    # left edge
+            (width - geo.lap_run, 0.0, geo.lap_run, height),    # right edge
+            (0.0, 0.0, width, geo.lap_run),                     # bottom edge
+            (0.0, height - geo.lap_run, width, geo.lap_run),    # top edge
+        ):
+            panel = panel.cut(
+                cq.Workplane("XY")
+                .transformed(offset=(x0, 0.0, z0))
+                .box(dx, geo.lap_depth, dz, centered=False)
+            )
+    return panel
 
 
 def make_interior_divider(
@@ -741,7 +993,9 @@ def make_interior_divider(
         # bottom panel (caller places it at z = bottom_thickness) — interior
         # height up to the top, or up to height_override for clipped
         # armoire dividers. Matches the cutlist's column_divider row.
-        panel_depth = cfg.depth - cfg.back_thickness
+        # Depth stops at the back's FRONT face, which the capture sets — a
+        # groove holds the back further forward than its thickness alone.
+        panel_depth = cfg.depth - back_capture_geometry(cfg).clear_depth
         top_z = cfg.height - cfg.top_thickness if height_override is None \
             else height_override
         height = top_z - cfg.bottom_thickness
@@ -934,12 +1188,19 @@ def build_cabinet(
     # side rabbets.
     if back is not None:
         if _is_butt(cfg):
-            back_x = cfg.side_thickness
-            back_y = cfg.depth - cfg.back_thickness
+            geo = back_capture_geometry(cfg)
+            # A machined capture holds the back INSIDE the case: it runs
+            # into each member by the engagement, and a groove holds its
+            # rear face forward of the carcass rear by the setback.
+            back_x = cfg.side_thickness - geo.engagement
+            back_y = cfg.depth - geo.setback - cfg.back_thickness
+            back_z = (0.0 if not geo.machined
+                      else cfg.bottom_thickness - geo.engagement)
         else:
             back_x = cfg.side_thickness - cfg.back_rabbet_depth
             back_y = cfg.depth - cfg.back_rabbet_width
-        assy.add(back, name="back", loc=cq.Location((back_x, back_y, 0)),
+            back_z = 0.0
+        assy.add(back, name="back", loc=cq.Location((back_x, back_y, back_z)),
                  color=cq.Color(0.75, 0.60, 0.40, 0.8))
 
     return assy, parts
@@ -1123,7 +1384,7 @@ def build_multi_bay_cabinet(
             # seat).
             cont_panel_width = total_width - 2 * cfg0.side_thickness
             cont_panel_x = cfg0.side_thickness
-            cont_bottom_depth = cfg0.depth - cfg0.back_thickness
+            cont_bottom_depth = back_capture_geometry(cfg0).bottom_depth
         else:
             # Dado/rabbet: spans from the inside-back of the left side
             # panel's bottom dado to the matching point on the right side —
@@ -1140,6 +1401,9 @@ def build_multi_bay_cabinet(
             cq.Workplane("XY")
             .box(cont_panel_width, cont_bottom_depth, cfg0.bottom_thickness, centered=False)
         )
+        if butt:
+            cont_bottom = _cut_back_capture(cont_bottom, cfg0, "top_z",
+                                            cfg0.bottom_thickness)
         assy.add(cont_bottom, name="bottom",
                  loc=cq.Location((cont_panel_x, 0, 0)),
                  color=cq.Color(0.87, 0.72, 0.53, 1.0))
@@ -1153,16 +1417,17 @@ def build_multi_bay_cabinet(
         ))
 
         # Continuous top — depth follows the construction (matches
-        # make_top_panel): dado/rabbet always full depth; butt "under_top"
-        # full depth (caps the back); butt "full_height" stops at the back's
-        # seat and the back runs past it to the top plane.
-        cont_top_depth = (cfg0.depth if (not butt or
-                                         cfg0.back_style == "under_top")
-                          else cfg0.depth - cfg0.back_thickness)
+        # make_top_panel): dado/rabbet always full depth; butt follows
+        # back_capture, which folds in back_style's full-depth cap.
+        cont_top_depth = (back_capture_geometry(cfg0).top_depth if butt
+                          else cfg0.depth)
         cont_top = (
             cq.Workplane("XY")
             .box(cont_panel_width, cont_top_depth, cfg0.top_thickness, centered=False)
         )
+        if butt:
+            cont_top = _cut_back_capture(cont_top, cfg0, "under_z",
+                                         cfg0.top_thickness)
         cont_top_z = cfg0.height - cfg0.top_thickness
         assy.add(cont_top, name="top",
                  loc=cq.Location((cont_panel_x, 0, cont_top_z)),
@@ -1203,15 +1468,18 @@ def build_multi_bay_cabinet(
     cfg0 = bay_configs[0]
     cfg_last = bay_configs[-1]
     if _is_butt(cfg0):
-        # Butt: the back seats BETWEEN the outer sides against the interior
-        # panels' rear setback. Height follows back_style: "full_height"
-        # runs to the top plane (its edge shows from above — matching the
-        # cutlist), "under_top" stops at the underside of the full-depth top.
-        cont_back_width = total_width - cfg0.side_thickness - cfg_last.side_thickness
-        cont_back_height = (cfg0.height - cfg0.top_thickness
-                            if cfg0.back_style == "under_top" else cfg0.height)
-        back_x = cfg0.side_thickness
-        back_y = cfg0.depth - cfg0.back_thickness
+        # Butt: sized and placed by back_capture. "pocket" seats the back
+        # BETWEEN the outer sides against the interior panels' rear setback,
+        # at a height following back_style; a machined capture runs it into
+        # each member by the engagement and holds it forward by the setback.
+        geo0 = back_capture_geometry(cfg0)
+        cont_back_width = (total_width - cfg0.side_thickness
+                           - cfg_last.side_thickness + 2 * geo0.engagement)
+        cont_back_height = geo0.height
+        back_x = cfg0.side_thickness - geo0.engagement
+        back_y = cfg0.depth - geo0.setback - cfg0.back_thickness
+        back_z = (0.0 if not geo0.machined
+                  else cfg0.bottom_thickness - geo0.engagement)
     else:
         cont_back_width = (
             total_width
@@ -1221,12 +1489,24 @@ def build_multi_bay_cabinet(
         cont_back_height = cfg0.back_panel_height
         back_x = cfg0.side_thickness - cfg0.back_rabbet_depth
         back_y = cfg0.depth - cfg0.back_rabbet_width
+        back_z = 0.0
     cont_back = (
         cq.Workplane("XY")
         .box(cont_back_width, cfg0.back_thickness, cont_back_height, centered=False)
     )
+    if _is_butt(cfg0) and geo0.lap_depth:
+        for x0, z0, dx, dz in (
+            (0.0, 0.0, geo0.lap_run, cont_back_height),
+            (cont_back_width - geo0.lap_run, 0.0, geo0.lap_run, cont_back_height),
+            (0.0, 0.0, cont_back_width, geo0.lap_run),
+            (0.0, cont_back_height - geo0.lap_run, cont_back_width, geo0.lap_run),
+        ):
+            cont_back = cont_back.cut(
+                cq.Workplane("XY")
+                .transformed(offset=(x0, 0.0, z0))
+                .box(dx, geo0.lap_depth, dz, centered=False))
     assy.add(cont_back, name="back",
-             loc=cq.Location((back_x, back_y, 0)),
+             loc=cq.Location((back_x, back_y, back_z)),
              color=cq.Color(0.75, 0.60, 0.40, 0.8))
     all_parts.append(PartInfo(
         name="back",
@@ -1242,7 +1522,10 @@ def build_multi_bay_cabinet(
         shelf_colour_ts = cq.Color(0.87, 0.72, 0.53, 1.0)
         ts_cfg  = bay_configs[0]
         ts_w    = total_width - 2 * ts_cfg.side_thickness
-        ts_dep  = ts_cfg.depth - (ts_cfg.back_thickness if _is_butt(ts_cfg)
+        # Like every other interior panel, a transition shelf stops at the
+        # back's front face — which back_capture sets, not back_thickness.
+        ts_dep  = ts_cfg.depth - (back_capture_geometry(ts_cfg).clear_depth
+                                  if _is_butt(ts_cfg)
                                   else ts_cfg.back_rabbet_width)
         ts_thk  = ts_cfg.shelf_thickness
         for ts_idx, ts_z in enumerate(transition_shelf_zs):

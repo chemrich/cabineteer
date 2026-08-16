@@ -100,6 +100,7 @@ from .cutlist import (
 from .cabinet import (
     OpeningConfig,
     PartInfo,
+    back_capture_geometry,
     build_cabinet_config as _build_cabinet_config,
     stack_from_column as _stack_from_column,
     to_opening as _to_opening,
@@ -500,6 +501,39 @@ async def list_tools() -> list[types.Tool]:
                             "only. Also a SharedDesign token."
                         ),
                     },
+                    "back_capture": {
+                        "type": "string",
+                        "enum": ["pocket", "rabbet", "half_lap", "dado"],
+                        "default": "pocket",
+                        "description": (
+                            "How the back is HELD — independent of "
+                            "back_style and carcass_joinery. 'pocket': the "
+                            "legacy let-in back, glued onto the rear edges "
+                            "of the interior panels, nothing machined. "
+                            "'rabbet': a rabbet in the rear inner edge of "
+                            "the sides, top and bottom; the back drops in "
+                            "from behind after glue-up and finishes flush. "
+                            "'half_lap': both halves rabbeted so they lap — "
+                            "twice the glue area and the panel is trapped "
+                            "fore-and-aft by the step (needs a back at least "
+                            "9 mm thick). 'dado': a groove in all four "
+                            "members; the back SLIDES IN during glue-up and "
+                            "is trapped on four edges, so nothing shows from "
+                            "any angle and a solid-wood back can float and "
+                            "move. The three machined captures seat the back "
+                            "inside the case perimeter, so back_style only "
+                            "changes what you see under 'pocket'."
+                        ),
+                    },
+                    "back_groove_setback": {
+                        "type": "number",
+                        "default": 12.0,
+                        "description": (
+                            "back_capture 'dado' only: material left "
+                            "standing behind the groove, i.e. how far the "
+                            "back sits forward of the case rear (mm)."
+                        ),
+                    },
                     "drawer_config": {
                         "type": "array",
                         "items": {
@@ -760,6 +794,39 @@ async def list_tools() -> list[types.Tool]:
                             "only. Also a SharedDesign token."
                         ),
                     },
+                    "back_capture": {
+                        "type": "string",
+                        "enum": ["pocket", "rabbet", "half_lap", "dado"],
+                        "default": "pocket",
+                        "description": (
+                            "How the back is HELD — independent of "
+                            "back_style and carcass_joinery. 'pocket': the "
+                            "legacy let-in back, glued onto the rear edges "
+                            "of the interior panels, nothing machined. "
+                            "'rabbet': a rabbet in the rear inner edge of "
+                            "the sides, top and bottom; the back drops in "
+                            "from behind after glue-up and finishes flush. "
+                            "'half_lap': both halves rabbeted so they lap — "
+                            "twice the glue area and the panel is trapped "
+                            "fore-and-aft by the step (needs a back at least "
+                            "9 mm thick). 'dado': a groove in all four "
+                            "members; the back SLIDES IN during glue-up and "
+                            "is trapped on four edges, so nothing shows from "
+                            "any angle and a solid-wood back can float and "
+                            "move. The three machined captures seat the back "
+                            "inside the case perimeter, so back_style only "
+                            "changes what you see under 'pocket'."
+                        ),
+                    },
+                    "back_groove_setback": {
+                        "type": "number",
+                        "default": 12.0,
+                        "description": (
+                            "back_capture 'dado' only: material left "
+                            "standing behind the groove, i.e. how far the "
+                            "back sits forward of the case rear (mm)."
+                        ),
+                    },
                     "carcass_joinery": {
                         "type": "string",
                         "enum": ["dado_rabbet", "floating_tenon", "pocket_screw", "biscuit", "dowel"],
@@ -949,6 +1016,39 @@ async def list_tools() -> list[types.Tool]:
                             "edge visible from above or the sides. Butt "
                             "corners + tenon/screw/biscuit/dowel joinery "
                             "only. Also a SharedDesign token."
+                        ),
+                    },
+                    "back_capture": {
+                        "type": "string",
+                        "enum": ["pocket", "rabbet", "half_lap", "dado"],
+                        "default": "pocket",
+                        "description": (
+                            "How the back is HELD — independent of "
+                            "back_style and carcass_joinery. 'pocket': the "
+                            "legacy let-in back, glued onto the rear edges "
+                            "of the interior panels, nothing machined. "
+                            "'rabbet': a rabbet in the rear inner edge of "
+                            "the sides, top and bottom; the back drops in "
+                            "from behind after glue-up and finishes flush. "
+                            "'half_lap': both halves rabbeted so they lap — "
+                            "twice the glue area and the panel is trapped "
+                            "fore-and-aft by the step (needs a back at least "
+                            "9 mm thick). 'dado': a groove in all four "
+                            "members; the back SLIDES IN during glue-up and "
+                            "is trapped on four edges, so nothing shows from "
+                            "any angle and a solid-wood back can float and "
+                            "move. The three machined captures seat the back "
+                            "inside the case perimeter, so back_style only "
+                            "changes what you see under 'pocket'."
+                        ),
+                    },
+                    "back_groove_setback": {
+                        "type": "number",
+                        "default": 12.0,
+                        "description": (
+                            "back_capture 'dado' only: material left "
+                            "standing behind the groove, i.e. how far the "
+                            "back sits forward of the case rear (mm)."
                         ),
                     },
                     "drawer_config": {
@@ -1259,6 +1359,39 @@ async def list_tools() -> list[types.Tool]:
                             "only. Also a SharedDesign token."
                         ),
                     },
+                    "back_capture": {
+                        "type": "string",
+                        "enum": ["pocket", "rabbet", "half_lap", "dado"],
+                        "default": "pocket",
+                        "description": (
+                            "How the back is HELD — independent of "
+                            "back_style and carcass_joinery. 'pocket': the "
+                            "legacy let-in back, glued onto the rear edges "
+                            "of the interior panels, nothing machined. "
+                            "'rabbet': a rabbet in the rear inner edge of "
+                            "the sides, top and bottom; the back drops in "
+                            "from behind after glue-up and finishes flush. "
+                            "'half_lap': both halves rabbeted so they lap — "
+                            "twice the glue area and the panel is trapped "
+                            "fore-and-aft by the step (needs a back at least "
+                            "9 mm thick). 'dado': a groove in all four "
+                            "members; the back SLIDES IN during glue-up and "
+                            "is trapped on four edges, so nothing shows from "
+                            "any angle and a solid-wood back can float and "
+                            "move. The three machined captures seat the back "
+                            "inside the case perimeter, so back_style only "
+                            "changes what you see under 'pocket'."
+                        ),
+                    },
+                    "back_groove_setback": {
+                        "type": "number",
+                        "default": 12.0,
+                        "description": (
+                            "back_capture 'dado' only: material left "
+                            "standing behind the groove, i.e. how far the "
+                            "back sits forward of the case rear (mm)."
+                        ),
+                    },
                     "drawer_config": {
                         "type": "array",
                         "items": {"type": "array", "minItems": 2, "maxItems": 3},
@@ -1510,6 +1643,39 @@ async def list_tools() -> list[types.Tool]:
                             "edge visible from above or the sides. Butt "
                             "corners + tenon/screw/biscuit/dowel joinery "
                             "only. Also a SharedDesign token."
+                        ),
+                    },
+                    "back_capture": {
+                        "type": "string",
+                        "enum": ["pocket", "rabbet", "half_lap", "dado"],
+                        "default": "pocket",
+                        "description": (
+                            "How the back is HELD — independent of "
+                            "back_style and carcass_joinery. 'pocket': the "
+                            "legacy let-in back, glued onto the rear edges "
+                            "of the interior panels, nothing machined. "
+                            "'rabbet': a rabbet in the rear inner edge of "
+                            "the sides, top and bottom; the back drops in "
+                            "from behind after glue-up and finishes flush. "
+                            "'half_lap': both halves rabbeted so they lap — "
+                            "twice the glue area and the panel is trapped "
+                            "fore-and-aft by the step (needs a back at least "
+                            "9 mm thick). 'dado': a groove in all four "
+                            "members; the back SLIDES IN during glue-up and "
+                            "is trapped on four edges, so nothing shows from "
+                            "any angle and a solid-wood back can float and "
+                            "move. The three machined captures seat the back "
+                            "inside the case perimeter, so back_style only "
+                            "changes what you see under 'pocket'."
+                        ),
+                    },
+                    "back_groove_setback": {
+                        "type": "number",
+                        "default": 12.0,
+                        "description": (
+                            "back_capture 'dado' only: material left "
+                            "standing behind the groove, i.e. how far the "
+                            "back sits forward of the case rear (mm)."
                         ),
                     },
                     "drawer_config": {
@@ -1876,6 +2042,39 @@ async def list_tools() -> list[types.Tool]:
                             "only. Also a SharedDesign token."
                         ),
                     },
+                    "back_capture": {
+                        "type": "string",
+                        "enum": ["pocket", "rabbet", "half_lap", "dado"],
+                        "default": "pocket",
+                        "description": (
+                            "How the back is HELD — independent of "
+                            "back_style and carcass_joinery. 'pocket': the "
+                            "legacy let-in back, glued onto the rear edges "
+                            "of the interior panels, nothing machined. "
+                            "'rabbet': a rabbet in the rear inner edge of "
+                            "the sides, top and bottom; the back drops in "
+                            "from behind after glue-up and finishes flush. "
+                            "'half_lap': both halves rabbeted so they lap — "
+                            "twice the glue area and the panel is trapped "
+                            "fore-and-aft by the step (needs a back at least "
+                            "9 mm thick). 'dado': a groove in all four "
+                            "members; the back SLIDES IN during glue-up and "
+                            "is trapped on four edges, so nothing shows from "
+                            "any angle and a solid-wood back can float and "
+                            "move. The three machined captures seat the back "
+                            "inside the case perimeter, so back_style only "
+                            "changes what you see under 'pocket'."
+                        ),
+                    },
+                    "back_groove_setback": {
+                        "type": "number",
+                        "default": 12.0,
+                        "description": (
+                            "back_capture 'dado' only: material left "
+                            "standing behind the groove, i.e. how far the "
+                            "back sits forward of the case rear (mm)."
+                        ),
+                    },
                     "drawer_config": {
                         "type": "array",
                         "items": {"type": "array", "minItems": 2, "maxItems": 3},
@@ -2037,6 +2236,39 @@ async def list_tools() -> list[types.Tool]:
                             "edge visible from above or the sides. Butt "
                             "corners + tenon/screw/biscuit/dowel joinery "
                             "only. Also a SharedDesign token."
+                        ),
+                    },
+                    "back_capture": {
+                        "type": "string",
+                        "enum": ["pocket", "rabbet", "half_lap", "dado"],
+                        "default": "pocket",
+                        "description": (
+                            "How the back is HELD — independent of "
+                            "back_style and carcass_joinery. 'pocket': the "
+                            "legacy let-in back, glued onto the rear edges "
+                            "of the interior panels, nothing machined. "
+                            "'rabbet': a rabbet in the rear inner edge of "
+                            "the sides, top and bottom; the back drops in "
+                            "from behind after glue-up and finishes flush. "
+                            "'half_lap': both halves rabbeted so they lap — "
+                            "twice the glue area and the panel is trapped "
+                            "fore-and-aft by the step (needs a back at least "
+                            "9 mm thick). 'dado': a groove in all four "
+                            "members; the back SLIDES IN during glue-up and "
+                            "is trapped on four edges, so nothing shows from "
+                            "any angle and a solid-wood back can float and "
+                            "move. The three machined captures seat the back "
+                            "inside the case perimeter, so back_style only "
+                            "changes what you see under 'pocket'."
+                        ),
+                    },
+                    "back_groove_setback": {
+                        "type": "number",
+                        "default": 12.0,
+                        "description": (
+                            "back_capture 'dado' only: material left "
+                            "standing behind the groove, i.e. how far the "
+                            "back sits forward of the case rear (mm)."
                         ),
                     },
                     "drawer_config": {
@@ -2274,6 +2506,39 @@ async def list_tools() -> list[types.Tool]:
                             "edge visible from above or the sides. Butt "
                             "corners + tenon/screw/biscuit/dowel joinery "
                             "only. Also a SharedDesign token."
+                        ),
+                    },
+                    "back_capture": {
+                        "type": "string",
+                        "enum": ["pocket", "rabbet", "half_lap", "dado"],
+                        "default": "pocket",
+                        "description": (
+                            "How the back is HELD — independent of "
+                            "back_style and carcass_joinery. 'pocket': the "
+                            "legacy let-in back, glued onto the rear edges "
+                            "of the interior panels, nothing machined. "
+                            "'rabbet': a rabbet in the rear inner edge of "
+                            "the sides, top and bottom; the back drops in "
+                            "from behind after glue-up and finishes flush. "
+                            "'half_lap': both halves rabbeted so they lap — "
+                            "twice the glue area and the panel is trapped "
+                            "fore-and-aft by the step (needs a back at least "
+                            "9 mm thick). 'dado': a groove in all four "
+                            "members; the back SLIDES IN during glue-up and "
+                            "is trapped on four edges, so nothing shows from "
+                            "any angle and a solid-wood back can float and "
+                            "move. The three machined captures seat the back "
+                            "inside the case perimeter, so back_style only "
+                            "changes what you see under 'pocket'."
+                        ),
+                    },
+                    "back_groove_setback": {
+                        "type": "number",
+                        "default": 12.0,
+                        "description": (
+                            "back_capture 'dado' only: material left "
+                            "standing behind the groove, i.e. how far the "
+                            "back sits forward of the case rear (mm)."
                         ),
                     },
                     "drawer_config": {
@@ -3127,13 +3392,14 @@ async def _tool_design_cabinet(args: dict) -> list[types.TextContent]:
 
     cfg = _build_cabinet_config(args)
 
-    # Interior dimensions.  Use the canonical ``interior_depth`` property
-    # (depth − back_rabbet_width) so the reported interior matches
-    # describe_design and the evaluator; panel cut depths below use
-    # ``depth − back_thickness`` deliberately (panel sits in front of the back).
+    # Interior dimensions.  Use the canonical ``interior_depth`` property so
+    # the reported interior matches describe_design and the evaluator; panel
+    # cut depths below come from back_capture_geometry, which is the same
+    # source the cutlist and the 3D model read.
     interior_width  = cfg.width  - 2 * cfg.side_thickness
     interior_height = cfg.interior_height
     interior_depth  = cfg.interior_depth
+    _geo = back_capture_geometry(cfg)
 
     # Panel sizes (parametric only, no CQ needed)
     panels = {
@@ -3146,21 +3412,19 @@ async def _tool_design_cabinet(args: dict) -> list[types.TextContent]:
         "bottom_panel": {
             "qty": 1,
             "width_mm":  interior_width,
-            "depth_mm":  cfg.depth - cfg.back_thickness,
+            "depth_mm":  _geo.bottom_depth,
             "thickness_mm": cfg.bottom_thickness,
         },
         "top_panel": {
             "qty": 1,
             "width_mm":  interior_width,
-            "depth_mm":  (cfg.depth if cfg.back_style == "under_top"
-                          else cfg.depth - cfg.back_thickness),
+            "depth_mm":  _geo.top_depth,
             "thickness_mm": cfg.top_thickness,
         },
         "back_panel": {
             "qty": 1,
-            "width_mm":  interior_width,
-            "height_mm": (cfg.height - cfg.top_thickness
-                          if cfg.back_style == "under_top" else cfg.height),
+            "width_mm":  _geo.width,
+            "height_mm": _geo.height,
             "thickness_mm": cfg.back_thickness,
         },
     }
@@ -3187,6 +3451,20 @@ async def _tool_design_cabinet(args: dict) -> list[types.TextContent]:
         },
         "joinery":  cfg.carcass_joinery.value,
         "back_style": cfg.back_style,
+        "back_capture": cfg.back_capture,
+        # What the capture actually does to the case, so the caller never
+        # has to infer it from the panel dims.
+        "back_seat": {
+            "engagement_mm": _geo.engagement,
+            "case_cut": (None if not _geo.machined else {
+                "depth_mm": _geo.cut_depth,
+                "run_mm": _geo.cut_run,
+                "offset_from_rear_mm": _geo.cut_offset,
+            }),
+            "setback_mm": _geo.setback,
+            "clear_depth_mm": _geo.clear_depth,
+            "captive": _geo.captive,
+        },
         "panels":   panels,
         "opening_stack": opening_stack,
         "adj_shelf_holes": cfg.adj_shelf_holes,
@@ -3248,7 +3526,11 @@ async def _tool_design_multi_column_cabinet(args: dict) -> list[types.TextConten
 
     interior_width  = cfg.interior_width
     interior_height = cfg.interior_height
-    interior_depth  = cfg.depth - cfg.back_thickness
+    # Panel depths follow back_capture, the same source generate_cutlist
+    # reads — the two tools must never report different cut sizes for one
+    # design.
+    _geo = back_capture_geometry(cfg)
+    interior_depth  = cfg.depth - _geo.clear_depth
 
     # Build per-column breakdown
     col_x = 0.0  # running interior x from left column
@@ -3271,10 +3553,10 @@ async def _tool_design_multi_column_cabinet(args: dict) -> list[types.TextConten
 
     panels = {
         "side_panel":    {"qty": 2, "height_mm": cfg.height, "depth_mm": cfg.depth, "thickness_mm": cfg.side_thickness},
-        "bottom_panel":  {"qty": 1, "width_mm": interior_width, "depth_mm": interior_depth, "thickness_mm": cfg.bottom_thickness},
-        "top_panel":     {"qty": 1, "width_mm": interior_width, "depth_mm": interior_depth, "thickness_mm": cfg.top_thickness},
-        "back_panel":    {"qty": 1, "width_mm": interior_width, "height_mm": cfg.height,    "thickness_mm": cfg.back_thickness},
-        "column_divider": {"qty": n_dividers, "height_mm": cfg.height, "depth_mm": cfg.depth - cfg.back_rabbet_width, "thickness_mm": cfg.side_thickness},
+        "bottom_panel":  {"qty": 1, "width_mm": interior_width, "depth_mm": _geo.bottom_depth, "thickness_mm": cfg.bottom_thickness},
+        "top_panel":     {"qty": 1, "width_mm": interior_width, "depth_mm": _geo.top_depth, "thickness_mm": cfg.top_thickness},
+        "back_panel":    {"qty": 1, "width_mm": _geo.width, "height_mm": _geo.height,    "thickness_mm": cfg.back_thickness},
+        "column_divider": {"qty": n_dividers, "height_mm": cfg.height, "depth_mm": interior_depth, "thickness_mm": cfg.side_thickness},
     }
 
     result = {
@@ -3505,7 +3787,6 @@ def _raw_panels_for_cabinet(
     against the same panel-shape definitions used in single-cabinet output.
     """
     interior_width = cfg.width - 2 * cfg.side_thickness
-    interior_depth = cfg.depth - cfg.back_thickness
 
     # Hardwood edge banding shrinks the CORE cut size by the band thickness
     # per banded edge so finished dims (and face reveals) hold; hot-melt
@@ -3516,12 +3797,17 @@ def _raw_panels_for_cabinet(
     # Mitered corners: top/bottom run to FULL exterior width (long-point),
     # and all four exterior panels get 45° bevels on their ends.
     tb_length = cfg.width if miter else interior_width
-    # back_style "under_top": the top runs FULL depth (rear edge flush with
-    # the sides) and the back stops at its underside, so no back edge shows
-    # from above. Butt corners only — the evaluator rejects other combos.
+    # back_capture resolves every back dimension — where the top and bottom
+    # stop, how big the back is cut, and how far interior panels are held
+    # off the rear. "pocket" reproduces the legacy let-in geometry exactly,
+    # including back_style's full-depth top cap.
+    geo = back_capture_geometry(cfg)
+    # Interior panels (shelves, dividers) stop at the back's front face.
+    interior_depth = cfg.depth - geo.clear_depth
     under_top = getattr(cfg, "back_style", "full_height") == "under_top" and not miter
-    top_depth = cfg.depth if under_top else interior_depth
-    back_length = cfg.height - cfg.top_thickness if under_top else cfg.height
+    top_depth = geo.top_depth
+    bottom_depth = geo.bottom_depth
+    back_length, back_width = geo.height, geo.width
 
     def _core_note(finished_l: float, finished_w: float, edges: str) -> str:
         if not band_t:
@@ -3532,6 +3818,32 @@ def _raw_panels_for_cabinet(
     def _notes(*parts: str) -> str:
         return "; ".join(p for p in parts if p)
 
+    def _capture_note(panel: str) -> str:
+        """What this panel's rear edge needs machined for the back capture.
+
+        Every machined capture cuts the same profile into the inner face of
+        the sides, the top and the bottom — the back is seated inside the
+        case perimeter, not lapped onto the panels' rear edges.
+        """
+        if not geo.machined:
+            return ""
+        where = {"side": "inner face", "top": "underside",
+                 "bottom": "top face"}[panel]
+        run = f"{geo.cut_run:g} mm wide × {geo.cut_depth:g} mm deep"
+        # A side's ends show on the finished top and bottom surfaces (butt
+        # corners seat the top and bottom between the sides), so its cut is
+        # STOPPED; the top and bottom cuts run through into the sides.
+        stop = ("; STOPPED — from the bottom panel's top face to the top "
+                f"panel's underside, {geo.engagement:g} mm past each"
+                if panel == "side" else "; runs through")
+        if geo.capture == "dado":
+            return (f"back groove: {run} in the {where}, "
+                    f"{geo.setback:g} mm in from the rear edge{stop}")
+        if geo.capture == "half_lap":
+            return (f"back lap: {run} rabbet at the rear edge of the "
+                    f"{where} (back is rabbeted to match){stop}")
+        return f"back rabbet: {run} at the rear edge of the {where}{stop}"
+
     side_bevel = "45° bevels top+bottom ends (long-point dims)" if miter else ""
     tb_bevel = "45° bevels both ends (long-point dims)" if miter else ""
 
@@ -3540,16 +3852,16 @@ def _raw_panels_for_cabinet(
                      thickness=cfg.side_thickness, quantity=2,
                      grain_direction="length", material=cfg.carcass_material,
                      edge_band=["front"],
-                     notes=_notes(side_bevel,
+                     notes=_notes(side_bevel, _capture_note("side"),
                                   _core_note(cfg.height, cfg.depth,
                                              "front edge"))),
         CutlistPanel(name="bottom", length=tb_length,
-                     width=interior_depth - band_t,
+                     width=bottom_depth - band_t,
                      thickness=cfg.bottom_thickness, quantity=1,
                      grain_direction="length", material=cfg.carcass_material,
                      edge_band=["front"],
-                     notes=_notes(tb_bevel,
-                                  _core_note(tb_length, interior_depth,
+                     notes=_notes(tb_bevel, _capture_note("bottom"),
+                                  _core_note(tb_length, bottom_depth,
                                              "front edge"))),
         CutlistPanel(name="top", length=tb_length,
                      width=top_depth - band_t,
@@ -3558,7 +3870,9 @@ def _raw_panels_for_cabinet(
                      edge_band=["front"],
                      notes=_notes(tb_bevel,
                                   "full depth — rear edge flush with sides, "
-                                  "caps the back" if under_top else "",
+                                  "caps the back" if under_top and not geo.machined
+                                  else "",
+                                  _capture_note("top"),
                                   _core_note(tb_length, top_depth,
                                              "front edge"))),
     ]
@@ -3572,12 +3886,32 @@ def _raw_panels_for_cabinet(
             notes=_core_note(interior_width, interior_depth, "front edge"),
         ))
 
+    _stock_note = ("1/4 in plywood" if cfg.back_thickness <= 6.0
+                   else f"{cfg.back_thickness:g} mm plywood")
+    if geo.capture == "pocket":
+        _back_note = _notes(_stock_note,
+                            "stops under the full-depth top" if under_top
+                            else "")
+    elif geo.capture == "half_lap":
+        _back_note = _notes(
+            _stock_note,
+            f"rabbet all four edges {geo.lap_run:g} mm wide × "
+            f"{geo.lap_depth:g} mm deep on the FRONT face — laps into the "
+            "matching rabbets in the sides, top and bottom",
+            f"cut size includes {geo.engagement:g} mm of lap per edge")
+    else:
+        seat = ("grooves" if geo.capture == "dado" else "rabbets")
+        _back_note = _notes(
+            _stock_note,
+            f"seats {geo.engagement:g} mm into the {seat} on all four "
+            "edges — cut size includes that engagement",
+            "slides in during glue-up; it cannot go in afterwards"
+            if geo.captive else "drops in from behind after glue-up")
     raw_6mm: list[CutlistPanel] = [
-        CutlistPanel(name="back", length=back_length, width=interior_width,
+        CutlistPanel(name="back", length=back_length, width=back_width,
                      thickness=cfg.back_thickness, quantity=1,
                      grain_direction="", material="baltic_birch",
-                     notes=("1/4 in plywood; stops under the full-depth top"
-                            if under_top else "1/4 in plywood")),
+                     notes=_back_note),
     ]
 
     raw_box: list[CutlistPanel] = []
@@ -3598,7 +3932,7 @@ def _raw_panels_for_cabinet(
                         if cfg.carcass_joinery == CarcassJoinery.DADO_RABBET
                         else cfg.height - cfg.bottom_thickness
                         - cfg.top_thickness),
-                width=cfg.depth - cfg.back_thickness - band_t,
+                width=interior_depth - band_t,
                 thickness=cfg.side_thickness,
                 quantity=num_dividers,
                 grain_direction="length",
@@ -3608,7 +3942,7 @@ def _raw_panels_for_cabinet(
                     cfg.height - cfg.bottom_thickness - cfg.top_thickness
                     if cfg.carcass_joinery != CarcassJoinery.DADO_RABBET
                     else cfg.height,
-                    cfg.depth - cfg.back_thickness, "front edge"),
+                    interior_depth, "front edge"),
             ))
     elif cfg.openings:
         # Single-column cabinet: treat the opening stack as one full-width
