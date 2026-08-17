@@ -339,7 +339,18 @@ def check_shelf_deflection(
 
 
 def check_back_panel_fit(cab_cfg: CabinetConfig) -> list[Issue]:
-    """Verify back panel dimensions match rabbets."""
+    """Verify back panel dimensions match rabbets.
+
+    Legacy geometry only. Under a machined ``back_capture`` these fields
+    mean something else — ``back_rabbet_depth`` is the ENGAGEMENT into each
+    member, not a pocket the back's thickness has to fit inside — so the
+    "back will protrude" test below is meaningless there: the capture seats
+    the rear face flush (rabbet, half lap) or set back by design (dado).
+    ``check_back_capture`` owns the real limits for those.
+    """
+    if getattr(cab_cfg, "back_capture", "pocket") != "pocket":
+        return []
+
     issues = []
 
     # NOTE: A former width check compared back_panel_width against
