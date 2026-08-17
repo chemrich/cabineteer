@@ -49,6 +49,17 @@ def _cfg(**kw) -> CabinetConfig:
     return CabinetConfig(width=W, height=H, depth=D, **kw)
 
 
+def _doc_text(plan) -> str:
+    """Everything the builder reads in the step sequence.
+
+    Steps carry prose in ``body`` and actions in ``checklist``; both land in
+    the HTML and the PDF, so a test asking "does the document say this?"
+    has to look at both.
+    """
+    return " ".join(
+        " ".join((s.body,) + tuple(s.checklist)) for s in plan.steps)
+
+
 def _panel(panels, name):
     return next(p for p in panels if p.name == name)
 
@@ -297,18 +308,18 @@ class TestAssemblyDoc:
 
     def test_captive_back_warns_it_goes_in_at_glue_up(self):
         plan = build_assembly_plan(_cfg(back_capture="dado"))
-        text = " ".join(s.body for s in plan.steps)
+        text = _doc_text(plan)
         assert "cannot go in afterwards" in text
         assert "it must go in NOW" in text
 
     def test_dado_step_covers_solid_wood_movement(self):
         plan = build_assembly_plan(_cfg(back_capture="dado"))
-        text = " ".join(s.body for s in plan.steps)
+        text = _doc_text(plan)
         assert "move in the grooves" in text
 
     def test_rabbet_back_drops_in_from_behind(self):
         plan = build_assembly_plan(_cfg(back_capture="rabbet"))
-        text = " ".join(s.body for s in plan.steps)
+        text = _doc_text(plan)
         assert "from behind" in text
         assert "cannot go in afterwards" not in text
 

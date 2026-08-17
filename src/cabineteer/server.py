@@ -106,7 +106,7 @@ from .cabinet import (
     to_opening as _to_opening,
 )
 from .door import DoorConfig
-from .drawer import DrawerConfig
+from .drawer import DrawerConfig, box_config_for_opening as _box_config_for_opening
 from .evaluation import Issue, Severity, evaluate_cabinet
 from .hardware import HINGES, SLIDES, LEGS, PULLS, OverlayType, LegPattern, get_leg, get_pull, price_for
 from .joinery import (
@@ -4007,15 +4007,8 @@ def _raw_panels_for_cabinet(
                     continue
                 if slot_type != "drawer":
                     continue
-                dcfg = DrawerConfig(
-                    opening_width=col_width,
-                    opening_height=opening_h,
-                    opening_depth=interior_depth,
-                    slide_key=op.slide_key or cfg.drawer_slide,
-                    side_thickness=cfg.drawer_box_thickness,
-                    front_back_thickness=cfg.drawer_box_thickness,
-                    bottom_thickness=op.bottom_thickness,
-                )
+                dcfg = _box_config_for_opening(
+                    cfg, col_width, opening_h, interior_depth, op)
                 bw = round(dcfg.box_width, 1)
                 bh = round(dcfg.box_height, 1)
                 bd = round(dcfg.box_depth, 1)
@@ -5173,7 +5166,7 @@ async def _tool_design_pulls(args: dict) -> list[types.TextContent]:
     DrawerConfig / DoorConfig per slot, and reports placements + per-slot fit
     issues. Cabinet-level style consistency is checked separately.
     """
-    from .drawer import DrawerConfig
+    from .drawer import DrawerConfig, box_config_for_opening as _box_config_for_opening
     from .door import DoorConfig
     from .cutlist import pull_lines_for_cabinet_config
     from .evaluation import (
