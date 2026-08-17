@@ -21,6 +21,17 @@ def _cfg(**kw) -> CabinetConfig:
     return CabinetConfig(width=1219.2, height=663.6, depth=457, **kw)
 
 
+def _doc_text(plan) -> str:
+    """Everything the builder reads in the step sequence.
+
+    Steps carry prose in ``body`` and actions in ``checklist``; both land in
+    the HTML and the PDF, so a test asking "does the document say this?"
+    has to look at both.
+    """
+    return " ".join(
+        " ".join((s.body,) + tuple(s.checklist)) for s in plan.steps)
+
+
 def _panel(panels, name):
     return next(p for p in panels if p.name == name)
 
@@ -129,7 +140,7 @@ class TestAssemblyDoc:
         assert top_map.draw_height == pytest.approx(457)
         assert "caps the back" in top_map.note
         assert bottom_map.draw_height == pytest.approx(457 - 6)
-        text = " ".join(s.body for s in plan.steps)
+        text = _doc_text(plan)
         assert "underside of the full-depth top" in text
         assert "rabbet" not in text
 
@@ -137,7 +148,7 @@ class TestAssemblyDoc:
         plan = build_assembly_plan(_cfg())
         top_map = next(p for p in plan.panels if p.panel == "top")
         assert top_map.draw_height == pytest.approx(457 - 6)
-        text = " ".join(s.body for s in plan.steps)
+        text = _doc_text(plan)
         assert "test-fit the back panel in its rear pocket" in text
         assert "drop the back panel into the rear pocket" in text
         # Assembly plans are floating-tenon (butt) only, so no carcass this
@@ -147,17 +158,17 @@ class TestAssemblyDoc:
     def test_back_glue_edges_name_only_the_parts_present(self):
         """A plain box has no dividers or fixed shelves to glue the back to."""
         plain = build_assembly_plan(_cfg())
-        plain_text = " ".join(s.body for s in plain.steps)
+        plain_text = _doc_text(plain)
         assert plain_text.count("rear edges of the top and bottom") == 2
         assert "rear edges of the top, bottom, and dividers" not in plain_text
 
         shelved = build_assembly_plan(_cfg(fixed_shelf_positions=(300.0,)))
-        shelved_text = " ".join(s.body for s in shelved.steps)
+        shelved_text = _doc_text(shelved)
         assert "rear edges of the top, bottom, and fixed shelves" in shelved_text
 
     def test_under_top_back_glue_edges_exclude_the_capping_top(self):
         """under_top: the top is the back's landing face, not a glue edge."""
         plan = build_assembly_plan(_cfg(back_style="under_top",
                                         fixed_shelf_positions=(300.0,)))
-        text = " ".join(s.body for s in plan.steps)
+        text = _doc_text(plan)
         assert "rear edges of the bottom and fixed shelves" in text

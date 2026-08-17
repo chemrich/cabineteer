@@ -566,3 +566,33 @@ def drawers_from_cabinet_config(cab_cfg: CabinetConfig) -> list[tuple["cq.Assemb
         current_z += opening_height
 
     return drawers
+
+
+def box_config_for_opening(
+    cab_cfg: CabinetConfig,
+    col_width: float,
+    opening_height: float,
+    interior_depth: float,
+    opening=None,
+) -> DrawerConfig:
+    """Build the DrawerConfig for one drawer opening in a carcass.
+
+    SINGLE SOURCE for the box that goes in an opening. The cutlist
+    (``server._raw_panels_for_cabinet``) and the assembly doc
+    (``assembly.build_drawer_box_plans``) both resolve boxes through here,
+    so the parts list and the instructions can never quote different
+    dimensions for the same drawer.
+
+    ``opening`` is the OpeningConfig, whose per-opening options (slide key,
+    bottom thickness) win over the cabinet-level defaults.
+    """
+    return DrawerConfig(
+        opening_width=col_width,
+        opening_height=opening_height,
+        opening_depth=interior_depth,
+        slide_key=(getattr(opening, "slide_key", None) or cab_cfg.drawer_slide),
+        side_thickness=cab_cfg.drawer_box_thickness,
+        front_back_thickness=cab_cfg.drawer_box_thickness,
+        bottom_thickness=getattr(opening, "bottom_thickness", None),
+        joinery_style=cab_cfg.drawer_joinery,
+    )

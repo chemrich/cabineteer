@@ -101,8 +101,52 @@ class PanelMortiseMap:
 
 @dataclass(frozen=True)
 class AssemblyStep:
+    """One step of the bench document.
+
+    ``body`` is the prose lead-in. ``checklist`` carries the actions as
+    discrete items — use it for anything performed under time pressure or
+    tick-by-tick (the dry fit, the glue-up), where a paragraph forces the
+    builder to re-read a wall of text with glue on their hands. Renderers
+    lay checklist items out as a numbered list.
+    """
+
     title: str
     body: str                  # plain text; renderers wrap/escape
+    checklist: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class DrawerBoxPlan:
+    """One drawer box: its cut parts, its corner joint, and where it lands.
+
+    Dimensions come from ``drawer.box_config_for_opening`` — the same
+    function the cutlist resolves boxes through — so the numbers here and
+    the numbers on the parts list are the same numbers, not two
+    derivations that happen to agree today.
+    """
+
+    label: str                 # "column 1, drawer 2 (from the bottom)"
+    column: int                # 1-based
+    position: int              # 1-based from the BOTTOM of the stack
+    #: Cut parts. Sides run the box's DEPTH; front and back run its width.
+    side_length: float
+    side_height: float
+    front_back_length: float
+    front_back_height: float
+    stock_thickness: float
+    bottom_length: float
+    bottom_width: float
+    bottom_thickness: float
+    #: Bottom groove: ``dado_depth`` deep, ``dado_inset`` up from the
+    #: bottom edge, cut on the INSIDE face of all four parts.
+    dado_depth: float
+    dado_inset: float
+    joinery: str               # drawer-lock, half-lap, …
+    slide_key: str
+    slide_length: float
+    opening_width: float
+    opening_height: float
+    part_ids: tuple = ()       # cutlist IDs for side/front/back/bottom
 
 
 @dataclass
@@ -126,6 +170,11 @@ class AssemblyPlan:
     #: BASE_REF_MIN_THICKNESS_MM take the centred t/2 fallback; everything
     #: else shares the single 10 mm base-height fence setting.
     panel_thicknesses: tuple = ()
+    #: Every drawer box this carcass carries, bottom-up per column.
+    drawer_boxes: list = field(default_factory=list)
+    #: Steps for building the boxes — a separate sequence from the carcass
+    #: one, because they are a separate day's work at the bench.
+    box_steps: list = field(default_factory=list)
 
     @property
     def tenons_per_cabinet(self) -> int:
@@ -483,6 +532,8 @@ def build_assembly_plan(
         panel_thicknesses=tuple(sorted(thicknesses)),
     )
     plan.steps = _build_steps(plan, cab_cfg)
+    plan.drawer_boxes = build_drawer_box_plans(cab_cfg, id_map)
+    plan.box_steps = _build_box_steps(plan.drawer_boxes, cab_cfg)
     return plan
 
 
@@ -550,6 +601,310 @@ def _back_capture_step(geo) -> AssemblyStep:
         f"covers all four. {extra}")
 
 
+def build_drawer_box_plans(cab_cfg, id_map=None) -> list[DrawerBoxPlan]:
+    """Resolve every drawer box in a carcass, bottom-up per column.
+
+    Boxes come from ``drawer.box_config_for_opening`` — the cutlist's own
+    resolver — so a box described here is the box on the parts list.
+    """
+    from .cabinet import back_capture_geometry
+    from .drawer import box_config_for_opening
+
+    id_map = id_map or {}
+    interior_depth = cab_cfg.depth - back_capture_geometry(cab_cfg).clear_depth
+    interior_width = cab_cfg.interior_width
+
+    # A single-column cabinet carries its stack on the config itself; a
+    # multi-column one carries one stack per column.
+    if cab_cfg.columns:
+        columns = [(i + 1, col.width_mm, list(col.openings))
+                   for i, col in enumerate(cab_cfg.columns)]
+    else:
+        columns = [(1, interior_width, list(cab_cfg.openings or []))]
+
+    plans: list[DrawerBoxPlan] = []
+    for col_no, col_width, openings in columns:
+        drawer_no = 0
+        for op in openings:
+            if op.opening_type != "drawer":
+                continue
+            drawer_no += 1
+            d = box_config_for_opening(
+                cab_cfg, col_width, op.height_mm, interior_depth, op)
+            slide = d.slide
+            plans.append(DrawerBoxPlan(
+                label=(f"column {col_no}, drawer {drawer_no} from the bottom"
+                       if len(columns) > 1 else
+                       f"drawer {drawer_no} from the bottom"),
+                column=col_no,
+                position=drawer_no,
+                side_length=round(d.box_depth, 1),
+                side_height=round(d.box_height, 1),
+                front_back_length=round(d.box_width, 1),
+                front_back_height=round(d.box_height, 1),
+                stock_thickness=d.side_thickness,
+                bottom_length=round(d.bottom_panel_width, 1),
+                bottom_width=round(d.box_depth, 1),
+                bottom_thickness=d.bottom_thickness,
+                dado_depth=d.bottom_dado_depth,
+                dado_inset=d.bottom_dado_inset,
+                joinery=d.joinery_style.value,
+                slide_key=d.slide_key,
+                slide_length=round(d.box_depth, 1),
+                opening_width=round(col_width, 1),
+                opening_height=round(op.height_mm, 1),
+                part_ids=(id_map.get("drawer_box_side", ""),
+                          id_map.get("drawer_box_front", ""),
+                          id_map.get("drawer_box_back", ""),
+                          id_map.get("drawer_box_bottom", "")),
+            ))
+    return plans
+
+
+def _build_box_steps(boxes: list, cab_cfg) -> list[AssemblyStep]:
+    """Bench sequence for the drawer boxes.
+
+    Written as its own run of steps because boxes are batch work: every
+    setup below is made once and every box in the project goes through it,
+    which is the opposite of the carcass's one-case-at-a-time order.
+    """
+    if not boxes:
+        return []
+    t = boxes[0].stock_thickness
+    dado_d = boxes[0].dado_depth
+    dado_i = boxes[0].dado_inset
+    joint = boxes[0].joinery.replace("_", "-")
+    bottoms = sorted({b.bottom_thickness for b in boxes})
+    heights = sorted({b.side_height for b in boxes})
+    n = len(boxes)
+
+    bottom_txt = (f"{bottoms[0]:g} mm" if len(bottoms) == 1 else
+                  " and ".join(f"{b:g} mm" for b in bottoms) +
+                  " — check each box's row, they are NOT all the same")
+
+    steps = [
+        AssemblyStep(
+            "Drawer boxes — read before cutting",
+            f"{n} boxes, all {t:g} mm Baltic birch with {joint} corners and a "
+            f"captured bottom in {bottom_txt}. Box parts have no show face to "
+            "choose — birch ply is the same both sides — but they DO have an "
+            "inside and an outside, and every joint and groove below is cut "
+            "on the INSIDE face. Mark the inside of all four parts of a box "
+            "before you cut anything.",
+            checklist=(
+                "Sort the parts into per-box sets and keep each set together "
+                f"— there are {len(heights)} different box heights here, and "
+                "parts from two boxes are near-identical until they are not.",
+                "Mark the INSIDE face of every part. All corner joinery and "
+                "the bottom groove are cut on that face; a part machined on "
+                "the wrong face is scrap.",
+                "Sides run the box DEPTH; fronts and backs run the box "
+                "WIDTH. They are not interchangeable even when the numbers "
+                "look close.",
+            )),
+        AssemblyStep(
+            "Groove for the bottoms — one saw setup, every part",
+            f"Every part of every box takes the same groove: {dado_d:g} mm "
+            f"deep, {dado_i:g} mm up from the bottom edge, on the inside "
+            "face, running the full length. Cut them all in one session — "
+            "the setup is the work, the cutting is nothing.",
+            checklist=(
+                f"Set the fence so the groove sits {dado_i:g} mm from the "
+                "BOTTOM edge, and confirm which edge that is on each part "
+                "before it goes through.",
+                "Cut a test groove in offcut and fit an actual bottom "
+                "panel: snug enough to hold, loose enough to slide in dry. "
+                "A bottom forced into a tight groove will bow the box and "
+                "you will not get it square.",
+                "Run all four parts of every box. A box missing one groove "
+                "does not show up until glue-up, when it is too late.",
+            )),
+        AssemblyStep(
+            f"Cut the {joint} corners",
+            f"All four corners of each box are {joint}. Set the cut once and "
+            "run every part through it — with the parts already marked "
+            "inside-face, this is repetitive rather than delicate, which is "
+            "exactly what you want before a batch of glue-ups.",
+            checklist=(
+                "Dial the setup in on offcut of the SAME stock, and assemble "
+                "a test corner. Check it closes with hand pressure and sits "
+                "at 90° with no gap at the shoulder.",
+                "Keep the test corner on the bench as a reference for the "
+                "rest of the run.",
+                "Cut every part, keeping the box sets separate. Confirm as "
+                "you go that the joint lands on the inside face.",
+            )),
+        AssemblyStep(
+            "Assemble the boxes",
+            "One box at a time, and dry-fit each before glue — the bottom is "
+            "captured, so it goes in during assembly and there is no fixing "
+            "a forgotten one afterwards.",
+            checklist=(
+                "Dry-assemble the box with its bottom in the grooves. Check "
+                "it is square by the diagonals and that it sits flat.",
+                "Glue the corners only. The bottom FLOATS in its grooves — "
+                "it is what keeps the box square, and gluing it in is how "
+                "you turn a seasonal movement into a split panel.",
+                "Clamp, check both diagonals, and correct before the glue "
+                "tacks. A box out of square binds in its slides.",
+                "Check the box sits flat on the bench, not just square. A "
+                "twisted box runs rough no matter how good the slides are.",
+                "Wipe the squeeze-out inside the box now — you will not get "
+                "a chisel into those corners cleanly once it cures.",
+            )),
+        AssemblyStep(
+            "Fit the slides",
+            f"{boxes[0].slide_key} throughout. Mount to the box and the "
+            "carcass only after the carcass is cured and standing on its "
+            "final feet — a case fitted on its side rarely stays true.",
+            checklist=(
+                "Check the box height and width against the opening one "
+                "last time before drilling anything.",
+                "Mount, then run each box in and out fully before the faces "
+                "go on. Adjust for bind now, while the box is still empty "
+                "and light.",
+            )),
+    ]
+    return steps
+
+
+def _glue_up_step(plan: AssemblyPlan, miter: bool,
+                  has_inner: bool) -> AssemblyStep:
+    """The irreversible step, written as a sequence rather than a paragraph.
+
+    Ordering matters and is not obvious: glue goes in the mortises and on
+    the mating edge (not on the tenon, which swells and jams), the inner
+    structure is assembled and squared before the sides trap it, and the
+    diagonals are checked while the glue still moves.
+    """
+    if has_inner:
+        stages = [
+            "STAGE 1 — inner structure. Glue the dividers and fixed shelves "
+            "into the BOTTOM panel. Glue goes into BOTH mortises and onto "
+            "the mating edge — not onto the tenon itself, which swells on "
+            "contact and can jam before it is seated.",
+            "Seat each inner panel fully and check it stands square to the "
+            "bottom. This is your last chance to correct one: the top panel "
+            "traps them all.",
+            "Cap with the TOP panel, working the mortises onto the tenons "
+            "across the whole width at once rather than dropping one end "
+            "first.",
+        ]
+    else:
+        stages = [
+            "Glue the case in ONE stage — with no dividers or shelves there "
+            "is no inner structure to assemble first. Glue goes into BOTH "
+            "mortises and onto the mating edge, never onto the tenon, which "
+            "swells on contact and can jam before it is seated.",
+        ]
+
+    if miter:
+        stages += [
+            "STAGE 2 — fold the sides on. Run painter's tape across each "
+            "miter's OUTSIDE corner as a hinge, glue the miter faces and "
+            "tenons, and fold the case closed.",
+            "Pull the corners tight with band clamps, with bar clamps and "
+            "cauls across the case as backup. A mitered corner closes with "
+            "pressure ACROSS the joint, which a bar clamp alone cannot give.",
+        ]
+    else:
+        stages += [
+            "STAGE 2 — add the sides. Bring each side on square to the "
+            "panel ends rather than pivoting it in on one corner.",
+            "Clamp across every joint line, with a caul under each clamp "
+            "head so the pressure spreads instead of denting the show face. "
+            "Snug, not crushed: a joint that needs heavy pressure to close "
+            "is telling you something is wrong, and you have seconds to act "
+            "on it.",
+        ]
+
+    stages += [
+        "Measure both diagonals IMMEDIATELY and rack the case square before "
+        "the glue tacks. This is the whole reason the previous steps were "
+        "rehearsed — from here you have a couple of minutes at most.",
+        "Check the case is not twisted as well as square: sight across the "
+        "front edges, or set it on the reference surface and look for a "
+        "rock. Square and twisted is still wrong.",
+        "Wipe every trace of squeeze-out with the damp rag while it is wet, "
+        "inside corners especially. Cured glue has to be chiselled off and "
+        "any film left behind will refuse finish and show as a pale patch.",
+    ]
+    return AssemblyStep(
+        "Glue up in stages",
+        "Read this through before opening the glue. Work in the order "
+        "below — the sequence is what keeps the case square, and there is "
+        "no version of this step you can pause halfway through.",
+        checklist=tuple(stages))
+
+
+def _show_face_step(plan: AssemblyPlan, cab_cfg) -> AssemblyStep:
+    """Decide show faces and grain BEFORE anything is cut or mortised.
+
+    Sheet goods have a better face, and once a panel is mortised it is
+    committed — a reference face on the wrong side puts every slot on the
+    show side of the panel. This has to be the first thing that happens,
+    which is why it precedes the inventory step rather than being a clause
+    inside it.
+    """
+    on_legs = getattr(cab_cfg, "leg_count", 0) > 0
+    has_doors = any(op.opening_type in ("door", "door_pair")
+                    for col in (cab_cfg.columns or [])
+                    for op in col.openings) or any(
+        op.opening_type in ("door", "door_pair")
+        for op in (cab_cfg.openings or []))
+    n_shelf = len(cab_cfg.fixed_shelf_positions or ())
+    n_div = max(len(cab_cfg.columns or []) - 1, 0)
+
+    seen = [
+        "SIDES — the OUTSIDE face. On a run of cabinets pushed together, "
+        "the buried sides are the exception: use your worst faces there and "
+        "save the good ones for the ends.",
+        "TOP — the upper face. It is the most-looked-at surface on the "
+        "piece; pick the best sheet face you have for it.",
+    ]
+    seen.append(
+        "BOTTOM — the UNDERSIDE shows, because the piece stands on legs."
+        if on_legs else
+        "BOTTOM — the upper face (inside the cabinet); the underside is "
+        "against the floor and never seen.")
+    if n_div:
+        seen.append(
+            f"DIVIDERS ({n_div}) — BOTH faces are seen, one from each "
+            "opening. There is no hidden side to hide a flaw on.")
+    if n_shelf:
+        seen.append(
+            f"FIXED SHELVES ({n_shelf}) — the top face is seen looking down, "
+            "the underside looking up. Treat both as show.")
+    if has_doors:
+        seen.append(
+            "INTERIOR — this cabinet has doors, so everything inside is on "
+            "display whenever they are open.")
+
+    return AssemblyStep(
+        "Choose show faces and grain direction — before any other cut",
+        "Plywood has a better face and a worse one, and grain has a "
+        "direction. Both are decided now, not at glue-up: once a panel is "
+        "mortised it is committed, and a reference face marked on the wrong "
+        "side puts every slot on the side you meant to show. Lay all the "
+        "carcass panels out, good face up, and work through the list before "
+        "picking up a router. Where the two rules fight, grain wins — a "
+        "flipped board reads as a mistake from across the room, while a "
+        "minor face flaw does not.",
+        checklist=tuple(seen) + (
+            "GRAIN runs along each panel's LENGTH — the first dimension on "
+            "every cutlist row, and the direction the parts were laid out "
+            "on the sheet. On the sides that is floor-to-ceiling; on the "
+            "top, bottom and shelves it runs left to right across the "
+            "front. Stand the panels up in their finished positions and "
+            "check the grain flows the same way across the whole front.",
+            "Mark each panel on its HIDDEN face: the part ID, an arrow for "
+            "grain direction, and which edge is the FRONT. Everything "
+            "downstream — the reference faces, the mortise rows, the "
+            "banding — is measured from the front edge, so a panel that "
+            "loses track of its front is a panel you will cut backwards.",
+        ))
+
+
 def _build_steps(plan: AssemblyPlan, cab_cfg) -> list[AssemblyStep]:
     s = plan.size
     t = plan.stock_thickness
@@ -601,12 +956,13 @@ def _build_steps(plan: AssemblyPlan, cab_cfg) -> list[AssemblyStep]:
                    if any(r.kind == "face" for r in pm.rows)]
 
     steps = [
+        _show_face_step(plan, cab_cfg),
         AssemblyStep(
             "Inventory and label the parts",
             "Pull every carcass panel from the cutlist and pencil its part ID "
-            "on a face that ends up hidden (outside back corner). Sides are a "
-            "mirrored pair — mark L / R now. Check each panel for the show "
-            "face and orient the best face where it will be seen."
+            "on the face you marked HIDDEN in step 1, near a back corner. "
+            "Sides are a mirrored pair — mark L / R now, and note that their "
+            "show faces point in opposite directions."
             + (" Beveled panels are cut LONG-POINT — verify each miter's "
                "long point lands on the OUTSIDE face before any mortising."
                if miter else "")),
@@ -717,37 +1073,64 @@ def _build_steps(plan: AssemblyPlan, cab_cfg) -> list[AssemblyStep]:
             f"Assemble the complete carcass with {plan.dry_fit_tenons_needed} "
             f"{DRY_FIT_TENON_NAME} — print at least that many "
             f"({plan.size_key} size): {DRY_FIT_TENON_URL} . The reduced "
-            "cross-section inserts and pulls by hand. Seat every joint, "
-            f"then: (1) check both diagonals match within 1 mm; (2) {back_seat_txt}; "
-            "(3) rehearse the clamp layout — "
-            "set every clamp and caul you will use for real; (4) confirm "
-            "drawer openings with a slide or spacer. Fix anything that "
-            "fights you NOW — glue makes it permanent."),
+            "cross-section inserts and pulls out by hand, which is the whole "
+            "point: you can take this apart. Work the list in order and fix "
+            "anything that fights you NOW — every one of these problems is "
+            "cheap here and permanent ten minutes after the glue is open.",
+            checklist=(
+                "Seat every joint fully, by hand. A tenon that needs a mallet "
+                "dry will need a clamp wet, and a joint that needs a clamp to "
+                "close is a joint that will spring back open. Pare the mortise "
+                "rather than forcing it.",
+                "Check the case sits FLAT. Put it on your reference surface "
+                "and try to rock it — a case that rocks now is a case that "
+                "cures twisted, and no amount of clamping at glue-up fixes a "
+                "twist you did not find here.",
+                "Measure both diagonals across the front opening. They must "
+                "match within 1 mm. If they do not, the fault is a joint that "
+                "is not fully seated or a panel that is out of square — find "
+                "which before going on.",
+                f"Back: {back_seat_txt}.",
+                "Confirm the drawer openings with an actual slide, or a "
+                "spacer cut to the slide's required clearance. Measure at the "
+                "FRONT and again at the BACK of each opening — a divider that "
+                "is square at the front and leaning at the back still "
+                "measures right where you first checked.",
+                "Rehearse the clamp layout completely: every clamp opened to "
+                "length, every caul cut and placed, and the case pulled up "
+                "the way you intend to do it for real. Count the clamps. "
+                "Running out mid-glue-up is the classic way to lose a case.",
+                "Take a photo of the assembled dry fit. It is the reference "
+                "you will want when the parts are apart and covered in glue.",
+            )),
         AssemblyStep(
             "Disassemble and stage",
-            "Pull the dry-fit tenons and lay panels out in assembly order "
-            "with clamps open to length, real beech tenons counted out "
-            f"({plan.tenons_per_cabinet} per cabinet), glue, brush, and a "
-            "damp rag in reach. Glue-up is a race; staging wins it."),
-        AssemblyStep(
-            "Glue up in stages",
-            ("Stage 1 — inner structure: glue dividers and fixed shelves "
-             "into the BOTTOM panel (tenons glued in both mortises, glue "
-             "on the mating edge), then cap with the TOP panel. Stage 2 — "
-             "fold the mitered sides on: run painter's tape across each "
-             "miter's OUTSIDE corner as a hinge, glue the miter faces and "
-             "tenons, fold closed, and pull the corners tight with band "
-             "clamps (bar clamps + cauls across the case as backup). "
-             "Check diagonals immediately and rack square before the "
-             "glue tacks."
-             if miter else
-             "Stage 1 — inner structure: glue dividers and fixed shelves "
-             "into the BOTTOM panel (tenons glued in both mortises, glue "
-             "on the mating edge), then cap with the TOP panel. Stage 2 — "
-             "add the sides. Clamp across every joint line with cauls, "
-             "check diagonals immediately, and rack square before the "
-             "glue tacks. For a simple box (no dividers/shelves) do it "
-             "in one stage.")),
+            "Pull the dry-fit tenons and stage everything within arm's reach "
+            "before opening the glue. Glue-up is a race against open time and "
+            "staging is how you win it — this step is the difference between "
+            "a calm assembly and a ruined case.",
+            checklist=(
+                f"Real beech tenons counted out: {plan.tenons_per_cabinet} per "
+                "cabinet. Count them into a tray, do not pull them from the "
+                "box as you go.",
+                "Panels laid out in assembly order, show faces already "
+                "oriented, so no panel has to be turned over or worked out "
+                "mid-glue-up.",
+                "Clamps opened to length and within reach; cauls stacked at "
+                "the joints they serve.",
+                "Glue, a brush or roller, a damp rag, and a bucket of water. "
+                "Squeeze-out wipes off in seconds while wet and has to be "
+                "chiselled off once cured — and any smear left behind will "
+                "show as a pale patch under finish.",
+                "Your square and a tape for the diagonals, already set down "
+                "on the bench — not across the shop.",
+                "Work out the open time of the glue you are using before you "
+                "start (PVA is typically 5–10 minutes at shop temperature, "
+                "less when it is warm). If the stages below will not fit "
+                "inside it, plan to glue in two sessions rather than rushing "
+                "one.",
+            )),
+        _glue_up_step(plan, miter, has_divider or has_shelf),
         AssemblyStep(
             "Square with the back, then cure",
             (("Set the back into its grooves as the case goes together — it "
@@ -759,12 +1142,17 @@ def _build_steps(plan: AssemblyPlan, cab_cfg) -> list[AssemblyStep]:
               "diagonals, wipe squeeze-out, leave clamped for the glue's "
               "clamp time (30–60 min PVA) and unstressed for 24 h."
               if geo.captive else
-              "While the clamps are on, drop the back panel into its "
-              "rabbets from behind and glue/pin it home — a square back "
-              "holds the carcass square as it cures. Its edges are buried "
-              "in the rabbets, so nothing shows from any angle. Re-check "
-              "diagonals, wipe squeeze-out, leave clamped for the glue's "
-              "clamp time (30–60 min PVA) and unstressed for 24 h.")
+              "You have a choice here, because a rabbeted back drops in "
+              "from behind and is not trapped by the case. Fitting it while "
+              "the clamps are on is the better job — a square panel pulls "
+              "the whole carcass square and holds it there through the "
+              "cure, which is more reliable than racking by diagonals "
+              "alone. Fitting it after the cure keeps the glue-up to five "
+              "panels and off the clock. Take the first if the case fought "
+              "you at all on the diagonals; take the second if it went "
+              "together sweetly and you would rather not add a step to the "
+              "race. Either way its edges are buried in the rabbets, so "
+              "nothing shows from any angle.")
              if geo.machined else
              "While the clamps are on, slide the back panel up into its "
              "pocket from the carcass's bottom end until it seats against "
@@ -782,7 +1170,22 @@ def _build_steps(plan: AssemblyPlan, cab_cfg) -> list[AssemblyStep]:
              "it cures. Its top edge lands in the top plane, so it IS visible "
              "from above. Re-check diagonals, wipe squeeze-out, leave clamped "
              "for the glue's clamp time (30–60 min PVA) and unstressed for "
-             "24 h.")),
+             "24 h."),
+            checklist=(
+                "Glue and pin (or screw) the back home, checking the "
+                "diagonals as you fix it — the back can only square the case "
+                "if it is square itself and you fasten it that way."
+                if not geo.captive and geo.machined else
+                "Re-check both diagonals with the back in place.",
+                "Wipe the squeeze-out one more time, inside corners "
+                "included, before it starts to skin.",
+                "Leave it CLAMPED for the glue's clamp time — 30–60 minutes "
+                "for PVA at shop temperature.",
+                "Then leave it UNSTRESSED for 24 hours before you machine, "
+                "hang doors, or stand it up loaded. PVA reaches clamp "
+                "strength quickly and full strength slowly; a case racked "
+                "while it is green will hold that rack permanently.",
+            )),
     ])
 
     if plan.edge_band_mode == "hot_melt":
@@ -1235,6 +1638,8 @@ def generate_assembly_html(
           background:#f8f8f8;border-radius:0 6px 6px 0}
     .step.dryfit{border-left-color:#c0392b;background:#fdf3f2}
     .step b{display:block;margin-bottom:3px}
+    .checklist{margin:7px 0 2px 0;padding-left:22px}
+    .checklist li{margin:5px 0;line-height:1.45}
     .maps{display:flex;flex-wrap:wrap;gap:18px}
     .map{border:1px solid #ddd;border-radius:8px;padding:10px 12px}
     .map h4{margin:2px 0 6px;font-size:13px}
@@ -1360,9 +1765,42 @@ def generate_assembly_html(
                 escape(DRY_FIT_TENON_URL),
                 f"<a href='{DRY_FIT_TENON_URL}'>printables.com/model/"
                 "689403</a>")
+            items = "".join(
+                f"<li>{escape(item)}</li>" for item in st.checklist)
+            listing = f"<ol class='checklist'>{items}</ol>" if items else ""
             out.append(
                 f"<div class='{cls}'><b>Step {i} — {escape(st.title)}</b>"
-                f"{body}</div>")
+                f"{body}{listing}</div>")
+
+        # Drawer boxes — their own section: separate parts, separate setups,
+        # and a different day's work from the carcass.
+        if plan.drawer_boxes:
+            out.append(f"<h3>Drawer boxes — {escape(plan.cabinet_name)} "
+                       f"({len(plan.drawer_boxes)})</h3>")
+            out.append("<table><tr><th>Box</th><th>Sides (×2)</th>"
+                       "<th>Front + back</th><th>Bottom</th>"
+                       "<th>Opening</th></tr>")
+            for b in plan.drawer_boxes:
+                out.append(
+                    "<tr>"
+                    f"<td>{escape(b.label)}</td>"
+                    f"<td class='mm'>{b.side_length:g} × {b.side_height:g}"
+                    f" × {b.stock_thickness:g}</td>"
+                    f"<td class='mm'>{b.front_back_length:g} × "
+                    f"{b.front_back_height:g} × {b.stock_thickness:g}</td>"
+                    f"<td class='mm'>{b.bottom_length:g} × {b.bottom_width:g}"
+                    f" × {b.bottom_thickness:g}</td>"
+                    f"<td class='in'>{b.opening_width:g} × "
+                    f"{b.opening_height:g}</td></tr>")
+            out.append("</table>")
+            for i, st in enumerate(plan.box_steps, start=1):
+                items = "".join(
+                    f"<li>{escape(item)}</li>" for item in st.checklist)
+                listing = (f"<ol class='checklist'>{items}</ol>"
+                           if items else "")
+                out.append(
+                    f"<div class='step'><b>Box step {i} — "
+                    f"{escape(st.title)}</b>{escape(st.body)}{listing}</div>")
 
     out.append("</body></html>")
     return "\n".join(out)
@@ -1416,6 +1854,11 @@ def generate_assembly_pdf(
                            leading=11.5)
     step_sty = _ParagraphStyle("astep", parent=styles["Normal"], fontSize=10,
                                leading=13.5, spaceAfter=2.5 * _rl_mm)
+    # Checklist items: same 10 pt body (Charlie reads these at the bench and
+    # 7.5 pt was unreadable), indented so the sequence is scannable.
+    check_sty = _ParagraphStyle("acheck", parent=step_sty,
+                                leftIndent=7 * _rl_mm,
+                                spaceAfter=1.2 * _rl_mm)
 
     def tbl_style() -> _TableStyle:
         return _TableStyle([
@@ -1700,6 +2143,43 @@ def generate_assembly_pdf(
             story.append(_Paragraph(
                 f"<b>Step {i} — {xesc(st.title)}.</b>  {xesc(st.body)}",
                 step_sty))
+            # Checklist items get their own indented, numbered paragraphs so
+            # they stay tickable at the bench instead of collapsing into the
+            # prose (reportlab has no list primitive in this style set).
+            for n, item in enumerate(st.checklist, start=1):
+                story.append(_Paragraph(
+                    f"<b>{n}.</b>  {xesc(item)}", check_sty))
+
+        if plan.drawer_boxes:
+            story.append(_PageBreak())
+            story.append(_Paragraph(
+                f"Drawer boxes — {xesc(plan.cabinet_name)} "
+                f"({len(plan.drawer_boxes)})", h1))
+            rows = [["Box", "Sides (×2)", "Front + back", "Bottom",
+                     "Opening"]]
+            for b in plan.drawer_boxes:
+                rows.append([
+                    _Paragraph(xesc(b.label), cell),
+                    f"{b.side_length:g} × {b.side_height:g} × "
+                    f"{b.stock_thickness:g}",
+                    f"{b.front_back_length:g} × {b.front_back_height:g} × "
+                    f"{b.stock_thickness:g}",
+                    f"{b.bottom_length:g} × {b.bottom_width:g} × "
+                    f"{b.bottom_thickness:g}",
+                    f"{b.opening_width:g} × {b.opening_height:g}",
+                ])
+            box_tbl = _Table(rows, colWidths=[CW * f for f in
+                                              (.24, .2, .2, .2, .16)])
+            box_tbl.setStyle(tbl_style())
+            story.append(box_tbl)
+            story.append(_Spacer(1, 3 * _rl_mm))
+            for i, st in enumerate(plan.box_steps, start=1):
+                story.append(_Paragraph(
+                    f"<b>Box step {i} — {xesc(st.title)}.</b>  "
+                    f"{xesc(st.body)}", step_sty))
+                for n, item in enumerate(st.checklist, start=1):
+                    story.append(_Paragraph(
+                        f"<b>{n}.</b>  {xesc(item)}", check_sty))
 
     doc.build(story)
     return buf.getvalue()

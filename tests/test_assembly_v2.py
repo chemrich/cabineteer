@@ -69,7 +69,10 @@ class TestMiterPlan:
         body = plan.steps[miter_i].body
         assert "45°" in body and "SCRAP" in body.upper()
         glue = next(s for s in plan.steps if s.title.startswith("Glue up"))
-        assert "tape" in glue.body
+        # The staged actions live in the step's checklist, not its prose.
+        glue_text = " ".join((glue.body,) + tuple(glue.checklist))
+        assert "tape" in glue_text
+        assert "band clamps" in glue_text
 
     def test_machine_rows_include_miter_placement(self):
         html = generate_assembly_html(
