@@ -9423,6 +9423,62 @@ SCENARIOS.append(Scenario(
 ))
 
 
+_s(Scenario(
+    name="face_geometry_single_source",
+    prompt=(
+        "False fronts must be cut to the assembled front the renders show: "
+        "flush to the carcass exterior, heights tiling the opening span with "
+        "the configured face gap, and the furniture-top cap strip on paper. "
+        "The kid2-desk pedestal shape — the cabinet whose fronts were cut "
+        "16 mm narrow from pre-2026-08 paper — is the regression case."
+    ),
+    tags=["cutlist", "faces", "evaluation"],
+    difficulty="standard",
+    tool_calls=[
+        ToolCall(
+            tool="generate_cutlist",
+            args={"name": "eval_face_geometry",
+                  "width": 381, "height": 389, "depth": 457,
+                  "face_gap_mm": 2.5, "furniture_top": True,
+                  "drawer_config": [[133, "drawer"], [110, "drawer"],
+                                    [110, "drawer"]]},
+            label="furniture-top pedestal at Charlie's 2.5 mm shim gap",
+            assertions=[
+                # Fronts span the full 381 exterior — not opening + 20.
+                Assertion("panels_summary.11.name", Op.EQ, "false_front"),
+                Assertion("panels_summary.11.length_mm", Op.APPROX, 381),
+                # bottom face drops to the carcass underside: 131.75 + 18
+                Assertion("panels_summary.11.width_mm", Op.APPROX, 149.8),
+                Assertion("panels_summary.12.width_mm", Op.APPROX, 107.5),
+                # top face gives one 2.5 mm gap back under the cap
+                Assertion("panels_summary.13.width_mm", Op.APPROX, 106.2),
+                # The cap strip finally reaches paper (render-only before).
+                Assertion("panels_summary.14.name", Op.EQ, "top_front_cap"),
+                Assertion("panels_summary.14.length_mm", Op.APPROX, 381),
+                Assertion("panels_summary.14.width_mm", Op.APPROX, 18),
+                Assertion("panels_summary", Op.LEN_EQ, 15),
+            ],
+        ),
+        ToolCall(
+            tool="generate_cutlist",
+            args={"name": "eval_face_geometry_plain",
+                  "width": 381, "height": 389, "depth": 457,
+                  "drawer_config": [[133, "drawer"], [110, "drawer"],
+                                    [110, "drawer"]]},
+            label="plain stack: faces + 4 mm gaps tile the 353 mm span",
+            assertions=[
+                Assertion("panels_summary.11.length_mm", Op.APPROX, 381),
+                Assertion("panels_summary.11.width_mm", Op.APPROX, 131),
+                Assertion("panels_summary.12.width_mm", Op.APPROX, 106),
+                Assertion("panels_summary.13.width_mm", Op.APPROX, 108),
+                # no furniture_top → no cap row
+                Assertion("panels_summary", Op.LEN_EQ, 14),
+            ],
+        ),
+    ],
+))
+
+
 def scenarios_by_difficulty(difficulty: str) -> list[Scenario]:
     return [s for s in SCENARIOS if s.difficulty == difficulty]
 

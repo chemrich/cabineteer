@@ -52,6 +52,8 @@ _SHARED_FIELDS = (
     "edge_band_thickness_mm",
     "edge_band_material",
     "edge_band_stock",
+    "face_gap_mm",
+    "furniture_top",
     "carcass_joinery",
     "carcass_corner_style",
     "back_style",
@@ -92,6 +94,11 @@ class SharedDesign:
     edge_band_thickness_mm: Optional[float] = None
     edge_band_material: Optional[str] = None   # "" → derive from panel material
     edge_band_stock: Optional[dict] = None     # strip stock spec (see CabinetConfig)
+    # Show-face geometry: vertical reveal between stacked faces (mm), and the
+    # furniture-top style (front cap strip + flush-bottom face drop) — both
+    # feed cabinet.face_layout, the single source for face/door dimensions.
+    face_gap_mm: Optional[float] = None
+    furniture_top: Optional[bool] = None
 
     # Joinery
     carcass_joinery:  Optional[CarcassJoinery]     = None
@@ -791,6 +798,8 @@ def _config_to_dict(cfg: CabinetConfig) -> dict:
         "edge_band_thickness_mm": cfg.edge_band_thickness_mm,
         "edge_band_material": cfg.edge_band_material,
         "edge_band_stock": dict(cfg.edge_band_stock) if cfg.edge_band_stock else None,
+        "face_gap_mm": cfg.face_gap_mm,
+        "furniture_top": cfg.furniture_top,
         "dado_depth":         cfg.dado_depth,
         "back_rabbet_width":  cfg.back_rabbet_width,
         "back_rabbet_depth":  cfg.back_rabbet_depth,
