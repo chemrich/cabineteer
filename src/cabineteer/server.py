@@ -100,8 +100,10 @@ from .cutlist import (
 from .cabinet import (
     OpeningConfig,
     PartInfo,
+    INNER_FACE_OVERLAY_MM,
     back_capture_geometry,
     build_cabinet_config as _build_cabinet_config,
+    face_layout as _face_layout,
     stack_from_column as _stack_from_column,
     to_opening as _to_opening,
 )
@@ -475,6 +477,24 @@ async def list_tools() -> list[types.Tool]:
                             "rip-from-offcuts line. SharedDesign token."
                         ),
                     },
+                    "face_gap_mm": {
+                        "type": "number", "default": 4.0,
+                        "description": (
+                            "Vertical reveal between stacked show faces (mm, "
+                            "total per joint) — sets false-front heights on "
+                            "cutlists and renders alike. SharedDesign token."
+                        ),
+                    },
+                    "furniture_top": {
+                        "type": "boolean", "default": False,
+                        "description": (
+                            "Stored 'furniture top' style: the top panel "
+                            "gains a front cap strip flush with the face "
+                            "plane (emitted on cutlists) and the lowest face "
+                            "drops to the carcass underside. SharedDesign "
+                            "token."
+                        ),
+                    },
                     "carcass_corner_style": {
                         "type": "string",
                         "enum": ["butt", "miter"],
@@ -768,6 +788,24 @@ async def list_tools() -> list[types.Tool]:
                             "rip-from-offcuts line. SharedDesign token."
                         ),
                     },
+                    "face_gap_mm": {
+                        "type": "number", "default": 4.0,
+                        "description": (
+                            "Vertical reveal between stacked show faces (mm, "
+                            "total per joint) — sets false-front heights on "
+                            "cutlists and renders alike. SharedDesign token."
+                        ),
+                    },
+                    "furniture_top": {
+                        "type": "boolean", "default": False,
+                        "description": (
+                            "Stored 'furniture top' style: the top panel "
+                            "gains a front cap strip flush with the face "
+                            "plane (emitted on cutlists) and the lowest face "
+                            "drops to the carcass underside. SharedDesign "
+                            "token."
+                        ),
+                    },
                     "carcass_corner_style": {
                         "type": "string",
                         "enum": ["butt", "miter"],
@@ -990,6 +1028,24 @@ async def list_tools() -> list[types.Tool]:
                             "with no flush-trim overhang or longer than "
                             "the stock). Omit for the unpriced "
                             "rip-from-offcuts line. SharedDesign token."
+                        ),
+                    },
+                    "face_gap_mm": {
+                        "type": "number", "default": 4.0,
+                        "description": (
+                            "Vertical reveal between stacked show faces (mm, "
+                            "total per joint) — sets false-front heights on "
+                            "cutlists and renders alike. SharedDesign token."
+                        ),
+                    },
+                    "furniture_top": {
+                        "type": "boolean", "default": False,
+                        "description": (
+                            "Stored 'furniture top' style: the top panel "
+                            "gains a front cap strip flush with the face "
+                            "plane (emitted on cutlists) and the lowest face "
+                            "drops to the carcass underside. SharedDesign "
+                            "token."
                         ),
                     },
                     "carcass_corner_style": {
@@ -1333,6 +1389,24 @@ async def list_tools() -> list[types.Tool]:
                             "rip-from-offcuts line. SharedDesign token."
                         ),
                     },
+                    "face_gap_mm": {
+                        "type": "number", "default": 4.0,
+                        "description": (
+                            "Vertical reveal between stacked show faces (mm, "
+                            "total per joint) — sets false-front heights on "
+                            "cutlists and renders alike. SharedDesign token."
+                        ),
+                    },
+                    "furniture_top": {
+                        "type": "boolean", "default": False,
+                        "description": (
+                            "Stored 'furniture top' style: the top panel "
+                            "gains a front cap strip flush with the face "
+                            "plane (emitted on cutlists) and the lowest face "
+                            "drops to the carcass underside. SharedDesign "
+                            "token."
+                        ),
+                    },
                     "carcass_corner_style": {
                         "type": "string",
                         "enum": ["butt", "miter"],
@@ -1619,6 +1693,14 @@ async def list_tools() -> list[types.Tool]:
                             "rip-from-offcuts line. SharedDesign token."
                         ),
                     },
+                    "face_gap_mm": {
+                        "type": "number", "default": 4.0,
+                        "description": (
+                            "Vertical reveal between stacked show faces (mm, "
+                            "total per joint) — sets false-front heights on "
+                            "cutlists and renders alike. SharedDesign token."
+                        ),
+                    },
                     "carcass_corner_style": {
                         "type": "string",
                         "enum": ["butt", "miter"],
@@ -1780,11 +1862,12 @@ async def list_tools() -> list[types.Tool]:
                     "furniture_top": {
                         "type": "boolean",
                         "description": (
-                            "When true, renders a 'furniture top' style: a front cap strip "
-                            "extends the top panel flush to the drawer-face plane, and the "
-                            "bottom of the lowest drawer face drops to the carcass underside."
+                            "'Furniture top' style: a front cap strip extends the top "
+                            "panel flush to the drawer-face plane, and the bottom of the "
+                            "lowest drawer face drops to the carcass underside. Omit to "
+                            "use the cabinet's stored furniture_top flag (a SharedDesign "
+                            "token; also emits the cap strip on cutlists)."
                         ),
-                        "default": False,
                     },
                     "divider_full_height": {
                         "type": "boolean",
@@ -2016,6 +2099,24 @@ async def list_tools() -> list[types.Tool]:
                             "rip-from-offcuts line. SharedDesign token."
                         ),
                     },
+                    "face_gap_mm": {
+                        "type": "number", "default": 4.0,
+                        "description": (
+                            "Vertical reveal between stacked show faces (mm, "
+                            "total per joint) — sets false-front heights on "
+                            "cutlists and renders alike. SharedDesign token."
+                        ),
+                    },
+                    "furniture_top": {
+                        "type": "boolean", "default": False,
+                        "description": (
+                            "Stored 'furniture top' style: the top panel "
+                            "gains a front cap strip flush with the face "
+                            "plane (emitted on cutlists) and the lowest face "
+                            "drops to the carcass underside. SharedDesign "
+                            "token."
+                        ),
+                    },
                     "carcass_corner_style": {
                         "type": "string",
                         "enum": ["butt", "miter"],
@@ -2210,6 +2311,24 @@ async def list_tools() -> list[types.Tool]:
                             "with no flush-trim overhang or longer than "
                             "the stock). Omit for the unpriced "
                             "rip-from-offcuts line. SharedDesign token."
+                        ),
+                    },
+                    "face_gap_mm": {
+                        "type": "number", "default": 4.0,
+                        "description": (
+                            "Vertical reveal between stacked show faces (mm, "
+                            "total per joint) — sets false-front heights on "
+                            "cutlists and renders alike. SharedDesign token."
+                        ),
+                    },
+                    "furniture_top": {
+                        "type": "boolean", "default": False,
+                        "description": (
+                            "Stored 'furniture top' style: the top panel "
+                            "gains a front cap strip flush with the face "
+                            "plane (emitted on cutlists) and the lowest face "
+                            "drops to the carcass underside. SharedDesign "
+                            "token."
                         ),
                     },
                     "carcass_corner_style": {
@@ -2480,6 +2599,24 @@ async def list_tools() -> list[types.Tool]:
                             "with no flush-trim overhang or longer than "
                             "the stock). Omit for the unpriced "
                             "rip-from-offcuts line. SharedDesign token."
+                        ),
+                    },
+                    "face_gap_mm": {
+                        "type": "number", "default": 4.0,
+                        "description": (
+                            "Vertical reveal between stacked show faces (mm, "
+                            "total per joint) — sets false-front heights on "
+                            "cutlists and renders alike. SharedDesign token."
+                        ),
+                    },
+                    "furniture_top": {
+                        "type": "boolean", "default": False,
+                        "description": (
+                            "Stored 'furniture top' style: the top panel "
+                            "gains a front cap strip flush with the face "
+                            "plane (emitted on cutlists) and the lowest face "
+                            "drops to the carcass underside. SharedDesign "
+                            "token."
                         ),
                     },
                     "carcass_corner_style": {
@@ -3148,12 +3285,11 @@ async def list_tools() -> list[types.Tool]:
                         "description": "Gap between adjacent cabinets in mm (0 = butted).",
                     },
                     "furniture_top": {
-                        "type": "boolean", "default": False,
+                        "type": "boolean",
                         "description": (
-                            "Render every cabinet in the 'furniture top, "
-                            "flush bottom' style: the top panel gains a front "
-                            "cap flush with the drawer-face plane and the "
-                            "lowest face drops to the carcass underside."
+                            "Force every cabinet in the run to (or out of) the "
+                            "'furniture top, flush bottom' style. Omit to let "
+                            "each cabinet's stored furniture_top flag decide."
                         ),
                     },
                     "manga": _manga_schema(),
@@ -3374,7 +3510,6 @@ async def _tool_list_joinery(args: dict) -> list[types.TextContent]:
 async def _tool_design_cabinet(args: dict) -> list[types.TextContent]:
     num_drawers       = args.pop("num_drawers", None)
     drawer_proportion = args.pop("drawer_proportion", None)
-    args.pop("furniture_top", None)
     proportions_used: dict = {}
 
     if num_drawers and not args.get("drawer_config"):
@@ -3486,7 +3621,6 @@ async def _tool_design_multi_column_cabinet(args: dict) -> list[types.TextConten
     column_proportion = args.pop("column_proportion",  None)
     num_drawers       = args.pop("num_drawers",        None)
     drawer_proportion = args.pop("drawer_proportion",  None)
-    args.pop("furniture_top", None)
     proportions_used: dict = {}
 
     # ── Resolve column widths ──────────────────────────────────────────────────
@@ -3583,7 +3717,6 @@ async def _tool_design_multi_column_cabinet(args: dict) -> list[types.TextConten
 
 async def _tool_evaluate_cabinet(args: dict) -> list[types.TextContent]:
     door_config_dicts = args.pop("door_configs", []) or []
-    args.pop("furniture_top", None)
     cfg = _build_cabinet_config(args)
 
     door_configs = [_build_door_config(d) for d in door_config_dicts]
@@ -3973,39 +4106,9 @@ def _raw_panels_for_cabinet(
             for row in col_drawers:
                 op = _to_opening(row)
                 opening_h, slot_type = op.height_mm, op.opening_type
-                if slot_type in ("door", "door_pair"):
-                    # Door leaves are show-face panels too — same stock as
-                    # the false fronts. Leaf dims come from DoorConfig so
-                    # the cutlist matches the hinge/pull BOM's geometry.
-                    num_doors = op.num_doors or (2 if slot_type == "door_pair" else 1)
-                    door_cfg = DoorConfig(
-                        opening_width=col_width,
-                        opening_height=opening_h,
-                        num_doors=num_doors,
-                        hinge_key=op.hinge_key or cfg.door_hinge,
-                        door_thickness=op.door_thickness or 18.0,
-                    )
-                    door_note = _face_note(
-                        cfg.face_material,
-                        f"{num_doors} leaf" if num_doors == 1
-                        else f"{num_doors} leaves")
-                    if band_t:
-                        door_note += "; " + _core_note(
-                            round(door_cfg.door_height, 1),
-                            round(door_cfg.door_width, 1), "4 edges")
-                    raw_false_fronts.append(CutlistPanel(
-                        name="door",
-                        length=round(door_cfg.door_height - 2 * band_t, 1),
-                        width=round(door_cfg.door_width - 2 * band_t, 1),
-                        thickness=door_cfg.door_thickness,
-                        quantity=num_doors,
-                        grain_direction="length",
-                        material=cfg.face_material,
-                        edge_band=["all"],
-                        notes=door_note,
-                    ))
-                    continue
                 if slot_type != "drawer":
+                    # Doors and open slots have no drawer box; their show
+                    # faces come from face_layout() below.
                     continue
                 dcfg = _box_config_for_opening(
                     cfg, col_width, opening_h, interior_depth, op)
@@ -4043,23 +4146,94 @@ def _raw_panels_for_cabinet(
                     notes=f"{bottom_label}, dado-captured",
                 ))
 
-                face_w = round(col_width + 2 * dcfg.face_overlay_sides, 1)
-                face_h = round(opening_h + dcfg.face_overlay_top + dcfg.face_overlay_bottom, 1)
-                ff_note = _face_note(cfg.face_material,
-                                     "full-overlay 3 mm reveal")
+    # ── Show faces — single source of truth ───────────────────────────────
+    # All false-front and door-leaf dimensions come from cabinet.face_layout,
+    # the same function the 3D builder extrudes. Widths run flush to the
+    # cabinet exterior at outermost edges and split interior dividers
+    # (INNER_FACE_OVERLAY_MM per neighbour); heights tile the opening span
+    # with cfg.face_gap_mm at every internal boundary. Before 2026-08 this
+    # block sized faces from DrawerConfig's flat 10/3/3 mm overlays — 16 mm
+    # narrow on a flush build, and the height stack physically couldn't fit
+    # (the kids'-desk fronts were cut from that paper).
+    if norm_cols:
+        if columns_raw:
+            bays = [dataclasses.replace(
+                cfg,
+                width=float(col["width_mm"]) + 2 * cfg.side_thickness,
+                columns=[],
+                fixed_shelf_positions=[
+                    float(z) for z in col.get("fixed_shelf_positions", [])],
+                openings=[_to_opening(r) for r in _stack_from_column(col)],
+            ) for col in norm_cols]
+        else:
+            bays = [cfg]
+        gap = cfg.face_gap_mm
+        n_bays = len(bays)
+
+        door_groups: dict[tuple[int, int], list] = {}
+        for p in _face_layout(bays):
+            if p.kind == "drawer_face":
+                left_ov  = (cfg.side_thickness if p.bay == 0
+                            else INNER_FACE_OVERLAY_MM)
+                right_ov = (cfg.side_thickness if p.bay == n_bays - 1
+                            else INNER_FACE_OVERLAY_MM)
+                ff_note = _face_note(
+                    cfg.face_material,
+                    f"full overlay — {left_ov:g} mm left / {right_ov:g} mm "
+                    f"right over the carcass, {gap:g} mm gaps above/below")
                 if band_t:
-                    ff_note += "; " + _core_note(face_w, face_h, "4 edges")
+                    ff_note += "; " + _core_note(
+                        round(p.width, 1), round(p.height, 1), "4 edges")
                 raw_false_fronts.append(CutlistPanel(
                     name="false_front",
-                    length=round(face_w - 2 * band_t, 1),
-                    width=round(face_h - 2 * band_t, 1),
-                    thickness=dcfg.face_thickness,
+                    length=round(p.width - 2 * band_t, 1),
+                    width=round(p.height - 2 * band_t, 1),
+                    thickness=p.thickness,
                     quantity=1,
                     grain_direction="length",
                     material=cfg.face_material,
                     edge_band=["all"],
                     notes=ff_note,
                 ))
+            elif p.kind == "door":
+                door_groups.setdefault((p.bay, p.slot), []).append(p)
+            elif p.kind == "top_cap":
+                raw_false_fronts.append(CutlistPanel(
+                    name="top_front_cap",
+                    length=round(p.width, 1),
+                    width=round(p.height, 1),
+                    thickness=p.thickness,
+                    quantity=1,
+                    grain_direction="length",
+                    material=cfg.face_material,
+                    edge_band=[],
+                    notes=_face_note(
+                        cfg.face_material,
+                        "furniture top front cap — glue to the top panel "
+                        "front edge, flush with the face plane"),
+                ))
+
+        for (_bay, _slot), leaves in sorted(door_groups.items()):
+            p0 = leaves[0]
+            n_leaves = len(leaves)
+            door_note = _face_note(
+                cfg.face_material,
+                (f"{n_leaves} leaf" if n_leaves == 1 else f"{n_leaves} leaves")
+                + " — width set by the hinge overlay")
+            if band_t:
+                door_note += "; " + _core_note(
+                    round(p0.height, 1), round(p0.width, 1), "4 edges")
+            raw_false_fronts.append(CutlistPanel(
+                name="door",
+                length=round(p0.height - 2 * band_t, 1),
+                width=round(p0.width - 2 * band_t, 1),
+                thickness=p0.thickness,
+                quantity=n_leaves,
+                grain_direction="length",
+                material=cfg.face_material,
+                edge_band=["all"],
+                notes=door_note,
+            ))
 
     # edge_band markers mean "this edge WILL be banded" — strip them when
     # the cabinet has no banding so consumers (band BOM lines, the banding
@@ -4552,7 +4726,6 @@ async def _tool_generate_cutlist(args: dict) -> list[types.TextContent]:
         raise ValueError(f"paper must be 'letter' or 'a4', got {paper!r}.")
     name         = _safe_stem(args.pop("name", "cabinet"), kind="cutlist name")
     columns_raw  = args.pop("columns", None)
-    args.pop("furniture_top", None)
 
     cfg = _build_cabinet_config(args)
 
@@ -4701,7 +4874,7 @@ def _cabinet_assembly(
     columns_raw: list | None,
     *,
     num_bays: int = 1,
-    furniture_top: bool = False,
+    furniture_top: bool | None = None,
     divider_full_height: bool = True,
     include_manga: bool = False,
     include_feet: bool = True,
@@ -4778,17 +4951,13 @@ def _cabinet_assembly(
         bay_configs = [cfg] * num_bays
         info = {"width": cfg.width * num_bays, "height": cfg.height, "depth": cfg.depth}
 
-    # When there's a door zone at the top of the column, extend faces to the
-    # carcass exterior top so doors don't leave a gap at the top panel.
-    face_top_overhang = (
-        bay_configs[0].top_thickness if transition_shelf_zs else 0.0
-    )
-
+    # face_top_overhang is no longer computed here — cabinet.face_layout owns
+    # the door-transition rule (doors above drawers extend the face stack to
+    # the carcass exterior top) so the cutlist applies the identical geometry.
     assy, parts = _build_multi_bay_cabinet(
         bay_configs,
         feet_at_dividers=(columns_raw is None),
         furniture_top=furniture_top,
-        face_top_overhang=face_top_overhang,
         transition_shelf_zs=transition_shelf_zs or None,
         divider_top_z=divider_top_z,
         include_manga=include_manga,
@@ -4807,7 +4976,8 @@ async def _tool_visualize_cabinet(args: dict) -> list[types.TextContent]:
     drawer_box_finish = args.pop("drawer_box_finish", None)
     grain_direction   = str(args.pop("grain_direction", "vertical"))
     columns_raw        = args.pop("columns", None)
-    furniture_top      = bool(args.pop("furniture_top", False))
+    _ft                = args.pop("furniture_top", None)
+    furniture_top      = None if _ft is None else bool(_ft)
     divider_full_height = bool(args.pop("divider_full_height", True))
     include_manga      = bool(args.pop("manga", False))
     cfg = _build_cabinet_config(args)
@@ -5187,6 +5357,22 @@ async def _tool_design_pulls(args: dict) -> list[types.TextContent]:
     drawer_slots: list[dict[str, Any]] = []
     door_slots: list[dict[str, Any]] = []
 
+    # Real face rectangles from the single geometry source — keyed by
+    # (bay, slot). DrawerConfig's own face_width/face_height are the legacy
+    # flat 10/3/3 overlays and do NOT match the assembled front.
+    if getattr(cab_cfg, "columns", None):
+        _pull_bays = [dataclasses.replace(
+            cab_cfg,
+            width=col.width_mm + 2 * cab_cfg.side_thickness,
+            columns=[],
+            fixed_shelf_positions=list(col.fixed_shelf_positions),
+            openings=list(col.openings),
+        ) for col in cab_cfg.columns]
+    else:
+        _pull_bays = [cab_cfg]
+    _face_rects = {(q.bay, q.slot): q for q in _face_layout(_pull_bays)
+                   if q.kind == "drawer_face"}
+
     def _walk_stack(stack, interior_width: float, interior_depth: float,
                     column_index: int | None) -> None:
         for slot_idx, item in enumerate(stack):
@@ -5205,6 +5391,10 @@ async def _tool_design_pulls(args: dict) -> list[types.TextContent]:
                 pull_key = op.pull_key or cab_cfg.drawer_pull
                 if pull_key is None:
                     continue  # nothing to place
+                fp = _face_rects.get((column_index or 0, slot_idx))
+                # Feed the real panel dims through the face_overlay knobs so
+                # pull_placements / fit checks operate on the face that will
+                # actually be drilled.
                 dcfg = DrawerConfig(
                     opening_width=interior_width,
                     opening_height=opening_h,
@@ -5212,6 +5402,12 @@ async def _tool_design_pulls(args: dict) -> list[types.TextContent]:
                     slide_key=op.slide_key or cab_cfg.drawer_slide,
                     pull_key=pull_key,
                     pull_vertical=drawer_pull_vertical,
+                    face_overlay_sides=((fp.width - interior_width) / 2
+                                        if fp else 10.0),
+                    face_overlay_top=((fp.height - opening_h) / 2
+                                      if fp else 3.0),
+                    face_overlay_bottom=((fp.height - opening_h) / 2
+                                         if fp else 3.0),
                 )
                 try:
                     placements = dcfg.pull_placements
@@ -5901,7 +6097,8 @@ async def _tool_visualize_project(args: dict) -> list[types.TextContent]:
     open_browser = bool(args.get("open_browser", True))
     tolerance    = float(args.get("tolerance", 0.1))
     gap_mm       = float(args.get("gap_mm", 0.0))
-    furniture_top = bool(args.get("furniture_top", False))
+    _ft           = args.get("furniture_top")
+    furniture_top = None if _ft is None else bool(_ft)
     include_manga = bool(args.get("manga", False))
     shared_feet  = bool(args.get("shared_junction_feet", False))
     finish       = args.get("finish")

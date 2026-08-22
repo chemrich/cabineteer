@@ -250,6 +250,18 @@ class CabinetConfig:
     # and prices boards-to-order from it.
     edge_band_stock: dict | None = None
 
+    # ── Show-face geometry ────────────────────────────────────────────────
+    # Total vertical clearance between two stacked show faces (mm) — the
+    # reveal the builder sets with shims at install. Half is trimmed from
+    # each face at every internal opening boundary. SharedDesign token.
+    face_gap_mm: float = DEFAULT_FACE_GAP_MM
+    # Furniture-top style: the top panel gains a front cap strip flush with
+    # the face plane, and the lowest face drops to the carcass underside.
+    # Persisted here (SharedDesign token) so the CUTLIST sees it — before
+    # 2026-08 this was a render-only flag and the cap strip plus the
+    # bottom-face drop existed in the 3D model but never on paper.
+    furniture_top: bool = False
+
     # Joinery
     dado_depth: float = 9.0  # half thickness dado for shelves/bottom
     back_rabbet_width: float = 9.0  # rabbet width for back panel
@@ -603,13 +615,14 @@ def build_cabinet_config(args: dict) -> CabinetConfig:
     Also accepts the ``design_cabinet`` convenience parameters:
     ``num_drawers`` (+ optional ``drawer_proportion``) auto-computes a
     graduated drawer stack when no explicit stack is given, and
-    ``furniture_top`` (a build/visualization flag with no CabinetConfig
-    counterpart) is ignored — so any config shape a design tool accepted
-    can be rebuilt here.
+    ``furniture_top`` (now a real CabinetConfig field) is normalised to a
+    bool — so any config shape a design tool accepted can be rebuilt here.
     """
     num_drawers       = args.pop("num_drawers", None)
     drawer_proportion = args.pop("drawer_proportion", None)
-    args.pop("furniture_top", None)
+    _ft = args.pop("furniture_top", None)
+    if _ft is not None:
+        args["furniture_top"] = bool(_ft)
     if num_drawers and not args.get("drawer_config") and not args.get("openings"):
         from .proportions import graduated_drawer_heights
         bottom_t   = float(args.get("bottom_thickness", 18))
@@ -1049,6 +1062,200 @@ class PartInfo:
     notes: str = ""
 
 
+# ── Show-face geometry: the single source of truth ────────────────────────
+#
+# Every consumer of face/door dimensions — the 3D assembly builder, the
+# cutlist, the evaluator's pull-fit and clearance checks — reads this
+# layout. Before 2026-08 each derived its own numbers (the 3D used
+# flush-outer/split-inner overlays with an anchored gap stack while the
+# cutlist used DrawerConfig's flat 10/3/3 mm overlays with no gap), and the
+# kids'-desk false fronts were cut 16 mm narrow from paper that could never
+# tile the opening span. One authority, or it happens again.
+
+@dataclass(frozen=True)
+class FacePanel:
+    """One finished show-face panel in cabinet-global coordinates.
+
+    ``kind`` is ``"drawer_face"`` (an applied false front spanning its
+    column's claim), ``"door"`` (a single hinged leaf — pairs emit two
+    panels), or ``"top_cap"`` (the furniture-top front strip). ``bay`` and
+    ``slot`` locate the opening (``-1`` for the cap); ``leaf`` is 0, or 1
+    for the right leaf of a pair. ``x``/``z`` are the left/bottom edge of
+    the panel on the assembled cabinet's front; ``width``/``height`` are
+    the finished panel dimensions the saw must produce.
+    """
+    kind: str
+    bay: int
+    slot: int
+    leaf: int
+    x: float
+    z: float
+    width: float
+    height: float
+    thickness: float
+
+
+def _door_transition_exists(bay_configs: "list[CabinetConfig]") -> bool:
+    """True when any bay has a door slot with anything below it.
+
+    Mirrors the server's transition rule: the render extends the face
+    stack to the carcass exterior top so such doors don't leave a gap at
+    the top panel.
+    """
+    for cfg in bay_configs:
+        for i, op in enumerate(cfg.openings):
+            if op.opening_type in ("door", "door_pair"):
+                if i > 0:
+                    return True
+                break
+    return False
+
+
+def face_layout(
+    bay_configs: "list[CabinetConfig]",
+    *,
+    face_thickness: float = 18.0,
+    outer_overlay: Optional[float] = None,
+    inner_overlay: float = INNER_FACE_OVERLAY_MM,
+    face_gap: Optional[float] = None,
+    face_bottom_overhang: float = 0.0,
+    face_top_overhang: Optional[float] = None,
+    furniture_top: Optional[bool] = None,
+) -> list[FacePanel]:
+    """Compute every show-face panel for a bank of side-by-side bays.
+
+    Widths: drawer faces run flush to the cabinet exterior on outermost
+    edges (``outer_overlay``, default = that bay's side thickness) and
+    split interior dividers at ``inner_overlay`` per neighbour (8 + 8 on an
+    18 mm divider leaves a 2 mm reveal). Door leaves are sized by their
+    HINGE — ``DoorConfig.door_width`` from the hinge's overlay spec —
+    because the hinge, not the divider budget, physically fixes where a
+    hinged leaf sits.
+
+    Heights: the face stack is anchored between the bottom and top panels
+    and each internal opening boundary gives ``face_gap / 2`` to each
+    neighbour, so faces + gaps tile the opening span exactly. ``face_gap``
+    defaults to each bay's ``face_gap_mm``.
+
+    ``furniture_top`` (default: bay 0's config flag) drops the lowest face
+    to the carcass underside, trims the top face by one gap under the cap,
+    and appends the ``top_cap`` strip panel. ``face_top_overhang`` defaults
+    to the door-transition rule: door slots above drawers extend the stack
+    to the carcass exterior top.
+    """
+    from .door import DoorConfig  # lazy — door.py has no cabinet import
+
+    if not bay_configs:
+        return []
+    n_bays = len(bay_configs)
+    cfg0 = bay_configs[0]
+
+    if furniture_top is None:
+        furniture_top = cfg0.furniture_top
+    gap0 = face_gap if face_gap is not None else cfg0.face_gap_mm
+    if furniture_top:
+        face_bottom_overhang = cfg0.bottom_thickness
+        face_top_overhang = -gap0
+    elif face_top_overhang is None:
+        face_top_overhang = (
+            cfg0.top_thickness if _door_transition_exists(bay_configs) else 0.0
+        )
+
+    # Bay X offsets — adjacent bays share a divider (same rule as the 3D).
+    x_offsets: list[float] = []
+    x = 0.0
+    for i, cfg in enumerate(bay_configs):
+        x_offsets.append(x)
+        x += cfg.width - (cfg.side_thickness if i < n_bays - 1 else 0)
+    total_width = x
+
+    panels: list[FacePanel] = []
+    for bay_idx, (cfg, bx) in enumerate(zip(bay_configs, x_offsets)):
+        if not cfg.openings:
+            continue
+        gap = face_gap if face_gap is not None else cfg.face_gap_mm
+
+        is_leftmost  = bay_idx == 0
+        is_rightmost = bay_idx == n_bays - 1
+        left_ov  = (outer_overlay if outer_overlay is not None
+                    else cfg.side_thickness) if is_leftmost else inner_overlay
+        right_ov = (outer_overlay if outer_overlay is not None
+                    else cfg.side_thickness) if is_rightmost else inner_overlay
+        face_w = left_ov + cfg.interior_width + right_ov
+        face_x = 0.0 if is_leftmost else bx + cfg.side_thickness - inner_overlay
+
+        z_face_start = cfg.bottom_thickness - face_bottom_overhang
+        z_face_end   = cfg.height - cfg.top_thickness + face_top_overhang
+        n_slots = len(cfg.openings)
+
+        drawer_slots = [i for i, op in enumerate(cfg.openings)
+                        if op.opening_type == "drawer"]
+        last_drawer = drawer_slots[-1] if drawer_slots else -1
+
+        z_acc = cfg.bottom_thickness
+        for slot_idx, op in enumerate(cfg.openings):
+            opening_h = op.height_mm
+            slot_type = op.opening_type
+            is_first = slot_idx == 0
+            is_last  = slot_idx == n_slots - 1
+
+            if slot_type == "drawer":
+                face_z_bot = z_face_start if is_first else z_acc + gap / 2
+                if slot_idx == last_drawer and is_last:
+                    face_z_top = z_face_end
+                else:
+                    face_z_top = z_acc + opening_h - gap / 2
+                panels.append(FacePanel(
+                    kind="drawer_face", bay=bay_idx, slot=slot_idx, leaf=0,
+                    x=face_x, z=face_z_bot,
+                    width=face_w, height=face_z_top - face_z_bot,
+                    thickness=face_thickness,
+                ))
+            elif slot_type in ("door", "door_pair"):
+                n_doors = op.num_doors or (2 if slot_type == "door_pair" else 1)
+                dc = DoorConfig(
+                    opening_width=cfg.interior_width,
+                    opening_height=opening_h,
+                    num_doors=n_doors,
+                    hinge_key=op.hinge_key or cfg.door_hinge,
+                    door_thickness=op.door_thickness or face_thickness,
+                )
+                inset = dc.hinge.overlay_type.name == "INSET"
+                if inset:
+                    face_z_bot = z_acc + dc.gap_bottom
+                    face_z_top = z_acc + opening_h - dc.gap_top
+                else:
+                    face_z_bot = z_face_start if is_first else z_acc + gap / 2
+                    face_z_top = z_face_end if is_last else z_acc + opening_h - gap / 2
+                interior_left = bx + cfg.side_thickness
+                for leaf in range(n_doors):
+                    if inset:
+                        lx = (interior_left + dc.gap_side if leaf == 0 else
+                              interior_left + cfg.interior_width
+                              - dc.gap_side - dc.door_width)
+                    else:
+                        ov = dc.hinge.overlay
+                        lx = (interior_left - ov if leaf == 0 else
+                              interior_left + cfg.interior_width
+                              + ov - dc.door_width)
+                    panels.append(FacePanel(
+                        kind="door", bay=bay_idx, slot=slot_idx, leaf=leaf,
+                        x=lx, z=face_z_bot,
+                        width=dc.door_width, height=face_z_top - face_z_bot,
+                        thickness=dc.door_thickness,
+                    ))
+            z_acc += opening_h
+
+    if furniture_top:
+        panels.append(FacePanel(
+            kind="top_cap", bay=-1, slot=-1, leaf=0,
+            x=0.0, z=cfg0.height - cfg0.top_thickness,
+            width=total_width, height=cfg0.top_thickness,
+            thickness=face_thickness,
+        ))
+    return panels
+
+
 def build_cabinet(
     cfg: Optional[CabinetConfig] = None,
     suppress_left_side: bool = False,
@@ -1236,16 +1443,16 @@ def build_multi_bay_cabinet(
     foot_height: Optional[float] = None,
     foot_diameter: Optional[float] = None,
     face_thickness: float = 18.0,
-    outer_overlay: float = 18.0,
+    outer_overlay: Optional[float] = None,
     inner_overlay: float = INNER_FACE_OVERLAY_MM,
-    face_gap: float = DEFAULT_FACE_GAP_MM,
+    face_gap: Optional[float] = None,
     face_bottom_overhang: float = 0.0,
-    face_top_overhang: float = 0.0,
+    face_top_overhang: Optional[float] = None,
     include_drawers: bool = True,
     include_faces: bool = True,
     include_feet: bool = True,
     feet_at_dividers: bool = True,
-    furniture_top: bool = False,
+    furniture_top: Optional[bool] = None,
     transition_shelf_zs: Optional[list[float]] = None,
     divider_top_z: Optional[float] = None,
     include_manga: bool = False,
@@ -1325,12 +1532,30 @@ def build_multi_bay_cabinet(
         x += cfg.width - (cfg.side_thickness if i < n_bays - 1 else 0)
     total_width = x
 
-    # ── furniture_top override ─────────────────────────────────────────────────
-    # "Furniture top, flush bottom": the top panel cap extends forward to the face
-    # plane; the lowest drawer face drops to the carcass underside.
-    if furniture_top:
-        face_bottom_overhang = bay_configs[0].bottom_thickness
-        face_top_overhang    = -face_gap        # same reveal as between adjacent faces
+    # ── Show-face geometry — single source of truth ────────────────────────────
+    # face_layout() owns every face/door/cap dimension and position; this
+    # builder only extrudes what it returns. None-valued parameters resolve
+    # inside the layout (furniture_top / face_gap from bay 0's config,
+    # face_top_overhang from the door-transition rule).
+    if furniture_top is None:
+        furniture_top = bay_configs[0].furniture_top
+    _face_panels = face_layout(
+        bay_configs,
+        face_thickness=face_thickness,
+        outer_overlay=outer_overlay,
+        inner_overlay=inner_overlay,
+        face_gap=face_gap,
+        face_bottom_overhang=face_bottom_overhang,
+        face_top_overhang=face_top_overhang,
+        furniture_top=furniture_top,
+    )
+    _drawer_face_at = {(p.bay, p.slot): p for p in _face_panels
+                       if p.kind == "drawer_face"}
+    _door_leaves_at: dict[tuple[int, int], list[FacePanel]] = {}
+    for _p in _face_panels:
+        if _p.kind == "door":
+            _door_leaves_at.setdefault((_p.bay, _p.slot), []).append(_p)
+    _top_cap = next((p for p in _face_panels if p.kind == "top_cap"), None)
 
     # Colours — alternate slightly between bays for clarity
     carcass_colours = [
@@ -1551,14 +1776,14 @@ def build_multi_bay_cabinet(
     # ── Furniture top cap ──────────────────────────────────────────────────────
     # A thin horizontal strip that extends the top panel forward to the drawer
     # face plane, creating a flush furniture-style top edge.
-    if furniture_top:
+    if _top_cap is not None:
         top_cap = (
             cq.Workplane("XY")
-            .box(total_width, face_thickness, cfg0.top_thickness, centered=False)
+            .box(_top_cap.width, _top_cap.thickness, _top_cap.height,
+                 centered=False)
         )
-        cap_z = cfg0.height - cfg0.top_thickness
         assy.add(top_cap, name="top_front_cap",
-                 loc=cq.Location((0.0, -face_thickness, cap_z)),
+                 loc=cq.Location((_top_cap.x, -_top_cap.thickness, _top_cap.z)),
                  color=carcass_colours[0])
         all_parts.append(PartInfo(
             name="top_front_cap",
@@ -1609,163 +1834,54 @@ def build_multi_bay_cabinet(
                 z += opening_h
 
     # ── Drawer faces ───────────────────────────────────────────────────────────
+    # Dimensions and positions come from face_layout(); this block only
+    # extrudes the panels.
     if include_faces:
-        for bay_idx, (cfg, bx) in enumerate(zip(bay_configs, x_offsets)):
-            if not cfg.openings:
-                continue
-
-            is_leftmost  = bay_idx == 0
-            is_rightmost = bay_idx == n_bays - 1
-
-            left_ov  = outer_overlay if is_leftmost  else inner_overlay
-            right_ov = outer_overlay if is_rightmost else inner_overlay
-
-            face_w = left_ov + cfg.interior_width + right_ov
-
-            # Global X of the face's left edge
-            if is_leftmost:
-                face_x = 0.0
-            else:
-                face_x = bx + cfg.side_thickness - inner_overlay
-
-            # Anchor the face stack between the bottom and top panels.
-            # z_face_start = bottom of the lowest face (in assembly Z coordinates)
-            # z_face_end   = top of the highest face
-            z_face_start = cfg.bottom_thickness - face_bottom_overhang
-            z_face_end   = cfg.height - cfg.top_thickness + face_top_overhang
-
-            # Collect drawer openings with their cumulative Z position within the
-            # carcass interior (measured from the top of the bottom panel).
-            drawer_slots: list[tuple[int, int, float]] = []  # (drw_idx, opening_h, opening_z)
-            z_acc = cfg.bottom_thickness
-            for drw_idx, op in enumerate(cfg.openings):
-                if op.opening_type == "drawer":
-                    drawer_slots.append((drw_idx, op.height_mm, z_acc))
-                z_acc += op.height_mm
-
-            n_faces = len(drawer_slots)
-            for face_num, (drw_idx, opening_h, opening_z) in enumerate(drawer_slots):
-                is_last  = face_num == n_faces - 1
-
-                # Bottom edge of this face.
-                # Anchor to z_face_start only when this drawer is the lowest
-                # opening in the column; otherwise (a door/open opening sits
-                # below it) start face_gap/2 above the opening boundary so the
-                # gap straddles the boundary symmetrically.
-                is_first_in_col = drw_idx == 0
-                if is_first_in_col:
-                    face_z_bot = z_face_start
-                else:
-                    face_z_bot = opening_z + face_gap / 2
-
-                # Top edge of this face.
-                # Anchor to z_face_end only when this drawer is also the last
-                # opening in the column (i.e. no door/open openings above it).
-                # If door openings follow, apply the same face_gap/2 trim so the
-                # gap above the top drawer matches the gaps between drawers.
-                is_last_in_col = (drw_idx == len(cfg.openings) - 1)
-                if is_last and is_last_in_col:
-                    face_z_top = z_face_end
-                else:
-                    face_z_top = opening_z + opening_h - face_gap / 2
-
-                face_h = face_z_top - face_z_bot
-                face_shape = (
-                    cq.Workplane("XY")
-                    .box(face_w, face_thickness, face_h, centered=False)
-                )
-                # y = -face_thickness so face sits proud of carcass front
-                assy.add(face_shape,
-                         name=f"bay{bay_idx}_face{drw_idx}",
-                         loc=cq.Location((face_x, -face_thickness, face_z_bot)),
-                         color=face_colour)
-                all_parts.append(PartInfo(
-                    name=f"bay{bay_idx}_face{drw_idx}",
-                    shape=face_shape,
-                    material_thickness=face_thickness,
-                    grain_direction="width",
-                    edge_band=["all"],
-                ))
+        for (bay_idx, drw_idx), p in _drawer_face_at.items():
+            face_shape = (
+                cq.Workplane("XY")
+                .box(p.width, face_thickness, p.height, centered=False)
+            )
+            # y = -face_thickness so face sits proud of carcass front
+            assy.add(face_shape,
+                     name=f"bay{bay_idx}_face{drw_idx}",
+                     loc=cq.Location((p.x, -face_thickness, p.z)),
+                     color=face_colour)
+            all_parts.append(PartInfo(
+                name=f"bay{bay_idx}_face{drw_idx}",
+                shape=face_shape,
+                material_thickness=face_thickness,
+                grain_direction="width",
+                edge_band=["all"],
+            ))
 
     # ── Door panels ────────────────────────────────────────────────────────────
-    # Render a flat face panel for every "door" or "door_pair" slot.
-    # "door_pair" splits into two panels with a 3 mm centre gap.
-    # Uses the same z_face_start / z_face_end anchors as drawer faces so that
-    # in mixed columns all face edges align at the top and bottom.
+    # Render a leaf for every "door" / "door_pair" slot at face_layout's
+    # dimensions: leaf widths come from the HINGE spec (DoorConfig), not the
+    # divider-claim budget — a hinged leaf sits where its hinge puts it.
+    # Heights share the drawer faces' anchored stack so mixed columns align.
     if include_faces:
-        door_gap_centre = 3.0
-        for bay_idx, (cfg, bx) in enumerate(zip(bay_configs, x_offsets)):
-            if not cfg.openings:
-                continue
-
-            is_leftmost  = bay_idx == 0
-            is_rightmost = bay_idx == n_bays - 1
-            left_ov  = outer_overlay if is_leftmost  else inner_overlay
-            right_ov = outer_overlay if is_rightmost else inner_overlay
-            face_w   = left_ov + cfg.interior_width + right_ov
-            face_x   = 0.0 if is_leftmost else bx + cfg.side_thickness - inner_overlay
-
-            z_face_start = cfg.bottom_thickness - face_bottom_overhang
-            z_face_end   = cfg.height - cfg.top_thickness + face_top_overhang
-            n_slots      = len(cfg.openings)
-
-            z_acc = cfg.bottom_thickness
-            for slot_idx, op in enumerate(cfg.openings):
-                opening_h  = op.height_mm
-                slot_type  = op.opening_type
-                if slot_type in ("door", "door_pair"):
-                    is_first = slot_idx == 0
-                    is_last  = slot_idx == n_slots - 1
-                    # Door face starts at z_acc + face_gap/2 — same rule as between
-                    # adjacent drawers.  The transition shelf sits behind the face.
-                    face_z_bot = z_face_start if is_first else z_acc + face_gap / 2
-                    face_z_top = z_face_end   if is_last  else z_acc + opening_h - face_gap / 2
-                    face_h = face_z_top - face_z_bot
-
-                    # Honor a per-opening num_doors override — the hinge BOM
-                    # already bills by it, so rendering must agree.
-                    n_doors = op.num_doors or (2 if slot_type == "door_pair" else 1)
-                    if n_doors == 2:
-                        door_w = (face_w - door_gap_centre) / 2
-                        for i, dx in enumerate(
-                            [face_x, face_x + door_w + door_gap_centre]
-                        ):
-                            ds = (
-                                cq.Workplane("XY")
-                                .box(door_w, face_thickness, face_h, centered=False)
-                            )
-                            assy.add(
-                                ds,
-                                name=f"bay{bay_idx}_door{slot_idx}_{i}",
-                                loc=cq.Location((dx, -face_thickness, face_z_bot)),
-                                color=face_colour,
-                            )
-                            all_parts.append(PartInfo(
-                                name=f"bay{bay_idx}_door{slot_idx}_{i}",
-                                shape=ds,
-                                material_thickness=face_thickness,
-                                grain_direction="length",
-                                edge_band=["all"],
-                            ))
-                    else:
-                        ds = (
-                            cq.Workplane("XY")
-                            .box(face_w, face_thickness, face_h, centered=False)
-                        )
-                        assy.add(
-                            ds,
-                            name=f"bay{bay_idx}_door{slot_idx}",
-                            loc=cq.Location((face_x, -face_thickness, face_z_bot)),
-                            color=face_colour,
-                        )
-                        all_parts.append(PartInfo(
-                            name=f"bay{bay_idx}_door{slot_idx}",
-                            shape=ds,
-                            material_thickness=face_thickness,
-                            grain_direction="length",
-                            edge_band=["all"],
-                        ))
-                z_acc += opening_h
+        for (bay_idx, slot_idx), leaves in _door_leaves_at.items():
+            for p in leaves:
+                ds = (
+                    cq.Workplane("XY")
+                    .box(p.width, p.thickness, p.height, centered=False)
+                )
+                name = (f"bay{bay_idx}_door{slot_idx}_{p.leaf}"
+                        if len(leaves) > 1 else f"bay{bay_idx}_door{slot_idx}")
+                assy.add(
+                    ds,
+                    name=name,
+                    loc=cq.Location((p.x, -p.thickness, p.z)),
+                    color=face_colour,
+                )
+                all_parts.append(PartInfo(
+                    name=name,
+                    shape=ds,
+                    material_thickness=p.thickness,
+                    grain_direction="length",
+                    edge_band=["all"],
+                ))
 
     # ── Pull hardware ──────────────────────────────────────────────────────────
     # For each bay that has a drawer_pull configured, place the pull body on
@@ -1787,39 +1903,14 @@ def build_multi_bay_cabinet(
             if pull_body is None:
                 continue  # flush / recessed pulls have nothing to render
 
-            is_leftmost  = bay_idx == 0
-            is_rightmost = bay_idx == n_bays - 1
-            left_ov  = outer_overlay if is_leftmost  else inner_overlay
-            right_ov = outer_overlay if is_rightmost else inner_overlay
-            face_w   = left_ov + cfg.interior_width + right_ov
-            face_x   = 0.0 if is_leftmost else bx + cfg.side_thickness - inner_overlay
-
-            z_face_start = cfg.bottom_thickness - face_bottom_overhang
-            z_face_end   = cfg.height - cfg.top_thickness + face_top_overhang
-
-            drawer_slots: list[tuple[int, float, float]] = []
-            z_acc = cfg.bottom_thickness
-            for drw_idx, op in enumerate(cfg.openings):
-                if op.opening_type == "drawer":
-                    drawer_slots.append((drw_idx, op.height_mm, z_acc))
-                z_acc += op.height_mm
-
-            n_faces = len(drawer_slots)
             pull_py = -face_thickness - pull_spec.projection_mm / 2.0
-
-            for face_num, (drw_idx, opening_h, opening_z) in enumerate(drawer_slots):
-                is_last  = face_num == n_faces - 1
-                is_first_in_col = drw_idx == 0
-                is_last_in_col = drw_idx == len(cfg.openings) - 1
-                face_z_bot = z_face_start if is_first_in_col else opening_z + face_gap / 2
-                if is_last and is_last_in_col:
-                    face_z_top = z_face_end
-                else:
-                    face_z_top = opening_z + opening_h - face_gap / 2
-                face_h = face_z_top - face_z_bot
-
+            for drw_idx, _ in enumerate(cfg.openings):
+                p = _drawer_face_at.get((bay_idx, drw_idx))
+                if p is None:
+                    continue
                 try:
-                    placements = _pull_positions(face_w, face_h, pull_spec, cfg.drawer_pull)
+                    placements = _pull_positions(
+                        p.width, p.height, pull_spec, cfg.drawer_pull)
                 except ValueError:
                     continue
 
@@ -1828,18 +1919,18 @@ def build_multi_bay_cabinet(
                     assy.add(
                         pull_body,
                         name=f"bay{bay_idx}_pull{drw_idx}_{p_idx}",
-                        loc=cq.Location((face_x + cx, pull_py, face_z_bot + cz)),
+                        loc=cq.Location((p.x + cx, pull_py, p.z + cz)),
                         color=pull_colour,
                     )
 
     # ── Door pull hardware ─────────────────────────────────────────────────────
-    # Place a pull body on every door / door_pair face for bays with door_pull set.
+    # Place a pull body on every door / door_pair leaf for bays with door_pull
+    # set. Leaf rectangles come from face_layout.
     if include_faces:
         from .pulls import pull_positions as _pull_positions
         pull_colour = cq.Color(0.40, 0.40, 0.45, 1.0)
-        door_gap_centre = 3.0
 
-        for bay_idx, (cfg, bx) in enumerate(zip(bay_configs, x_offsets)):
+        for bay_idx, cfg in enumerate(bay_configs):
             if not cfg.door_pull or not cfg.openings:
                 continue
             try:
@@ -1851,77 +1942,40 @@ def build_multi_bay_cabinet(
             if pull_body is None:
                 continue
 
-            is_leftmost  = bay_idx == 0
-            is_rightmost = bay_idx == n_bays - 1
-            left_ov  = outer_overlay if is_leftmost  else inner_overlay
-            right_ov = outer_overlay if is_rightmost else inner_overlay
-            face_w   = left_ov + cfg.interior_width + right_ov
-            face_x   = 0.0 if is_leftmost else bx + cfg.side_thickness - inner_overlay
-
-            z_face_start = cfg.bottom_thickness - face_bottom_overhang
-            z_face_end   = cfg.height - cfg.top_thickness + face_top_overhang
-            n_slots      = len(cfg.openings)
-            pull_py      = -face_thickness - pull_spec.projection_mm / 2.0
-
-            z_acc = cfg.bottom_thickness
-            for slot_idx, op in enumerate(cfg.openings):
-                opening_h = op.height_mm
-                slot_type = op.opening_type
-                if slot_type in ("door", "door_pair"):
-                    is_first   = slot_idx == 0
-                    is_last    = slot_idx == n_slots - 1
-                    face_z_bot = z_face_start if is_first else z_acc + face_gap / 2
-                    face_z_top = z_face_end   if is_last  else z_acc + opening_h - face_gap / 2
-                    face_h     = face_z_top - face_z_bot
-
-                    n_doors = op.num_doors or (2 if slot_type == "door_pair" else 1)
-                    if n_doors == 2:
-                        # Pair: left leaf hinges left (outer), right leaf hinges right (outer).
-                        # Pulls go on the latch (inner) edges regardless of cfg.door_hinge_side.
-                        door_w = (face_w - door_gap_centre) / 2
-                        pair_hinge_sides: list[HingeSide] = ["left", "right"]
-                        for door_i, door_x in enumerate(
-                            [face_x, face_x + door_w + door_gap_centre]
-                        ):
-                            hs = pair_hinge_sides[door_i]
-                            cx = door_pull_x_center(door_w, pull_spec, hs, cfg.door_pull_inset_mm, vertical=True)
-                            try:
-                                placements = _pull_positions(
-                                    door_w, face_h, pull_spec, cfg.door_pull,
-                                    x_override_mm=cx,
-                                    vertical="upper_third",
-                                )
-                            except ValueError:
-                                continue
-                            for p_idx, placement in enumerate(placements):
-                                _cx, cz = placement.center
-                                assy.add(
-                                    pull_body,
-                                    name=f"bay{bay_idx}_doorpull{slot_idx}_{door_i}_{p_idx}",
-                                    loc=cq.Location((door_x + _cx, pull_py, face_z_bot + cz)),
-                                    color=pull_colour,
-                                )
+            pull_py = -face_thickness - pull_spec.projection_mm / 2.0
+            for slot_idx, _ in enumerate(cfg.openings):
+                leaves = _door_leaves_at.get((bay_idx, slot_idx))
+                if not leaves:
+                    continue
+                for p in leaves:
+                    if len(leaves) == 2:
+                        # Pair: left leaf hinges left (outer), right leaf hinges
+                        # right (outer). Pulls go on the latch (inner) edges
+                        # regardless of cfg.door_hinge_side.
+                        hs: HingeSide = "left" if p.leaf == 0 else "right"
+                        pull_name = f"bay{bay_idx}_doorpull{slot_idx}_{p.leaf}"
                     else:
-                        cx = door_pull_x_center(
-                            face_w, pull_spec, cfg.door_hinge_side, cfg.door_pull_inset_mm, vertical=True
+                        hs = cfg.door_hinge_side
+                        pull_name = f"bay{bay_idx}_doorpull{slot_idx}"
+                    cx = door_pull_x_center(
+                        p.width, pull_spec, hs, cfg.door_pull_inset_mm,
+                        vertical=True)
+                    try:
+                        placements = _pull_positions(
+                            p.width, p.height, pull_spec, cfg.door_pull,
+                            x_override_mm=cx,
+                            vertical="upper_third",
                         )
-                        try:
-                            placements = _pull_positions(
-                                face_w, face_h, pull_spec, cfg.door_pull,
-                                x_override_mm=cx,
-                                vertical="upper_third",
-                            )
-                        except ValueError:
-                            continue
-                        for p_idx, placement in enumerate(placements):
-                            _cx, cz = placement.center
-                            assy.add(
-                                pull_body,
-                                name=f"bay{bay_idx}_doorpull{slot_idx}_{p_idx}",
-                                loc=cq.Location((face_x + _cx, pull_py, face_z_bot + cz)),
-                                color=pull_colour,
-                            )
-                z_acc += opening_h
+                    except ValueError:
+                        continue
+                    for p_idx, placement in enumerate(placements):
+                        _cx, cz = placement.center
+                        assy.add(
+                            pull_body,
+                            name=f"{pull_name}_{p_idx}",
+                            loc=cq.Location((p.x + _cx, pull_py, p.z + cz)),
+                            color=pull_colour,
+                        )
 
     # ── Feet ───────────────────────────────────────────────────────────────────
     if include_feet:
