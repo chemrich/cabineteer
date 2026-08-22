@@ -2032,9 +2032,14 @@ def check_face_clearances(
                               Half is removed from the top of the lower face and
                               half from the bottom of the upper face.
         face_bottom_overhang: How far the lowest face extends below the bottom
-                              panel top surface (mm).
+                              panel top surface (mm). None (default) lets
+                              face_layout resolve it — furniture_top drop,
+                              door-transition extension and all.
         face_top_overhang:    How far the highest face extends above the top
-                              panel bottom surface (mm).
+                              panel bottom surface (mm). None (default) as above.
+        furniture_top:        Tri-state furniture-top style; None (default)
+                              reads bay 0's stored config flag, matching what
+                              the cutlist and render produce.
         min_face_gap:         Minimum acceptable clearance between any two faces.
 
     Returns:
