@@ -378,3 +378,193 @@ class TestRenderMatchesLayout:
             xlen, zlen, xmin, zmin = boxes[name]
             assert abs(xlen - p.width) < TOL, name
             assert abs(xmin - p.x) < TOL, name
+
+
+# ── Review-fix regressions (PR #88 xhigh review, 2026-08-22) ─────────────────
+# Each class pins one confirmed finding from the multi-agent review of the
+# original face_layout commit. Numbers reference the review's finding list.
+
+
+class TestEvaluatorSeesRealGeometry:
+    """#1: check_face_clearances must validate the SAME geometry the cutlist
+    and render produce — furniture_top drop and transition extension
+    included, no pinned overrides."""
+
+    def _bad_cfg(self):
+        # furniture_top steals one gap from the top face: a 5 mm opening
+        # goes negative (5 − 2 − 4 = −1) only in the real geometry.
+        return build_cabinet_config(dict(
+            width=381, height=389, depth=457, furniture_top=True,
+            drawer_config=[[240, "drawer"], [108, "drawer"], [5, "drawer"]]))
+
+    def test_furniture_top_negative_face_errors(self):
+        from cabineteer.evaluation import evaluate_cabinet, Severity
+        issues = [i for i in evaluate_cabinet(self._bad_cfg())
+                  if i.check == "face_clearance"
+                  and i.severity == Severity.ERROR]
+        assert issues, "untileable furniture_top stack must error"
+
+    def test_cutlist_refuses_the_same_stack(self):
+        # #2: generate_cutlist never evaluates — the panel builder itself
+        # must refuse to print a ≤ 0 mm row onto shop paper.
+        with pytest.raises(ValueError, match="face_gap_mm"):
+            _raw_panels_for_cabinet(self._bad_cfg(), None)
+
+
+class TestHardwareBomUsesRealFaces:
+    def test_hinge_count_bills_the_stack_leaf(self):
+        # #3: leaf is cut at 916 mm (stack), not DoorConfig's 896 —
+        # hinges_for_height crosses the 900 mm threshold: 3, not 2.
+        from cabineteer.cutlist import hinge_lines_for_cabinet_config
+        cfg = build_cabinet_config(dict(
+            width=600, height=1182, depth=550,
+            drawer_config=[[246, "drawer"], [900, "door"]]))
+        hinge = next(l for l in hinge_lines_for_cabinet_config(cfg)
+                     if l.category == "hinge")
+        assert hinge.pieces_needed == 3
+        assert "@ 916 mm" in hinge.notes
+
+    def test_pull_count_bills_the_real_face_width(self):
+        # #4: 776-wide flush face crosses the dual-pull threshold the
+        # legacy interior+20 face (760) stayed under.
+        from cabineteer.cutlist import pull_lines_for_cabinet_config
+        cfg = build_cabinet_config(dict(
+            width=776, height=200, depth=457,
+            drawer_pull="topknobs-hb-160",
+            drawer_config=[[164, "drawer"]]))
+        line = next(l for l in pull_lines_for_cabinet_config(cfg)
+                    if l.category == "pull")
+        assert line.pieces_needed == 2
+
+
+class TestDesignPullsRealLeaf:
+    def test_door_branch_reports_stack_leaf_height(self):
+        # #5: drilling coords must land on the leaf that gets cut (590),
+        # not DoorConfig's opening − reveals phantom (534).
+        import asyncio, json
+        from cabineteer.server import TOOL_DISPATCH
+        r = asyncio.get_event_loop().run_until_complete(
+            TOOL_DISPATCH["design_pulls"]({
+                "width": 609.6, "height": 720, "depth": 550,
+                "door_pull": "topknobs-hb-160",
+                "drawer_config": [[110, "drawer"], [538, "door_pair"]]}))
+        slot = json.loads(r[0].text)["door_slots"][0]
+        assert abs(slot["leaf_height_mm"] - 590.0) < 0.1
+        assert slot["num_doors"] == 2
+
+
+class TestFurnitureTopCutlistInteractions:
+    def test_cap_covers_top_front_edge_not_banded(self):
+        # #6: the cap and hardwood banding both claimed the top panel's
+        # front edge — the capped edge is now unbanded and un-shrunk.
+        cfg = build_cabinet_config(dict(
+            width=381, height=389, depth=457, furniture_top=True,
+            edge_band_mode="hardwood", edge_band_thickness_mm=3.175,
+            edge_band_material="birch",
+            drawer_config=[[133, "drawer"], [110, "drawer"], [110, "drawer"]]))
+        raw_c, _, _, _ = _raw_panels_for_cabinet(cfg, None)
+        top = next(p for p in raw_c if p.name == "top")
+        assert "front" not in top.edge_band
+        assert "top_front_cap" in top.notes
+        # sides keep their banded front edge
+        side = next(p for p in raw_c if p.name == "side")
+        assert "front" in side.edge_band
+
+    def test_openingless_furniture_top_cap_reaches_paper(self):
+        # #7: the cap must not hide behind the openings gate — an open
+        # cubby with furniture_top still has the strip.
+        cfg = build_cabinet_config(dict(
+            width=600, height=400, depth=400, furniture_top=True))
+        _, _, _, ff = _raw_panels_for_cabinet(cfg, None)
+        assert [p.name for p in ff] == ["top_front_cap"]
+
+    def test_cap_gets_its_own_part_id_family(self):
+        # #11: TC family, not folded into the carcass top's T-sequence.
+        from cabineteer.cutlist import assign_part_ids
+        cfg = build_cabinet_config(dict(
+            width=381, height=389, depth=457, furniture_top=True,
+            drawer_config=[[133, "drawer"], [110, "drawer"], [110, "drawer"]]))
+        raw_c, _, _, ff = _raw_panels_for_cabinet(cfg, None)
+        panels = raw_c + ff
+        assign_part_ids(panels)
+        ids = {p.name: p.part_id for p in panels}
+        assert ids["top_front_cap"].startswith("TC")
+        assert ids["top"] == "T1"
+
+
+class TestLayoutSemantics:
+    def test_transition_counts_every_door_slot(self):
+        # #10: a [door, drawer, door] column's top door extends to the
+        # exterior top exactly like a [drawer, door]'s.
+        cfg = build_cabinet_config(dict(
+            width=600, height=900, depth=500,
+            drawer_config=[[400, "door"], [200, "drawer"], [264, "door"]]))
+        doors = [p for p in face_layout([cfg]) if p.kind == "door"]
+        top_door = max(doors, key=lambda p: p.z)
+        assert abs(top_door.z + top_door.height - cfg.height) < TOL
+
+    def test_explicit_overhangs_beat_stored_furniture_top(self):
+        # #12: an explicit overhang argument wins over the stored flag.
+        cfg = build_cabinet_config(dict(
+            width=381, height=389, depth=457, furniture_top=True,
+            drawer_config=[[133, "drawer"], [110, "drawer"], [110, "drawer"]]))
+        faces = _drawer_faces(face_layout(
+            [cfg], face_bottom_overhang=0.0, face_top_overhang=0.0))
+        assert [round(p.height, 1) for p in faces] == [131.0, 106.0, 108.0]
+
+    def test_per_bay_face_gap(self):
+        # #13: each bay tiles its own span with its OWN face_gap_mm.
+        mk = lambda g: build_cabinet_config(dict(
+            width=381, height=389, depth=457, face_gap_mm=g,
+            drawer_config=[[133, "drawer"], [110, "drawer"], [110, "drawer"]]))
+        faces = _drawer_faces(face_layout([mk(4.0), mk(2.5)]))
+        by_bay: dict = {}
+        for p in faces:
+            by_bay.setdefault(p.bay, []).append(round(p.height, 2))
+        assert by_bay[0] == [131.0, 106.0, 108.0]
+        assert by_bay[1] == [131.75, 107.5, 108.75]
+
+    def test_shared_bay_transform_matches_manual_split(self):
+        # #15: cabinet.bays_from_config is THE column→bay transform —
+        # dict and ColumnConfig inputs produce identical bays.
+        from cabineteer.cabinet import bays_from_config
+        cols = [
+            {"width_mm": 609.6, "openings": [[353, "drawer"]]},
+            {"width_mm": 283.6, "openings": [[353, "drawer"]]},
+        ]
+        cfg = build_cabinet_config(dict(
+            width=1219.2, height=389, depth=457, columns=list(cols)))
+        via_cfg = bays_from_config(cfg)
+        via_dicts = bays_from_config(cfg, cols)
+        assert [(b.width, [o.height_mm for o in b.openings])
+                for b in via_cfg] == \
+               [(b.width, [o.height_mm for o in b.openings])
+                for b in via_dicts]
+
+    def test_thin_divider_error_names_a_real_knob(self):
+        # #8: the overlap error must not advise setting inner_overlay —
+        # a module constant no config field or tool parameter exposes.
+        from cabineteer.evaluation import evaluate_cabinet, Severity
+        cfg = build_cabinet_config(dict(
+            width=700, height=400, depth=450, side_thickness=15,
+            columns=[
+                {"width_mm": 320, "openings": [[364, "drawer"]]},
+                {"width_mm": 320, "openings": [[364, "drawer"]]}]))
+        msgs = [i.message for i in evaluate_cabinet(cfg)
+                if i.check == "face_clearance"
+                and i.severity == Severity.ERROR]
+        assert msgs and "inner_overlay ≤" not in msgs[0]
+        assert "divider/side stock" in msgs[0]
+
+
+class TestDescribeNamesTheTokens:
+    def test_furniture_top_and_gap_in_prose(self):
+        # #14 (describe half): every token gets plain English.
+        from cabineteer.describe import describe_design
+        cfg = build_cabinet_config(dict(
+            width=381, height=389, depth=457, furniture_top=True,
+            face_gap_mm=2.5,
+            drawer_config=[[133, "drawer"], [110, "drawer"], [110, "drawer"]]))
+        prose = describe_design(cfg)["prose"]
+        assert "cap strip" in prose
+        assert "2.5 mm reveal" in prose

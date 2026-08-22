@@ -150,6 +150,9 @@ _PART_ID_CODES = (
     ("shelf", "SH"),
     ("worktop", "WT"),
     ("back", "BK"),
+    # Before the carcass "top" family — startswith would otherwise fold the
+    # furniture-top cap strip into the top panel's T-sequence.
+    ("top_front_cap", "TC"),
     ("side", "S"),
     ("bottom", "B"),
     ("top", "T"),
@@ -1437,12 +1440,23 @@ def pull_lines_for_cabinet_config(
     """
     from .drawer import DrawerConfig
     from .door import DoorConfig
+    from .cabinet import bays_from_config, face_layout
 
     lines: list[HardwareLine] = []
     interior_depth = cab_cfg.depth - getattr(cab_cfg, "back_thickness", 6.0)
 
-    def _walk_stack(stack, interior_width: float) -> None:
-        for item in stack:
+    # Pull counts depend on face width (dual-pull threshold, fit checks) —
+    # bill against the REAL face from face_layout, not DrawerConfig's
+    # legacy flat overlays, or the BOM disagrees with the placements
+    # design_pulls reports and the pulls the render draws.
+    _face_rects = {
+        (q.bay, q.slot): q
+        for q in face_layout(bays_from_config(cab_cfg, columns_raw))
+        if q.kind == "drawer_face"
+    }
+
+    def _walk_stack(stack, interior_width: float, bay_idx: int = 0) -> None:
+        for slot_idx, item in enumerate(stack):
             # Normalize OpeningConfig objects, dicts, and raw [height, type]
             # rows the same way — per-opening overrides survive all shapes.
             op = to_opening(item)
@@ -1451,12 +1465,19 @@ def pull_lines_for_cabinet_config(
             hinge_key_override = op.hinge_key
 
             if slot_type == "drawer":
+                fp = _face_rects.get((bay_idx, slot_idx))
                 dcfg = DrawerConfig(
                     opening_width=interior_width,
                     opening_height=opening_h,
                     opening_depth=interior_depth,
                     slide_key=op.slide_key or cab_cfg.drawer_slide,
                     pull_key=pull_key_override or cab_cfg.drawer_pull,
+                    face_overlay_sides=((fp.width - interior_width) / 2
+                                        if fp else 10.0),
+                    face_overlay_top=((fp.height - opening_h) / 2
+                                      if fp else 3.0),
+                    face_overlay_bottom=((fp.height - opening_h) / 2
+                                         if fp else 3.0),
                 )
                 line = pull_line_from_drawer(dcfg)
                 if line is not None:
@@ -1477,13 +1498,13 @@ def pull_lines_for_cabinet_config(
                     lines.append(line)
 
     if columns_raw:
-        for col in columns_raw:
+        for bay_idx, col in enumerate(columns_raw):
             col_w = float(col["width_mm"])
             stack = stack_from_column(col)
-            _walk_stack(stack, col_w)
+            _walk_stack(stack, col_w, bay_idx)
     elif getattr(cab_cfg, "columns", None):
-        for col in cab_cfg.columns:
-            _walk_stack(col.openings, col.width_mm)
+        for bay_idx, col in enumerate(cab_cfg.columns):
+            _walk_stack(col.openings, col.width_mm, bay_idx)
     else:
         _walk_stack(cab_cfg.openings, cab_cfg.interior_width)
 
@@ -1621,12 +1642,25 @@ def hinge_lines_for_cabinet_config(cab_cfg, columns_raw: list | None = None) -> 
     """
     from .hardware import get_hinge
     from .door import DoorConfig
+    from .cabinet import bays_from_config, face_layout
+
+    # Hinge counts bill by the REAL leaf height — face_layout's
+    # stack-anchored panel, the one that gets cut and hung — not
+    # DoorConfig's opening−reveal approximation. At the manufacturer
+    # thresholds (900/1600/2000) the 4+ mm difference under-ordered
+    # hinges for the taller actual leaf.
+    _door_leaf_h = {
+        (q.bay, q.slot): q.height
+        for q in face_layout(bays_from_config(cab_cfg, columns_raw))
+        if q.kind == "door" and q.leaf == 0
+    }
 
     # One HardwareLine per resolved hinge SKU, in first-seen order.
     lines: list[HardwareLine] = []
 
-    def _hinges_from_stack(stack, interior_width: float) -> None:
-        for item in stack:
+    def _hinges_from_stack(stack, interior_width: float,
+                           bay_idx: int) -> None:
+        for slot_idx, item in enumerate(stack):
             op = to_opening(item)
             opening_h, slot_type = op.height_mm, op.opening_type
             if slot_type not in ("door", "door_pair"):
@@ -1643,14 +1677,16 @@ def hinge_lines_for_cabinet_config(cab_cfg, columns_raw: list | None = None) -> 
                 num_doors=num_doors,
                 hinge_key=hinge_key,
             )
-            count = dcfg.total_hinge_count
+            leaf_h = _door_leaf_h.get((bay_idx, slot_idx), dcfg.door_height)
+            per_leaf = hinge_spec.hinges_for_height(
+                leaf_h, dcfg.door_weight_kg)
+            count = per_leaf * num_doors
             if count <= 0:
                 continue
             sku = hinge_spec.part_number or hinge_key
             # State the leaf census so the count is checkable against the
             # physical build — "12 hinges" alone read as under-bought to
             # Charlie (2026-07-28); hinges are sold EACH, never in pairs.
-            per_leaf = count // num_doors if num_doors else count
             cup = ("INSERTA tool-free cup — no screws"
                    if hinge_spec.mounting_plate_part
                    and not hinge_spec.cup_screws else "screw-on cup")
@@ -1663,7 +1699,7 @@ def hinge_lines_for_cabinet_config(cab_cfg, columns_raw: list | None = None) -> 
                 pieces_needed=count,
                 pack_quantity=1,
                 notes=(f"(sold each; {per_leaf} per leaf × {num_doors} "
-                       f"leaf/leaves @ {opening_h:.0f} mm; {cup})"),
+                       f"leaf/leaves @ {leaf_h:.0f} mm; {cup})"),
             ))
             # The hinge SKU is the cup/arm only — the CLIP mounting plate
             # is a separate purchase, one per hinge (caught at order time,
@@ -1697,14 +1733,14 @@ def hinge_lines_for_cabinet_config(cab_cfg, columns_raw: list | None = None) -> 
                 ))
 
     if columns_raw:
-        for col in columns_raw:
+        for bay_idx, col in enumerate(columns_raw):
             stack = stack_from_column(col)
-            _hinges_from_stack(stack, float(col["width_mm"]))
+            _hinges_from_stack(stack, float(col["width_mm"]), bay_idx)
     elif getattr(cab_cfg, "columns", None):
-        for col in cab_cfg.columns:
-            _hinges_from_stack(col.openings, col.width_mm)
+        for bay_idx, col in enumerate(cab_cfg.columns):
+            _hinges_from_stack(col.openings, col.width_mm, bay_idx)
     else:
-        _hinges_from_stack(cab_cfg.openings, cab_cfg.interior_width)
+        _hinges_from_stack(cab_cfg.openings, cab_cfg.interior_width, 0)
 
     return consolidate_hardware_lines(lines)
 

@@ -1095,19 +1095,60 @@ class FacePanel:
     thickness: float
 
 
+def bays_from_config(
+    cfg: "CabinetConfig",
+    columns: Optional[list] = None,
+) -> "list[CabinetConfig]":
+    """Expand a multi-column config into per-column bay configs.
+
+    THE one column→bay transform — the evaluator, the cutlist, design_pulls
+    and the 3D assembly all split columns through here, so face_layout's
+    consumers can never disagree about what a bay is. ``columns`` accepts
+    the raw tool-argument dicts ({"width_mm": …, "openings": […]}); omitted,
+    ``cfg.columns`` (ColumnConfig objects) is used. A single-stack config
+    returns ``[cfg]`` unchanged.
+
+    ``dataclasses.replace`` carries EVERY cabinet-level field into the bay
+    config — a hand-picked field list here once silently dropped box-stock
+    options on the visualize path.
+    """
+    import dataclasses
+
+    cols = columns if columns is not None else cfg.columns
+    if not cols:
+        return [cfg]
+    bays: list[CabinetConfig] = []
+    for col in cols:
+        if isinstance(col, dict):
+            width_mm = float(col["width_mm"])
+            openings = [to_opening(r) for r in stack_from_column(col)]
+            shelves = [float(z) for z in col.get("fixed_shelf_positions", [])]
+        else:
+            width_mm = col.width_mm
+            openings = list(col.openings)
+            shelves = list(col.fixed_shelf_positions)
+        bays.append(dataclasses.replace(
+            cfg,
+            width=width_mm + 2 * cfg.side_thickness,
+            columns=[],
+            openings=openings,
+            fixed_shelf_positions=shelves,
+        ))
+    return bays
+
+
 def _door_transition_exists(bay_configs: "list[CabinetConfig]") -> bool:
     """True when any bay has a door slot with anything below it.
 
-    Mirrors the server's transition rule: the render extends the face
-    stack to the carcass exterior top so such doors don't leave a gap at
-    the top panel.
+    The render extends the face stack to the carcass exterior top so such
+    doors don't leave a gap at the top panel. Every door-type slot is
+    considered, not just the first — a [door, drawer, door] column's top
+    door needs the extension exactly as much as a [drawer, door]'s.
     """
     for cfg in bay_configs:
         for i, op in enumerate(cfg.openings):
-            if op.opening_type in ("door", "door_pair"):
-                if i > 0:
-                    return True
-                break
+            if i > 0 and op.opening_type in ("door", "door_pair"):
+                return True
     return False
 
 
@@ -1118,7 +1159,7 @@ def face_layout(
     outer_overlay: Optional[float] = None,
     inner_overlay: float = INNER_FACE_OVERLAY_MM,
     face_gap: Optional[float] = None,
-    face_bottom_overhang: float = 0.0,
+    face_bottom_overhang: Optional[float] = None,
     face_top_overhang: Optional[float] = None,
     furniture_top: Optional[bool] = None,
 ) -> list[FacePanel]:
@@ -1139,9 +1180,12 @@ def face_layout(
 
     ``furniture_top`` (default: bay 0's config flag) drops the lowest face
     to the carcass underside, trims the top face by one gap under the cap,
-    and appends the ``top_cap`` strip panel. ``face_top_overhang`` defaults
-    to the door-transition rule: door slots above drawers extend the stack
-    to the carcass exterior top.
+    and appends the ``top_cap`` strip panel. Explicitly-passed
+    ``face_bottom_overhang`` / ``face_top_overhang`` always win — over the
+    furniture_top style AND the door-transition default (door slots above
+    anything extend the stack to the carcass exterior top). Per-bay values
+    (gap, anchors, drop) resolve from EACH bay's own config; only the
+    furniture_top decision itself and the cap strip are cabinet-global.
     """
     from .door import DoorConfig  # lazy — door.py has no cabinet import
 
@@ -1152,14 +1196,7 @@ def face_layout(
 
     if furniture_top is None:
         furniture_top = cfg0.furniture_top
-    gap0 = face_gap if face_gap is not None else cfg0.face_gap_mm
-    if furniture_top:
-        face_bottom_overhang = cfg0.bottom_thickness
-        face_top_overhang = -gap0
-    elif face_top_overhang is None:
-        face_top_overhang = (
-            cfg0.top_thickness if _door_transition_exists(bay_configs) else 0.0
-        )
+    has_transition = _door_transition_exists(bay_configs)
 
     # Bay X offsets — adjacent bays share a divider (same rule as the 3D).
     x_offsets: list[float] = []
@@ -1174,6 +1211,22 @@ def face_layout(
         if not cfg.openings:
             continue
         gap = face_gap if face_gap is not None else cfg.face_gap_mm
+        # Anchor overhangs: explicit argument > furniture_top style >
+        # door-transition rule > flush-to-panels. Per-bay thicknesses.
+        if face_bottom_overhang is not None:
+            fbo = face_bottom_overhang
+        elif furniture_top:
+            fbo = cfg.bottom_thickness
+        else:
+            fbo = 0.0
+        if face_top_overhang is not None:
+            fto = face_top_overhang
+        elif furniture_top:
+            fto = -gap
+        elif has_transition:
+            fto = cfg.top_thickness
+        else:
+            fto = 0.0
 
         is_leftmost  = bay_idx == 0
         is_rightmost = bay_idx == n_bays - 1
@@ -1184,8 +1237,8 @@ def face_layout(
         face_w = left_ov + cfg.interior_width + right_ov
         face_x = 0.0 if is_leftmost else bx + cfg.side_thickness - inner_overlay
 
-        z_face_start = cfg.bottom_thickness - face_bottom_overhang
-        z_face_end   = cfg.height - cfg.top_thickness + face_top_overhang
+        z_face_start = cfg.bottom_thickness - fbo
+        z_face_end   = cfg.height - cfg.top_thickness + fto
         n_slots = len(cfg.openings)
 
         drawer_slots = [i for i, op in enumerate(cfg.openings)
@@ -1446,7 +1499,7 @@ def build_multi_bay_cabinet(
     outer_overlay: Optional[float] = None,
     inner_overlay: float = INNER_FACE_OVERLAY_MM,
     face_gap: Optional[float] = None,
-    face_bottom_overhang: float = 0.0,
+    face_bottom_overhang: Optional[float] = None,
     face_top_overhang: Optional[float] = None,
     include_drawers: bool = True,
     include_faces: bool = True,
@@ -1496,10 +1549,10 @@ def build_multi_bay_cabinet(
         furniture_top:        When True, adds a "furniture top" style: a front cap
                               strip extends the top panel forward to the drawer-face
                               plane, and the bottom of the lowest drawer face drops
-                              to the underside of the carcass bottom panel
-                              (face_bottom_overhang is automatically set to
-                              bottom_thickness; an explicit face_bottom_overhang
-                              argument is ignored when furniture_top=True).
+                              to the underside of the carcass bottom panel.
+                              Explicitly-passed face_bottom_overhang /
+                              face_top_overhang arguments take precedence
+                              over the furniture_top defaults.
         include_manga:        Add a manga scale-reference stack to every drawer
                               box (viewer prop, excluded from the parts list).
                               Raises ValueError naming the drawer if any

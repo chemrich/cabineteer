@@ -304,6 +304,21 @@ def describe_design(cfg: CabinetConfig) -> dict:
     if hardware_phrases:
         lines.append("Hardware: " + "; ".join(hardware_phrases) + ".")
     lines.append("Construction: " + material_phrase + ".")
+    # Show-face style — name the tokens in plain English (project
+    # convention: describe_design explains every token, like the
+    # "grooved-in back").
+    if getattr(cfg, "furniture_top", False):
+        lines.append(
+            "Furniture-top style: a front cap strip closes the top panel's "
+            "front edge flush with the drawer faces, and the lowest face "
+            "drops to the carcass underside."
+        )
+    _gap = getattr(cfg, "face_gap_mm", 4.0)
+    if _gap != 4.0:
+        lines.append(
+            f"Faces are cut for a {_gap:g} mm reveal between fronts "
+            f"(face_gap_mm)."
+        )
 
     if not openings["stack_fills_interior"] and ops:
         if is_multi_column:

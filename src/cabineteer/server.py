@@ -103,6 +103,7 @@ from .cabinet import (
     INNER_FACE_OVERLAY_MM,
     back_capture_geometry,
     build_cabinet_config as _build_cabinet_config,
+    bays_from_config as _bays_from_config,
     face_layout as _face_layout,
     stack_from_column as _stack_from_column,
     to_opening as _to_opening,
@@ -3996,16 +3997,25 @@ def _raw_panels_for_cabinet(
                      notes=_notes(tb_bevel, _capture_note("bottom"),
                                   _core_note(tb_length, bottom_depth,
                                              "front edge"))),
+        # A furniture-top cap strip is glued onto the top panel's front edge
+        # (see the top_front_cap row), so that edge is NEVER banded and the
+        # core is not shrunk for it — pre-fix the row demanded banding on the
+        # same edge the cap covers, two contradictory instructions at once.
         CutlistPanel(name="top", length=tb_length,
-                     width=top_depth - band_t,
+                     width=(top_depth if cfg.furniture_top
+                            else top_depth - band_t),
                      thickness=cfg.top_thickness, quantity=1,
                      grain_direction="length", material=cfg.carcass_material,
-                     edge_band=["front"],
+                     edge_band=[] if cfg.furniture_top else ["front"],
                      notes=_notes(tb_bevel,
                                   "full depth — rear edge flush with sides, "
                                   "caps the back" if under_top and not geo.machined
                                   else "",
+                                  "front edge covered by the top_front_cap "
+                                  "strip — no banding" if cfg.furniture_top
+                                  else "",
                                   _capture_note("top"),
+                                  "" if cfg.furniture_top else
                                   _core_note(tb_length, top_depth,
                                              "front edge"))),
     ]
@@ -4155,24 +4165,28 @@ def _raw_panels_for_cabinet(
     # block sized faces from DrawerConfig's flat 10/3/3 mm overlays — 16 mm
     # narrow on a flush build, and the height stack physically couldn't fit
     # (the kids'-desk fronts were cut from that paper).
-    if norm_cols:
-        if columns_raw:
-            bays = [dataclasses.replace(
-                cfg,
-                width=float(col["width_mm"]) + 2 * cfg.side_thickness,
-                columns=[],
-                fixed_shelf_positions=[
-                    float(z) for z in col.get("fixed_shelf_positions", [])],
-                openings=[_to_opening(r) for r in _stack_from_column(col)],
-            ) for col in norm_cols]
-        else:
-            bays = [cfg]
+    # Gate on furniture_top too — an opening-less furniture_top cabinet
+    # still has its cap strip (the layout emits it regardless of openings;
+    # gating on norm_cols alone recreated the render-only-cap divergence).
+    if norm_cols or cfg.furniture_top:
+        bays = _bays_from_config(cfg, columns_raw if columns_raw else None)
         gap = cfg.face_gap_mm
         n_bays = len(bays)
+
+        def _guard(kind: str, p) -> None:
+            # A gap-trimmed face can go ≤ 0 where the old flat overlays never
+            # could — refuse to print garbage rows onto shop paper.
+            if p.width <= 0 or p.height <= 0:
+                raise ValueError(
+                    f"{kind} for opening {p.slot} in column {p.bay} computes "
+                    f"{p.width:.1f} × {p.height:.1f} mm — the opening is too "
+                    f"small for face_gap_mm {gap:g}. Fix the opening stack "
+                    "(evaluate_cabinet reports this as face_clearance).")
 
         door_groups: dict[tuple[int, int], list] = {}
         for p in _face_layout(bays):
             if p.kind == "drawer_face":
+                _guard("false front", p)
                 left_ov  = (cfg.side_thickness if p.bay == 0
                             else INNER_FACE_OVERLAY_MM)
                 right_ov = (cfg.side_thickness if p.bay == n_bays - 1
@@ -4215,6 +4229,7 @@ def _raw_panels_for_cabinet(
 
         for (_bay, _slot), leaves in sorted(door_groups.items()):
             p0 = leaves[0]
+            _guard("door leaf", p0)
             n_leaves = len(leaves)
             door_note = _face_note(
                 cfg.face_material,
@@ -4892,7 +4907,6 @@ def _cabinet_assembly(
         # Build one bay config per column so build_multi_bay_cabinet renders
         # the correct dividers.  Bay exterior width = column interior width +
         # 2×side_thickness; the multi-bay function handles shared dividers.
-        side_t = cfg.side_thickness
         # Determine which column indices have door slots, then assign hinge sides:
         # leftmost door column → "left", rightmost → "right" (French-door style).
         _has_door = [
@@ -4903,28 +4917,19 @@ def _cabinet_assembly(
         _door_col_indices = [i for i, has in enumerate(_has_door) if has]
         _rightmost_door_col = _door_col_indices[-1] if _door_col_indices else -1
 
-        bay_configs = []
-        for col_idx, col in enumerate(columns_raw):
-            if col_idx == _rightmost_door_col and len(_door_col_indices) > 1:
-                hinge_side = "right"
-            else:
-                hinge_side = cfg.door_hinge_side
-            # dataclasses.replace carries EVERY cabinet-level field into the
-            # bay config (drawer_box_thickness/prefinished, leg/shelf-pin/dado
-            # params, joinery specs, …) — a hand-picked field list here once
-            # silently dropped the box-stock options on the visualize path.
-            # The stack is passed through in the user's order: cutlist and
-            # evaluation consume it unsorted, so rendering must agree.
-            bay_configs.append(dataclasses.replace(
-                cfg,
-                width=float(col["width_mm"]) + 2 * side_t,
-                door_hinge_side=hinge_side,
-                columns=[],
-                fixed_shelf_positions=[
-                    float(z) for z in col.get("fixed_shelf_positions", [])
-                ],
-                openings=[_to_opening(r) for r in _stack_from_column(col)],
-            ))
+        # The column→bay split is cabinet.bays_from_config — the same
+        # transform the cutlist, evaluator, and design_pulls use, so every
+        # consumer of face_layout agrees on what a bay is. Only the render
+        # layers hinge sides on top.
+        bay_configs = [
+            dataclasses.replace(
+                bay,
+                door_hinge_side=(
+                    "right" if col_idx == _rightmost_door_col
+                    and len(_door_col_indices) > 1 else cfg.door_hinge_side),
+            )
+            for col_idx, bay in enumerate(_bays_from_config(cfg, columns_raw))
+        ]
         total_width = cfg.width
         info = {"width": total_width, "height": cfg.height, "depth": cfg.depth,
                 "columns": len(bay_configs)}
@@ -5357,21 +5362,19 @@ async def _tool_design_pulls(args: dict) -> list[types.TextContent]:
     drawer_slots: list[dict[str, Any]] = []
     door_slots: list[dict[str, Any]] = []
 
-    # Real face rectangles from the single geometry source — keyed by
-    # (bay, slot). DrawerConfig's own face_width/face_height are the legacy
-    # flat 10/3/3 overlays and do NOT match the assembled front.
-    if getattr(cab_cfg, "columns", None):
-        _pull_bays = [dataclasses.replace(
-            cab_cfg,
-            width=col.width_mm + 2 * cab_cfg.side_thickness,
-            columns=[],
-            fixed_shelf_positions=list(col.fixed_shelf_positions),
-            openings=list(col.openings),
-        ) for col in cab_cfg.columns]
-    else:
-        _pull_bays = [cab_cfg]
-    _face_rects = {(q.bay, q.slot): q for q in _face_layout(_pull_bays)
+    # Real face/leaf rectangles from the single geometry source — keyed by
+    # (bay, slot). DrawerConfig/DoorConfig's own face dims are the legacy
+    # bases and do NOT match the assembled front.
+    _pull_panels = _face_layout(_bays_from_config(cab_cfg))
+    _face_rects = {(q.bay, q.slot): q for q in _pull_panels
                    if q.kind == "drawer_face"}
+    _door_rects = {(q.bay, q.slot): q for q in _pull_panels
+                   if q.kind == "door" and q.leaf == 0}
+    _door_leaf_count: dict[tuple[int, int], int] = {}
+    for q in _pull_panels:
+        if q.kind == "door":
+            k = (q.bay, q.slot)
+            _door_leaf_count[k] = _door_leaf_count.get(k, 0) + 1
 
     def _walk_stack(stack, interior_width: float, interior_depth: float,
                     column_index: int | None) -> None:
@@ -5430,7 +5433,16 @@ async def _tool_design_pulls(args: dict) -> list[types.TextContent]:
                 hinge_key = op.hinge_key or cab_cfg.door_hinge
                 if pull_key is None:
                     continue
-                num_doors = 2 if slot_type == "door_pair" else 1
+                dk = (column_index or 0, slot_idx)
+                # Honor per-opening num_doors (the layout and hinge BOM do)
+                # and feed the real stack-anchored leaf height through the
+                # reveal knobs so door_height — and therefore every pull
+                # placement — matches the leaf that actually gets drilled.
+                num_doors = _door_leaf_count.get(
+                    dk, op.num_doors or (2 if slot_type == "door_pair" else 1))
+                _leaf = _door_rects.get(dk)
+                _gap_tb = ((opening_h - _leaf.height) / 2
+                           if _leaf is not None else 2.0)
                 dcfg = DoorConfig(
                     opening_width=interior_width,
                     opening_height=opening_h,
@@ -5438,6 +5450,8 @@ async def _tool_design_pulls(args: dict) -> list[types.TextContent]:
                     hinge_key=hinge_key,
                     pull_key=pull_key,
                     pull_vertical=door_pull_vertical,
+                    gap_top=_gap_tb,
+                    gap_bottom=_gap_tb,
                 )
                 try:
                     placements = dcfg.pull_placements
