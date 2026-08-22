@@ -796,11 +796,12 @@ def check_edge_band_face_gap(cab_cfg: CabinetConfig) -> list[Issue]:
     two adjacent faces close their shared gap by 2× that. Hardwood mode
     shrinks cores instead and never fires this check.
     """
-    from .cabinet import DEFAULT_FACE_GAP_MM
-
     if getattr(cab_cfg, "edge_band_mode", "none") != "hot_melt":
         return []
     thk = float(getattr(cab_cfg, "edge_band_thickness_mm", 0.6))
+    # The cabinet's own reveal, not the build default — face_gap_mm is a
+    # SharedDesign token (Charlie shims at 2.5, the code default is 4).
+    face_gap = float(getattr(cab_cfg, "face_gap_mm", 4.0))
 
     def _stacks():
         if cab_cfg.columns:
@@ -819,7 +820,7 @@ def check_edge_band_face_gap(cab_cfg: CabinetConfig) -> list[Issue]:
     if not adjacent_pairs:
         return []
 
-    gap_after = DEFAULT_FACE_GAP_MM - 2 * thk
+    gap_after = face_gap - 2 * thk
     # <= : a gap closed to exactly 0 mm means the faces physically touch
     # and bind — that's a collision, not a narrow reveal.
     if gap_after <= 0:
@@ -827,17 +828,17 @@ def check_edge_band_face_gap(cab_cfg: CabinetConfig) -> list[Issue]:
             check="edge_band_face_gap",
             severity=Severity.ERROR,
             message=(f"Hot-melt banding grows each face edge {thk:g} mm — "
-                     f"adjacent faces close their {DEFAULT_FACE_GAP_MM:g} mm "
+                     f"adjacent faces close their {face_gap:g} mm "
                      f"gap by {2 * thk:g} mm and COLLIDE "
                      f"({adjacent_pairs} face pair(s)). Use hardwood mode "
                      "(core-compensated) or trim face cores."),
-            value=2 * thk, limit=DEFAULT_FACE_GAP_MM,
+            value=2 * thk, limit=face_gap,
         )]
     if gap_after < MIN_FACE_REVEAL_MM:
         return [Issue(
             check="edge_band_face_gap",
             severity=Severity.WARNING,
-            message=(f"Hot-melt banding narrows the {DEFAULT_FACE_GAP_MM:g} mm "
+            message=(f"Hot-melt banding narrows the {face_gap:g} mm "
                      f"face gap to {gap_after:g} mm across "
                      f"{adjacent_pairs} face pair(s) — under the "
                      f"{MIN_FACE_REVEAL_MM:g} mm minimum reveal. Consider "
@@ -1989,11 +1990,12 @@ def check_drawer_carcass_clearances(cab_cfg: CabinetConfig) -> list[Issue]:
 def check_face_clearances(
     bay_configs: "list[CabinetConfig]",
     inner_overlay: float = 8.0,
-    outer_overlay: float = 18.0,
+    outer_overlay: Optional[float] = None,
     divider_thickness: float = 18.0,
     face_gap: float = 4.0,
-    face_bottom_overhang: float = 0.0,
-    face_top_overhang: float = 0.0,
+    face_bottom_overhang: Optional[float] = None,
+    face_top_overhang: Optional[float] = None,
+    furniture_top: Optional[bool] = None,
     min_face_gap: float = 2.0,
 ) -> list[Issue]:
     """Check clearances between all drawer and door faces in a multi-bay assembly.
@@ -2030,9 +2032,14 @@ def check_face_clearances(
                               Half is removed from the top of the lower face and
                               half from the bottom of the upper face.
         face_bottom_overhang: How far the lowest face extends below the bottom
-                              panel top surface (mm).
+                              panel top surface (mm). None (default) lets
+                              face_layout resolve it — furniture_top drop,
+                              door-transition extension and all.
         face_top_overhang:    How far the highest face extends above the top
-                              panel bottom surface (mm).
+                              panel bottom surface (mm). None (default) as above.
+        furniture_top:        Tri-state furniture-top style; None (default)
+                              reads bay 0's stored config flag, matching what
+                              the cutlist and render produce.
         min_face_gap:         Minimum acceptable clearance between any two faces.
 
     Returns:
@@ -2070,7 +2077,6 @@ def check_face_clearances(
     # ── Horizontal gaps at bay boundaries ─────────────────────────────────────
     if n_bays > 1:
         h_gap = divider_thickness - 2 * inner_overlay
-        correct_overlay = (divider_thickness - min_face_gap) / 2
 
         for boundary in range(n_bays - 1):
             left_cfg  = bay_configs[boundary]
@@ -2087,11 +2093,11 @@ def check_face_clearances(
                     severity=Severity.ERROR,
                     message=(
                         f"Bay {boundary}–{boundary + 1}: faces overlap by "
-                        f"{-h_gap:.1f} mm at the {divider_thickness:.0f} mm divider. "
-                        f"inner_overlay {inner_overlay:.0f} mm × 2 = "
-                        f"{2 * inner_overlay:.0f} mm > divider width. "
-                        f"Set inner_overlay ≤ {correct_overlay:.1f} mm for a "
-                        f"{min_face_gap:.0f} mm gap."
+                        f"{-h_gap:.1f} mm at the {divider_thickness:.0f} mm divider — "
+                        f"each neighbouring face claims {inner_overlay:.0f} mm of it "
+                        f"(fixed INNER_FACE_OVERLAY_MM). Use divider/side stock ≥ "
+                        f"{2 * inner_overlay + min_face_gap:.0f} mm so the faces "
+                        f"clear with a {min_face_gap:.0f} mm reveal."
                     ),
                     value=h_gap,
                     limit=0.0,
@@ -2109,48 +2115,47 @@ def check_face_clearances(
                 ))
 
     # ── Per-bay vertical face heights and inter-face gaps ─────────────────────
-    for bay_idx, cfg in enumerate(bay_configs):
-        if not cfg.openings:
-            continue
+    # Geometry comes from cabinet.face_layout — the same single source the 3D
+    # builder and the cutlist consume — so this check can never drift from
+    # what actually gets rendered and cut. Door pairs share one z-range, so
+    # only the first leaf of each slot is inspected.
+    from .cabinet import face_layout
 
-        z_face_start = cfg.bottom_thickness - face_bottom_overhang
-        z_face_end   = cfg.height - cfg.top_thickness + face_top_overhang
+    face_panels = face_layout(
+        bay_configs,
+        outer_overlay=outer_overlay,
+        inner_overlay=inner_overlay,
+        face_gap=face_gap,
+        face_bottom_overhang=face_bottom_overhang,
+        face_top_overhang=face_top_overhang,
+        furniture_top=furniture_top,
+    )
+    per_bay: dict[int, list] = {}
+    for p in face_panels:
+        if p.kind in ("drawer_face", "door") and p.leaf == 0:
+            per_bay.setdefault(p.bay, []).append(p)
 
-        # All opening types (drawer, door, door_pair) contribute a face panel.
-        face_slots: list[tuple[int, float, float]] = []  # (slot_idx, opening_h, opening_z)
-        z_acc = cfg.bottom_thickness
-        for slot_idx, op in enumerate(cfg.openings):
-            face_slots.append((slot_idx, op.height_mm, z_acc))
-            z_acc += op.height_mm
-
-        n_faces = len(face_slots)
+    for bay_idx, panels in sorted(per_bay.items()):
         prev_face_z_top: Optional[float] = None
+        for p in sorted(panels, key=lambda q: q.z):
+            label = f"bay{bay_idx}_slot{p.slot}"
 
-        for face_num, (slot_idx, opening_h, opening_z) in enumerate(face_slots):
-            is_first = face_num == 0
-            is_last  = face_num == n_faces - 1
-
-            face_z_bot = z_face_start if is_first else opening_z + face_gap / 2
-            face_z_top = z_face_end   if is_last  else opening_z + opening_h - face_gap / 2
-            face_h     = face_z_top - face_z_bot
-            label      = f"bay{bay_idx}_slot{slot_idx}"
-
-            if face_h <= 0:
+            if p.height <= 0:
                 issues.append(Issue(
                     check="face_clearance",
                     severity=Severity.ERROR,
                     message=(
-                        f"{label}: computed face height {face_h:.1f} mm ≤ 0. "
-                        f"Opening {opening_h:.0f} mm is too small to accommodate "
+                        f"{label}: computed face height {p.height:.1f} mm ≤ 0. "
+                        f"The opening is too small to accommodate "
                         f"face_gap {face_gap:.0f} mm (±{face_gap / 2:.1f} mm per side)."
                     ),
                     part_a=label,
-                    value=face_h,
+                    value=p.height,
                     limit=0.0,
                 ))
 
             if prev_face_z_top is not None:
-                inter_gap = face_z_bot - prev_face_z_top
+                inter_gap = p.z - prev_face_z_top
                 if inter_gap < min_face_gap:
                     issues.append(Issue(
                         check="face_clearance",
@@ -2164,7 +2169,7 @@ def check_face_clearances(
                         limit=min_face_gap,
                     ))
 
-            prev_face_z_top = face_z_top
+            prev_face_z_top = p.z + p.height
 
     return issues
 
@@ -2308,6 +2313,18 @@ def evaluate_cabinet(
     all_issues.extend(check_column_widths(cab_cfg))
     all_issues.extend(check_column_stack_heights(cab_cfg))
     all_issues.extend(check_cabinet_pull_consistency(cab_cfg))
+
+    # Face-stack clearances on the real geometry (cabinet.face_layout) —
+    # never wired in before 2026-08, which is how paper with an untileable
+    # face stack (the kids'-desk fronts) evaluated clean. No overrides
+    # passed: the check must validate the SAME geometry the cutlist and
+    # render produce (furniture_top drop, transition extension included).
+    from .cabinet import bays_from_config as _bays_from_config
+    all_issues.extend(check_face_clearances(
+        _bays_from_config(cab_cfg),
+        divider_thickness=cab_cfg.side_thickness,
+        face_gap=cab_cfg.face_gap_mm,
+    ))
 
     # Hardware constraints checked parametrically — no assembly required.
     _openings_to_check = []
