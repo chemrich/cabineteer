@@ -816,6 +816,39 @@ _s(Scenario(
 ))
 
 _s(Scenario(
+    name="drawer_lock_lip_swallows_bottom_groove",
+    prompt=(
+        "My drawer-lock bit leaves a 7 mm lip on 12 mm boxes — check the "
+        "pedestal before I cut."
+    ),
+    tags=["evaluation", "drawer", "joinery"],
+    difficulty="advanced",
+    tool_calls=[
+        ToolCall(
+            tool="evaluate_cabinet",
+            args={
+                "width": 381, "height": 389, "depth": 457,
+                "side_thickness": 18, "bottom_thickness": 18,
+                "top_thickness": 18,
+                "drawer_box_thickness": 12,
+                "drawer_slide": "blum_tandem_plus_563h",
+                "drawer_joinery": "drawer_lock",
+                "drawer_corner_lip_mm": 7.0,
+                "openings": [{"height_mm": 133, "opening_type": "drawer"}],
+            },
+            label="lip deeper than the socket",
+            assertions=[
+                # 7 mm lip on 12 mm stock leaves a 5 mm socket, and the 6 mm
+                # bottom groove would break out through the lip at every
+                # corner. Caught on the pure-Python path, no CadQuery.
+                Assertion("issues", Op.HAS_ERROR),
+                Assertion("summary.errors", Op.GTE, 1),
+            ],
+        ),
+    ],
+))
+
+_s(Scenario(
     name="cutlist_custom_sheet",
     prompt="Generate a cutlist for a 900 mm cabinet using 5x5 Baltic birch sheets.",
     tags=["cutlist"],

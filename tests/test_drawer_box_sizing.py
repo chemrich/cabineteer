@@ -21,6 +21,11 @@ from cabineteer.drawer import (
     drawer_part_offsets,
 )
 from cabineteer.joinery import DrawerJoineryStyle
+from cabineteer.evaluation import (
+    Severity,
+    check_drawer_joinery,
+    evaluate_cabinet,
+)
 from cabineteer.server import _raw_panels_for_cabinet
 from cabineteer.assembly import build_drawer_box_plans
 
@@ -205,3 +210,55 @@ def test_box_steps_do_not_claim_both_parts_run_full_size():
         assert not ("run the box DEPTH" in text and "run the box WIDTH" in text)
         if boxes[0].laps_front:
             assert "lip" in text.lower()
+
+
+# ─── The groove has to stop inside the socket ─────────────────────────────
+
+class TestGrooveVersusLip:
+    """A front-lapping corner holds the sides off the ends of the box by one
+    lip. Plow the bottom groove deeper than the socket and it runs out
+    through that lip at all four corners — and the bottom's corners reach
+    past the ends of the sides with nothing under them."""
+
+    def _box(self, lip, groove=6.0):
+        return _cfg(DrawerJoineryStyle.DRAWER_LOCK, BOXES[0],
+                    corner_lip_mm=lip, bottom_dado_depth=groove)
+
+    def test_a_sane_lip_passes(self):
+        issues = check_drawer_joinery(self._box(lip=2.0))
+        assert not [i for i in issues
+                    if i.check == "drawer_bottom_groove_vs_lip"]
+
+    def test_a_lip_that_swallows_the_groove_errors(self):
+        # 12 mm stock, 7 mm lip -> 5 mm socket, and a 6 mm groove breaks out.
+        issues = [i for i in check_drawer_joinery(self._box(lip=7.0))
+                  if i.check == "drawer_bottom_groove_vs_lip"]
+        assert len(issues) == 1
+        assert issues[0].severity == Severity.ERROR
+        assert issues[0].limit == pytest.approx(5.0)
+
+    def test_the_boundary_is_allowed(self):
+        """Groove exactly as deep as the socket still stops at its floor."""
+        issues = check_drawer_joinery(self._box(lip=6.0, groove=6.0))
+        assert not [i for i in issues
+                    if i.check == "drawer_bottom_groove_vs_lip"]
+
+    def test_side_lapping_is_not_subject_to_it(self):
+        for style in (DrawerJoineryStyle.BUTT, DrawerJoineryStyle.HALF_LAP,
+                      DrawerJoineryStyle.QQQ):
+            cfg = _cfg(style, BOXES[0], bottom_dado_depth=6.0)
+            assert not [i for i in check_drawer_joinery(cfg)
+                        if i.check == "drawer_bottom_groove_vs_lip"]
+
+    def test_it_reaches_evaluate_cabinet_without_cadquery(self):
+        """The joinery checks used to run only on the CadQuery path, which is
+        not the path any of the paper goes through."""
+        cfg = _cabinet(DrawerJoineryStyle.DRAWER_LOCK, lip=7.0)
+        errs = [i for i in evaluate_cabinet(cfg)
+                if i.check == "drawer_bottom_groove_vs_lip"]
+        assert errs and errs[0].severity == Severity.ERROR
+
+    def test_a_good_cabinet_still_evaluates_clean(self):
+        cfg = _cabinet(DrawerJoineryStyle.DRAWER_LOCK, lip=2.0)
+        assert not [i for i in evaluate_cabinet(cfg)
+                    if i.severity == Severity.ERROR]
