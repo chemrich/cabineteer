@@ -371,11 +371,26 @@ class TestDesignDrawer:
         data = self._drawer(joinery_style="half_lap")
         assert data["joinery"]["style"] == "half_lap"
 
-    def test_drawer_lock_joinery_has_lock_step(self):
+    def test_drawer_lock_reports_its_lip_and_lap(self):
         data = self._drawer(joinery_style="drawer_lock")
         j = data["joinery"]
-        assert "lock_step_depth_x_mm" in j
         assert j["requires_router_bit"] is True
+        # The two numbers a shop can act on: which way the corner laps, and
+        # the wall the bit leaves — which is what sets the side length.
+        assert j["corner_lap"] == "front"
+        assert j["lip_mm"] > 0
+        assert j["lip_is_measured"] is False   # nominal, nobody measured one
+        assert data["side_panel_length_mm"] == pytest.approx(
+            data["box_depth_mm"] - 2 * j["lip_mm"])
+        assert data["front_back_panel_length_mm"] == pytest.approx(
+            data["box_width_mm"])
+
+    def test_measured_lip_flows_through_to_the_side_length(self):
+        data = self._drawer(joinery_style="drawer_lock", corner_lip_mm=2.0)
+        assert data["joinery"]["lip_mm"] == pytest.approx(2.0)
+        assert data["joinery"]["lip_is_measured"] is True
+        assert data["side_panel_length_mm"] == pytest.approx(
+            data["box_depth_mm"] - 4.0)
 
     def test_slide_info_present(self):
         data = self._drawer()

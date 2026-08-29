@@ -274,8 +274,14 @@ _s(Scenario(
             assertions=[
                 Assertion("joinery.style", Op.EQ, "drawer_lock"),
                 Assertion("joinery.requires_router_bit", Op.IS_TRUE),
-                Assertion("joinery.lock_step_depth_x_mm", Op.GT, 0),
-                Assertion("joinery.lock_step_depth_y_mm", Op.GT, 0),
+                # Front-lapping: the front/back spans the full box width and
+                # the sides are cut short by two lips. Reporting the lip is
+                # what lets a shop set the side length at all.
+                Assertion("joinery.corner_lap", Op.EQ, "front"),
+                Assertion("joinery.lip_mm", Op.GT, 0),
+                Assertion("joinery.socket_depth_mm", Op.GT, 0),
+                Assertion("front_back_panel_length_mm", Op.APPROX, 558.0),
+                Assertion("side_panel_length_mm", Op.LT, 500.0),
             ],
         ),
     ],
@@ -760,6 +766,83 @@ _s(Scenario(
                 Assertion("cutlist_json", Op.HAS_KEY, True),
                 Assertion("cutlist_csv",  Op.HAS_KEY, True),
                 Assertion("cutlist_json.panels", Op.LEN_GTE, 3),
+            ],
+        ),
+    ],
+))
+
+_s(Scenario(
+    name="drawer_lock_box_parts_close",
+    prompt=(
+        "Cut list for the kid's desk pedestal — 381 x 389 x 457, one 133 mm "
+        "drawer, 12 mm Baltic birch boxes with drawer-lock corners. My bit "
+        "leaves a 2 mm lip."
+    ),
+    tags=["cutlist", "drawer", "joinery"],
+    difficulty="standard",
+    tool_calls=[
+        ToolCall(
+            tool="generate_cutlist",
+            args={
+                "name": "eval_cutlist_drawer_lock",
+                "width": 381, "height": 389, "depth": 457,
+                "side_thickness": 18, "bottom_thickness": 18,
+                "top_thickness": 18,
+                "drawer_box_thickness": 12,
+                "drawer_slide": "blum_tandem_plus_563h",
+                "drawer_joinery": "drawer_lock",
+                "drawer_corner_lip_mm": 2.0,
+                "openings": [{"height_mm": 133, "opening_type": "drawer"}],
+                "format": "json",
+            },
+            label="drawer-lock box parts",
+            assertions=[
+                # The box is 303 x 381. A front-lapping corner means the
+                # front/back runs the full width and the SIDES lose two lips
+                # — 377, not the 381 the paper carried before 2026-08.
+                Assertion("panels_summary.3.name", Op.EQ, "drawer_box_side"),
+                Assertion("panels_summary.3.length_mm", Op.APPROX, 377.0),
+                Assertion("panels_summary.4.name", Op.EQ, "drawer_box_front"),
+                Assertion("panels_summary.4.length_mm", Op.APPROX, 303.0),
+                Assertion("panels_summary.5.name", Op.EQ, "drawer_box_back"),
+                Assertion("panels_summary.5.length_mm", Op.APPROX, 303.0),
+                # Bottom reaches the groove floors on all four sides.
+                Assertion("panels_summary.7.name", Op.EQ, "drawer_box_bottom"),
+                Assertion("panels_summary.7.length_mm", Op.APPROX, 291.0),
+                Assertion("panels_summary.7.width_mm", Op.APPROX, 369.0),
+            ],
+        ),
+    ],
+))
+
+_s(Scenario(
+    name="drawer_lock_lip_swallows_bottom_groove",
+    prompt=(
+        "My drawer-lock bit leaves a 7 mm lip on 12 mm boxes — check the "
+        "pedestal before I cut."
+    ),
+    tags=["evaluation", "drawer", "joinery"],
+    difficulty="advanced",
+    tool_calls=[
+        ToolCall(
+            tool="evaluate_cabinet",
+            args={
+                "width": 381, "height": 389, "depth": 457,
+                "side_thickness": 18, "bottom_thickness": 18,
+                "top_thickness": 18,
+                "drawer_box_thickness": 12,
+                "drawer_slide": "blum_tandem_plus_563h",
+                "drawer_joinery": "drawer_lock",
+                "drawer_corner_lip_mm": 7.0,
+                "openings": [{"height_mm": 133, "opening_type": "drawer"}],
+            },
+            label="lip deeper than the socket",
+            assertions=[
+                # 7 mm lip on 12 mm stock leaves a 5 mm socket, and the 6 mm
+                # bottom groove would break out through the lip at every
+                # corner. Caught on the pure-Python path, no CadQuery.
+                Assertion("issues", Op.HAS_ERROR),
+                Assertion("summary.errors", Op.GTE, 1),
             ],
         ),
     ],

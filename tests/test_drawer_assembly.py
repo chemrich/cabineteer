@@ -25,6 +25,7 @@ if not cq_missing:
     import cadquery as cq
 
 from cabineteer.drawer import (
+    drawer_part_offsets,
     DrawerConfig,
     make_drawer_bottom,
     make_drawer_front_back,
@@ -65,24 +66,24 @@ def _intersect_vol(a, b):
 
 def _build_placed(cfg):
     """Return (LS, RS, SF, BK, BT) at their world-coordinate positions inside
-    a cabinet opening with x_offset = slide.nominal_side_clearance."""
-    x0 = cfg.slide.nominal_side_clearance
-    t_s = cfg.side_thickness
-    t_fb = cfg.front_back_thickness
-    bd = cfg.box_depth
-    bw = cfg.box_width
-    bdd = cfg.bottom_dado_depth
-    dz = cfg.bottom_dado_inset
-    engagement_x = cfg.joinery.engagement_x
-    fb_x = x0 + t_s - engagement_x
+    a cabinet opening with x_offset = slide.nominal_side_clearance.
 
-    ls = _placed(make_drawer_side(cfg, side="left"), x0, 0, 0)
-    rs = _placed(make_drawer_side(cfg, side="right"), x0 + bw - t_s, 0, 0)
-    sf = _placed(make_drawer_front_back(cfg, position="front"), fb_x, 0, 0)
-    bk = _placed(make_drawer_front_back(cfg, position="back"),
-                 fb_x, bd - t_fb, 0)
-    bt = _placed(make_drawer_bottom(cfg),
-                 x0 + t_s - bdd, t_fb - bdd, dz)
+    Placement comes from ``drawer_part_offsets`` — the same rule the assembly
+    uses. Re-deriving it here would let the probe agree with a stale idea of
+    the joint instead of with the box that gets built.
+    """
+    x0 = cfg.slide.nominal_side_clearance
+    off = drawer_part_offsets(cfg)
+
+    def at(shape, key):
+        x, y, z = off[key]
+        return _placed(shape, x0 + x, y, z)
+
+    ls = at(make_drawer_side(cfg, side="left"), "side_L")
+    rs = at(make_drawer_side(cfg, side="right"), "side_R")
+    sf = at(make_drawer_front_back(cfg, position="front"), "sub_front")
+    bk = at(make_drawer_front_back(cfg, position="back"), "back")
+    bt = at(make_drawer_bottom(cfg), "bottom")
     return ls, rs, sf, bk, bt
 
 
@@ -208,6 +209,8 @@ class TestJointEngagement:
             pytest.skip("BUTT has no rabbet to fill")
         if cfg.joinery_style == DrawerJoineryStyle.QQQ:
             pytest.skip("QQQ uses a shallow Y rabbet — see TestQQQGeometry")
+        if cfg.joinery.laps_front:
+            pytest.skip("front-lapping inverts this — see TestFrontLapEngagement")
         x0 = cfg.slide.nominal_side_clearance
         t_s = cfg.side_thickness
         t_fb = cfg.front_back_thickness
@@ -237,6 +240,58 @@ class TestJointEngagement:
             f"joint engagement {actual:.1f} mm³ vs expected {expected:.1f} mm³ "
             f"for {cfg.joinery_style.value}"
         )
+
+
+@skipif_no_cq
+class TestFrontLapEngagement:
+    """Front-lapping (drawer lock) inverts the corner: the SIDE's end is
+    swallowed by a socket in the front, and the wall left outboard of that
+    socket — the lip — is what wraps the side and makes the box longer than
+    its sides. Both claims are checked in solid volume, because both were
+    wrong on paper until 2026-08."""
+
+    def test_side_end_fills_the_front_socket(self, cfg):
+        if not cfg.joinery.laps_front:
+            pytest.skip("side-lapping — see TestJointEngagement")
+        x0 = cfg.slide.nominal_side_clearance
+        t_s = cfg.side_thickness
+        bh = cfg.box_height
+        depth = cfg.joinery.socket_depth
+        lip = cfg.joinery.lip
+
+        socket = _envelope(x0, lip, 0, t_s, depth, bh)
+        ls, _, _, _, _ = _build_placed(cfg)
+
+        # The side's own bottom groove takes a bite out of the buried end.
+        expected = (t_s * depth * bh
+                    - cfg.bottom_dado_depth * depth * cfg.bottom_thickness)
+        actual = _intersect_vol(ls, socket)
+        assert actual == pytest.approx(expected, abs=5.0), (
+            f"side buried {actual:.1f} mm³ into the socket, expected "
+            f"{expected:.1f} mm³")
+
+    def test_lip_covers_the_side_end(self, cfg):
+        if not cfg.joinery.laps_front:
+            pytest.skip("side-lapping has no lip")
+        x0 = cfg.slide.nominal_side_clearance
+        t_s = cfg.side_thickness
+        bh = cfg.box_height
+        lip = cfg.joinery.lip
+
+        # The outermost slice of the box at the front, over the side's own
+        # width, must be solid FRONT material: that is what the lip is.
+        zone = _envelope(x0, 0, 0, t_s, lip, bh)
+        _, _, sf, _, _ = _build_placed(cfg)
+        assert _intersect_vol(sf, zone) == pytest.approx(t_s * lip * bh, abs=5.0)
+
+    def test_no_side_material_outboard_of_the_lip(self, cfg):
+        if not cfg.joinery.laps_front:
+            pytest.skip("side-lapping has no lip")
+        x0 = cfg.slide.nominal_side_clearance
+        zone = _envelope(x0, 0, 0, cfg.side_thickness,
+                         cfg.joinery.lip, cfg.box_height)
+        ls, _, _, _, _ = _build_placed(cfg)
+        assert _intersect_vol(ls, zone) == pytest.approx(0.0, abs=1.0)
 
 
 @skipif_no_cq

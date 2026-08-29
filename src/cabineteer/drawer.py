@@ -128,6 +128,14 @@ class DrawerConfig:
     # Corner joinery style
     joinery_style: DrawerJoineryStyle = DrawerJoineryStyle.HALF_LAP
 
+    # Front-lapping joints (drawer lock) only: the wall the router bit leaves
+    # outboard of the socket, per corner, in mm.  It sets the side length
+    # (``box_depth - 2 x lip``), it is a property of the BIT AND FENCE rather
+    # than of the design, and it is measured on a test corner — not derived.
+    # ``None`` falls back to the catalogue nominal for the style.  Ignored by
+    # the side-lapping styles, which have no such wall.
+    corner_lip_mm: Optional[float] = None
+
     # Height snapping: when True, box_height snaps down to the nearest standard
     # size (see STANDARD_BOX_HEIGHTS) so orders can be batched by common heights.
     # Set to False to use the full computed clearance-adjusted height instead.
@@ -180,7 +188,8 @@ class DrawerConfig:
     def joinery(self) -> DrawerJoinerySpec:
         """Computed corner-joint dimensions for the selected joinery style."""
         return drawer_joinery_spec(
-            self.joinery_style, self.side_thickness, self.front_back_thickness
+            self.joinery_style, self.side_thickness, self.front_back_thickness,
+            lip=self.corner_lip_mm,
         )
 
     @property
@@ -216,6 +225,25 @@ class DrawerConfig:
             self.opening_depth - self.front_gap,
             slide_length,
         )
+
+    @property
+    def side_panel_length(self) -> float:
+        """Cut length of a box side (front to back).
+
+        Full box depth for a side-lapping joint; ``2 x lip`` short of it for
+        a front-lapping one, where the front and back wrap the side's ends.
+        """
+        return self.joinery.part_lengths(self.box_width, self.box_depth)[0]
+
+    @property
+    def front_back_panel_length(self) -> float:
+        """Cut length of the sub-front / back (side to side).
+
+        Full box width for a front-lapping joint; for a side-lapping one it
+        is short by the material of both sides, less whatever it seats into
+        them (``engagement_x`` per corner).
+        """
+        return self.joinery.part_lengths(self.box_width, self.box_depth)[1]
 
     @property
     def bottom_panel_width(self) -> float:
@@ -278,21 +306,22 @@ def make_drawer_side(cfg: DrawerConfig, side: str = "left") -> "cq.Workplane":
 
     _require_cq()
 
+    length = cfg.side_panel_length
     panel = (
         cq.Workplane("XY")
-        .box(cfg.side_thickness, cfg.box_depth, cfg.box_height, centered=False)
+        .box(cfg.side_thickness, length, cfg.box_height, centered=False)
     )
 
     dado_x = (cfg.side_thickness - cfg.bottom_dado_depth) if side == "left" else 0.0
     dado = (
         cq.Workplane("XY")
         .transformed(offset=(dado_x, 0, cfg.bottom_dado_inset))
-        .box(cfg.bottom_dado_depth, cfg.box_depth, cfg.bottom_thickness, centered=False)
+        .box(cfg.bottom_dado_depth, length, cfg.bottom_thickness, centered=False)
     )
     panel = panel.cut(dado)
 
     panel = apply_drawer_joinery_to_side(
-        panel, cfg.joinery, cfg.box_depth, cfg.box_height, side=side
+        panel, cfg.joinery, length, cfg.box_height, side=side
     )
 
     return panel
@@ -306,37 +335,70 @@ def make_drawer_front_back(cfg: DrawerConfig, position: str = "back") -> "cq.Wor
     assembled drawer.  For QQQ the same parameter also routes the inside-face
     corner rabbets cut by ``apply_drawer_joinery_to_front_back``.
 
-    The panel width is ``box_width − 2 × (side_thickness − engagement_x)`` so
-    each end overhangs the carcass interior by ``engagement_x`` to seat in the
-    side panel's rabbet (zero overhang for BUTT, ``side_dado_depth_x`` for
-    QQQ / HALF_LAP / DRAWER_LOCK).
+    The panel length comes from ``DrawerConfig.front_back_panel_length``: for
+    a side-lapping joint it is ``box_width − 2 × (side_thickness −
+    engagement_x)``, so each end overhangs the carcass interior by
+    ``engagement_x`` and seats in the side panel's rabbet (zero overhang for
+    BUTT); for a front-lapping one (drawer lock) it is the FULL box width,
+    and each end carries a socket that swallows a side.
     """
     if position not in ("front", "back"):
         raise ValueError(f"position must be 'front' or 'back', got {position!r}")
 
     _require_cq()
 
-    engagement_x = cfg.joinery.engagement_x
-    interior_width = cfg.box_width - 2 * (cfg.side_thickness - engagement_x)
+    length = cfg.front_back_panel_length
 
     panel = (
         cq.Workplane("XY")
-        .box(interior_width, cfg.front_back_thickness, cfg.box_height, centered=False)
+        .box(length, cfg.front_back_thickness, cfg.box_height, centered=False)
     )
 
     dado_y = 0.0 if position == "back" else (cfg.front_back_thickness - cfg.bottom_dado_depth)
     dado = (
         cq.Workplane("XY")
         .transformed(offset=(0, dado_y, cfg.bottom_dado_inset))
-        .box(interior_width, cfg.bottom_dado_depth, cfg.bottom_thickness, centered=False)
+        .box(length, cfg.bottom_dado_depth, cfg.bottom_thickness, centered=False)
     )
     panel = panel.cut(dado)
 
     panel = apply_drawer_joinery_to_front_back(
-        panel, cfg.joinery, interior_width, cfg.box_height, position=position
+        panel, cfg.joinery, length, cfg.box_height, position=position
     )
 
     return panel
+
+
+def drawer_part_offsets(cfg: DrawerConfig) -> dict[str, tuple[float, float, float]]:
+    """Where each box part sits, in box-local coordinates (origin = the box's
+    front-left-bottom outside corner).
+
+    SINGLE SOURCE for box part placement, so the assembly, the tests and any
+    probe all agree on where a part goes. Which piece wraps the corner sets
+    both the sides' Y offset and the front/back's X offset:
+
+    LAP_FRONT (drawer lock)
+        the front/back runs the full width at ``x = 0``; each side is held
+        off the ends of the box by one ``lip``.
+    LAP_SIDE (butt, QQQ, half lap)
+        the sides run the full depth at ``y = 0``; the front/back seats
+        ``engagement_x`` into each side's rabbet.
+
+    No CadQuery required — this is arithmetic, and the geometry-free paths
+    (parts lists, checks) are entitled to it too.
+    """
+    j = cfg.joinery
+    side_y = j.lip if j.laps_front else 0.0
+    fb_x = 0.0 if j.laps_front else (cfg.side_thickness - j.engagement_x)
+    return {
+        "side_L":    (0.0, side_y, 0.0),
+        "side_R":    (cfg.box_width - cfg.side_thickness, side_y, 0.0),
+        "sub_front": (fb_x, 0.0, 0.0),
+        "back":      (fb_x, cfg.box_depth - cfg.front_back_thickness, 0.0),
+        "bottom":    (cfg.side_thickness - cfg.bottom_dado_depth,
+                      cfg.front_back_thickness - cfg.bottom_dado_depth,
+                      cfg.bottom_dado_inset),
+    }
 
 
 def make_drawer_bottom(cfg: DrawerConfig) -> "cq.Workplane":
@@ -484,29 +546,24 @@ def build_drawer(
     COL_FB     = cq.Color(0.96, 0.91, 0.76, 1.0)   # light ash cream  — front/back
     COL_BOTTOM = cq.Color(0.60, 0.46, 0.28, 1.0)   # dark ply brown   — bottom
 
-    assy.add(left_side, name="side_L", loc=cq.Location((0, 0, 0)), color=COL_SIDE)
+    # Placement is arithmetic, and it lives in drawer_part_offsets so the
+    # assembly and every probe of it read the same rule.
+    off = drawer_part_offsets(cfg)
+
+    assy.add(left_side, name="side_L",
+             loc=cq.Location(off["side_L"]), color=COL_SIDE)
 
     assy.add(right_side, name="side_R",
-             loc=cq.Location((cfg.box_width - cfg.side_thickness, 0, 0)),
-             color=COL_SIDE)
+             loc=cq.Location(off["side_R"]), color=COL_SIDE)
 
-    # Sub-front and back: each end seats into the side panel's rabbet.
-    # x-offset reduced by engagement_x (= 0 for BUTT, side_dado_depth_x otherwise).
-    fb_x = cfg.side_thickness - cfg.joinery.engagement_x
+    assy.add(sub_front, name="sub_front",
+             loc=cq.Location(off["sub_front"]), color=COL_FB)
 
-    assy.add(sub_front, name="sub_front", loc=cq.Location((fb_x, 0, 0)), color=COL_FB)
-
-    assy.add(back, name="back",
-             loc=cq.Location((fb_x, cfg.box_depth - cfg.front_back_thickness, 0)),
-             color=COL_FB)
+    assy.add(back, name="back", loc=cq.Location(off["back"]), color=COL_FB)
 
     # Bottom panel captured in dados
-    bottom_x = cfg.side_thickness - cfg.bottom_dado_depth
-    bottom_y = cfg.front_back_thickness - cfg.bottom_dado_depth
-    bottom_z = cfg.bottom_dado_inset
     assy.add(bottom, name="bottom",
-             loc=cq.Location((bottom_x, bottom_y, bottom_z)),
-             color=COL_BOTTOM)
+             loc=cq.Location(off["bottom"]), color=COL_BOTTOM)
 
     if include_manga:
         add_manga_stack(assy, cfg)
@@ -595,4 +652,5 @@ def box_config_for_opening(
         front_back_thickness=cab_cfg.drawer_box_thickness,
         bottom_thickness=getattr(opening, "bottom_thickness", None),
         joinery_style=cab_cfg.drawer_joinery,
+        corner_lip_mm=cab_cfg.drawer_corner_lip_mm,
     )

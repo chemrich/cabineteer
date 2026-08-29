@@ -589,6 +589,16 @@ async def list_tools() -> list[types.Tool]:
                         "default": "half_lap",
                         "description": "Drawer box corner joint style.",
                     },
+                    "drawer_corner_lip_mm": {
+                        "type": "number",
+                        "description": (
+                            "drawer_lock only: the wall the router bit leaves "
+                            "outboard of the socket, per corner (mm). Box "
+                            "sides are cut 2x this short of the box depth. "
+                            "Measure it on a test corner; omitting it takes "
+                            "the catalogue nominal (1/8 in)."
+                        ),
+                    },
                     "adj_shelf_holes": {"type": "boolean", "default": False},
                     "door_hinge": {
                         "type": "string",
@@ -1230,6 +1240,16 @@ async def list_tools() -> list[types.Tool]:
                         "enum": ["butt", "qqq", "half_lap", "drawer_lock"],
                         "default": "half_lap",
                     },
+                    "corner_lip_mm": {
+                        "type": "number",
+                        "description": (
+                            "drawer_lock only: the wall the router bit leaves "
+                            "outboard of the socket, per corner (mm). Sides "
+                            "are cut 2x this short of the box depth. Measure "
+                            "it on a test corner rather than trusting the "
+                            "catalogue nominal."
+                        ),
+                    },
                     "side_thickness":       {"type": "number", "default": 15.0},
                     "front_back_thickness": {"type": "number", "default": 15.0},
                     "bottom_thickness": {
@@ -1848,6 +1868,16 @@ async def list_tools() -> list[types.Tool]:
                         "description": "Drawer box corner joint style.",
                         "default": "half_lap",
                     },
+                    "drawer_corner_lip_mm": {
+                        "type": "number",
+                        "description": (
+                            "drawer_lock only: the wall the router bit leaves "
+                            "outboard of the socket, per corner (mm). Box "
+                            "sides are cut 2x this short of the box depth. "
+                            "Measure it on a test corner; omitting it takes "
+                            "the catalogue nominal (1/8 in)."
+                        ),
+                    },
                     "drawer_pull": {
                         "type": "string",
                         "description": "Pull catalog key from list_hardware (category='pulls'). Omit for no pull hardware in render.",
@@ -2193,6 +2223,16 @@ async def list_tools() -> list[types.Tool]:
                         "default": "half_lap",
                         "description": "Drawer box corner joint style.",
                     },
+                    "drawer_corner_lip_mm": {
+                        "type": "number",
+                        "description": (
+                            "drawer_lock only: the wall the router bit leaves "
+                            "outboard of the socket, per corner (mm). Box "
+                            "sides are cut 2x this short of the box depth. "
+                            "Measure it on a test corner; omitting it takes "
+                            "the catalogue nominal (1/8 in)."
+                        ),
+                    },
                     "door_hinge": {"type": "string", "default": "blum_clip_top_blumotion_110_full"},
                     "adj_shelf_holes": {"type": "boolean", "default": False},
                     "drawer_slide": {"type": "string", "default": "blum_tandem_550h"},
@@ -2406,6 +2446,16 @@ async def list_tools() -> list[types.Tool]:
                         "enum": ["butt", "qqq", "half_lap", "drawer_lock"],
                         "default": "half_lap",
                         "description": "Drawer box corner joint style.",
+                    },
+                    "drawer_corner_lip_mm": {
+                        "type": "number",
+                        "description": (
+                            "drawer_lock only: the wall the router bit leaves "
+                            "outboard of the socket, per corner (mm). Box "
+                            "sides are cut 2x this short of the box depth. "
+                            "Measure it on a test corner; omitting it takes "
+                            "the catalogue nominal (1/8 in)."
+                        ),
                     },
                     "door_hinge":    {"type": "string", "default": "blum_clip_top_blumotion_110_full"},
                     "drawer_slide":  {"type": "string", "default": "blum_tandem_550h"},
@@ -2873,6 +2923,7 @@ async def list_tools() -> list[types.Tool]:
                             "carcass_material": {"type": "string"},
                             "carcass_joinery":  {"type": "string"},
                             "drawer_joinery":   {"type": "string"},
+                            "drawer_corner_lip_mm": {"type": "number"},
                             "drawer_slide":     {"type": "string"},
                             "door_hinge":       {"type": "string"},
                             "drawer_pull":      {"type": "string"},
@@ -3812,9 +3863,14 @@ async def _tool_design_drawer(args: dict) -> list[types.TextContent]:
         joinery_info["fb_channel_depth_x_mm"] = joinery.fb_channel_depth_x
         joinery_info["fb_channel_depth_y_mm"] = joinery.fb_channel_depth_y
         joinery_info["side_tongue_width_mm"]  = joinery.side_tongue_width
-    if joinery.style.value == "drawer_lock":
-        joinery_info["lock_step_depth_x_mm"] = joinery.lock_step_depth_x
-        joinery_info["lock_step_depth_y_mm"] = joinery.lock_step_depth_y
+    # Which piece wraps the corner — the fact that decides both part lengths.
+    joinery_info["corner_lap"] = joinery.corner_lap
+    if joinery.laps_front:
+        joinery_info["lip_mm"] = joinery.lip
+        joinery_info["socket_depth_mm"] = joinery.socket_depth
+        joinery_info["lip_is_measured"] = cfg.corner_lip_mm is not None
+    else:
+        joinery_info["engagement_x_mm"] = joinery.engagement_x
 
     from .drawer import snap_to_standard_box_height, STANDARD_BOX_HEIGHTS
     slide_length = slide.slide_length_for_depth(cfg.opening_depth)
@@ -3829,6 +3885,13 @@ async def _tool_design_drawer(args: dict) -> list[types.TextContent]:
         "use_standard_height":        cfg.use_standard_height,
         "standard_heights_available": list(STANDARD_BOX_HEIGHTS),
         "box_depth_mm":               cfg.box_depth,
+        # Cut lengths, from the joint. The box's outside dimensions are NOT
+        # the part lengths: whichever piece wraps the corner runs full
+        # length and the other is cut short by what the joint eats.
+        "side_panel_length_mm":       cfg.side_panel_length,
+        "front_back_panel_length_mm": cfg.front_back_panel_length,
+        "bottom_panel_width_mm":      cfg.bottom_panel_width,
+        "bottom_panel_depth_mm":      cfg.bottom_panel_depth,
         "side_thickness_mm":       cfg.side_thickness,
         "front_back_thickness_mm": cfg.front_back_thickness,
         "bottom_thickness_mm":     cfg.bottom_thickness,
@@ -4127,19 +4190,44 @@ def _raw_panels_for_cabinet(
                 bd = round(dcfg.box_depth, 1)
                 bt = dcfg.side_thickness
                 bottom_w = round(dcfg.bottom_panel_width, 1)
+                bottom_d = round(dcfg.bottom_panel_depth, 1)
                 box_material = ("baltic_birch_prefinished"
                                 if cfg.drawer_box_prefinished else "baltic_birch")
+                # Part lengths come from the JOINT, never from the box's
+                # outside dimensions: whichever piece wraps the corner runs
+                # full length and the other is cut short. Listing both at
+                # full size double-counts the corners and the box comes out
+                # oversize in both directions (the pre-2026-08 bug).
+                jspec = dcfg.joinery
+                side_len = round(dcfg.side_panel_length, 1)
+                fb_len = round(dcfg.front_back_panel_length, 1)
+                if jspec.laps_front:
+                    side_note = (
+                        f"cut {2 * jspec.lip:g} mm short of the {bd:g} mm box "
+                        f"depth — {jspec.lip:g} mm lock lip per corner; "
+                        f"confirm the lip on a test corner before batching")
+                    fb_note = ("full box width — laps the ends of the sides")
+                else:
+                    side_note = "full box depth — the sides wrap the corners"
+                    fb_note = (
+                        f"cut {2 * (bt - jspec.engagement_x):g} mm short of the "
+                        f"{bw:g} mm box width"
+                        + (f" — seats {jspec.engagement_x:g} mm into each side"
+                           if jspec.engagement_x else " — butts between the sides"))
 
                 raw_box += [
-                    CutlistPanel(name="drawer_box_side", length=bd, width=bh,
-                                 thickness=bt, quantity=2,
-                                 grain_direction="", material=box_material),
-                    CutlistPanel(name="drawer_box_front", length=bw, width=bh,
-                                 thickness=bt, quantity=1,
-                                 grain_direction="", material=box_material),
-                    CutlistPanel(name="drawer_box_back", length=bw, width=bh,
-                                 thickness=bt, quantity=1,
-                                 grain_direction="", material=box_material),
+                    CutlistPanel(name="drawer_box_side", length=side_len,
+                                 width=bh, thickness=bt, quantity=2,
+                                 grain_direction="", material=box_material,
+                                 notes=side_note),
+                    CutlistPanel(name="drawer_box_front", length=fb_len,
+                                 width=bh, thickness=bt, quantity=1,
+                                 grain_direction="", material=box_material,
+                                 notes=fb_note),
+                    CutlistPanel(name="drawer_box_back", length=fb_len,
+                                 width=bh, thickness=bt, quantity=1,
+                                 grain_direction="", material=box_material,
+                                 notes=fb_note),
                 ]
                 bottom_label = {6: "1/4 in", 9: "3/8 in", 12: "1/2 in"}.get(
                     int(round(dcfg.bottom_thickness)),
@@ -4148,12 +4236,14 @@ def _raw_panels_for_cabinet(
                 raw_6mm.append(CutlistPanel(
                     name="drawer_box_bottom",
                     length=bottom_w,
-                    width=bd,
+                    width=bottom_d,
                     thickness=dcfg.bottom_thickness,
                     quantity=1,
                     grain_direction="",
                     material=box_material,
-                    notes=f"{bottom_label}, dado-captured",
+                    notes=(f"{bottom_label}, dado-captured — sized to the "
+                           f"groove floors, {dcfg.bottom_dado_depth:g} mm "
+                           f"into all four parts"),
                 ))
 
     # ── Show faces — single source of truth ───────────────────────────────
@@ -4799,10 +4889,17 @@ async def _tool_compare_joinery(args: dict) -> list[types.TextContent]:
                 f"True {t_s:.0f} mm stock required for nominal "
                 f"{t_s:.0f} mm settings."
             )
+        entry["corner_lap"] = spec.corner_lap
         if style == DrawerJoineryStyle.DRAWER_LOCK:
-            entry["lock_step_depth_x_mm"] = spec.lock_step_depth_x
-            entry["lock_step_depth_y_mm"] = spec.lock_step_depth_y
-            entry["note"] = "Requires dedicated drawer-lock router bit."
+            entry["lip_mm"] = spec.lip
+            entry["socket_depth_mm"] = spec.socket_depth
+            entry["note"] = (
+                "Requires dedicated drawer-lock router bit. Front-lapping: "
+                f"the front/back runs the full box width and the sides are "
+                f"cut 2 x {spec.lip:g} mm short of the box depth. The lip is "
+                "set by the bit and fence — measure a test corner and pass "
+                "corner_lip_mm rather than trusting the nominal."
+            )
         comparison[style.value] = entry
 
     return _ok({
@@ -5563,6 +5660,7 @@ def _project_summary(project, path) -> dict:
             "door_pull":    cfg.door_pull,
             "carcass_joinery": cfg.carcass_joinery.value,
             "drawer_joinery":  cfg.drawer_joinery.value,
+            "drawer_corner_lip_mm": cfg.drawer_corner_lip_mm,
             "overrides":       sorted(pc.overrides),
         })
 
@@ -5711,6 +5809,7 @@ async def _tool_load_project(args: dict) -> list[types.TextContent]:
             "door_hinge":   cfg.door_hinge,
             "carcass_joinery": cfg.carcass_joinery.value,
             "drawer_joinery":  cfg.drawer_joinery.value,
+            "drawer_corner_lip_mm": cfg.drawer_corner_lip_mm,
             "overrides":       sorted(pc.overrides),
         })
 

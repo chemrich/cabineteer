@@ -468,6 +468,33 @@ def check_drawer_joinery(drawer_cfg: DrawerConfig) -> list[Issue]:
                 limit=4.0,
             ))
 
+    if spec.laps_front:
+        # A front-lapping corner holds the sides off each end of the box by
+        # one lip, and the bottom's groove is plowed from the inside face of
+        # the front and back. Cut that groove deeper than the socket and it
+        # runs out THROUGH the lip at both ends of both parts: the box's
+        # outer wall is breached at all four corners, and the bottom's
+        # corners reach past the ends of the sides with nothing holding
+        # them. The groove has to stop inside the socket.
+        groove = drawer_cfg.bottom_dado_depth
+        if groove > spec.socket_depth + 1e-9:
+            issues.append(Issue(
+                check="drawer_bottom_groove_vs_lip",
+                severity=Severity.ERROR,
+                message=(
+                    f"Bottom groove {groove:.1f} mm is deeper than the "
+                    f"{spec.socket_depth:.1f} mm socket left by a "
+                    f"{spec.lip:.1f} mm lip on {spec.front_back_thickness:.1f} "
+                    f"mm stock — it would break out through the lip at every "
+                    f"corner and leave the bottom's corners unsupported past "
+                    f"the ends of the sides. Cut the groove no deeper than "
+                    f"{spec.socket_depth:.1f} mm, or reset the bit for a "
+                    f"smaller lip."
+                ),
+                value=groove,
+                limit=spec.socket_depth,
+            ))
+
     if spec.style == DrawerJoineryStyle.DRAWER_LOCK:
         if t < 12.0:
             issues.append(Issue(
@@ -2347,8 +2374,15 @@ def evaluate_cabinet(
                 side_thickness=cab_cfg.drawer_box_thickness,
                 front_back_thickness=cab_cfg.drawer_box_thickness,
                 bottom_thickness=op.bottom_thickness,
+                # The corner joint and its lip decide the box's part sizes,
+                # so they belong to this check too. Before 2026-08 the
+                # joinery checks ran ONLY on the CadQuery path, which is not
+                # the path any of Charlie's paper goes through.
+                joinery_style=cab_cfg.drawer_joinery,
+                corner_lip_mm=cab_cfg.drawer_corner_lip_mm,
             )
             all_issues.extend(check_drawer_hardware_clearances(dcfg))
+            all_issues.extend(check_drawer_joinery(dcfg))
         elif op.opening_type in ("door", "door_pair") and not door_configs:
             # Auto-generate door check from opening data when caller didn't
             # provide explicit door_configs — covers multi-column designs.

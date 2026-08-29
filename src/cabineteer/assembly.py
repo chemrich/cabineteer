@@ -128,7 +128,10 @@ class DrawerBoxPlan:
     label: str                 # "column 1, drawer 2 (from the bottom)"
     column: int                # 1-based
     position: int              # 1-based from the BOTTOM of the stack
-    #: Cut parts. Sides run the box's DEPTH; front and back run its width.
+    #: Cut parts. Which one runs full length depends on the corner: see
+    #: ``laps_front``. Never assume sides = box depth AND front/back = box
+    #: width — that double-counts both corners and the box comes out
+    #: oversize in both directions.
     side_length: float
     side_height: float
     front_back_length: float
@@ -147,6 +150,18 @@ class DrawerBoxPlan:
     opening_width: float
     opening_height: float
     part_ids: tuple = ()       # cutlist IDs for side/front/back/bottom
+    #: True when the front and back span the full box width and wrap the
+    #: ends of the sides (drawer lock). False when the sides run the full
+    #: depth and the front/back is buried between them.
+    laps_front: bool = False
+    #: Front-lapping only: wall left outboard of the socket, per corner. The
+    #: sides are cut 2 x this short of the box depth.
+    lip: float = 0.0
+    #: Side-lapping only: how far the front/back seats into each side.
+    engagement: float = 0.0
+    #: Finished box, for the check that matters at glue-up.
+    box_width: float = 0.0
+    box_depth: float = 0.0
 
 
 @dataclass
@@ -638,17 +653,22 @@ def build_drawer_box_plans(cab_cfg, id_map=None) -> list[DrawerBoxPlan]:
                        f"drawer {drawer_no} from the bottom"),
                 column=col_no,
                 position=drawer_no,
-                side_length=round(d.box_depth, 1),
+                side_length=round(d.side_panel_length, 1),
                 side_height=round(d.box_height, 1),
-                front_back_length=round(d.box_width, 1),
+                front_back_length=round(d.front_back_panel_length, 1),
                 front_back_height=round(d.box_height, 1),
                 stock_thickness=d.side_thickness,
                 bottom_length=round(d.bottom_panel_width, 1),
-                bottom_width=round(d.box_depth, 1),
+                bottom_width=round(d.bottom_panel_depth, 1),
                 bottom_thickness=d.bottom_thickness,
                 dado_depth=d.bottom_dado_depth,
                 dado_inset=d.bottom_dado_inset,
                 joinery=d.joinery_style.value,
+                laps_front=d.joinery.laps_front,
+                lip=d.joinery.lip,
+                engagement=d.joinery.engagement_x,
+                box_width=round(d.box_width, 1),
+                box_depth=round(d.box_depth, 1),
                 slide_key=d.slide_key,
                 slide_length=round(d.box_depth, 1),
                 opening_width=round(col_width, 1),
@@ -687,6 +707,31 @@ def _slide_name(boxes: list) -> str:
             "before you mount anything; they are not interchangeable.")
 
 
+def _box_table_caption(boxes: list) -> str:
+    """One line saying which piece wraps the corner, and what that costs.
+
+    The parts table alone reads as four independent numbers; a builder who
+    assumes both the sides and the fronts span the box builds it oversize in
+    both directions. Say it once, above the numbers.
+    """
+    if not boxes:
+        return ""
+    b = boxes[0]
+    joint = b.joinery.replace("_", "-")
+    if b.laps_front:
+        return (f"{joint} corners are front-lapping: the front and back run "
+                f"the FULL box width and wrap the ends of the sides, and each "
+                f"side is cut {2 * b.lip:g} mm short of the box depth "
+                f"({b.lip:g} mm lip per corner). Confirm the lip on a test "
+                f"corner — it belongs to the bit and fence, not to this "
+                f"drawing. Every assembled box must measure its Box column.")
+    seat = (f" and seats {b.engagement:g} mm into each side"
+            if b.engagement else " and butts between the sides")
+    return (f"{joint} corners are side-lapping: the sides run the FULL box "
+            f"depth, and the front and back are cut short{seat}. Every "
+            f"assembled box must measure its Box column.")
+
+
 def _build_box_steps(boxes: list, cab_cfg) -> list[AssemblyStep]:
     """Bench sequence for the drawer boxes.
 
@@ -700,6 +745,8 @@ def _build_box_steps(boxes: list, cab_cfg) -> list[AssemblyStep]:
     dado_d = boxes[0].dado_depth
     dado_i = boxes[0].dado_inset
     joint = boxes[0].joinery.replace("_", "-")
+    laps_front = boxes[0].laps_front
+    lip = boxes[0].lip
     bottoms = sorted({b.bottom_thickness for b in boxes})
     heights = sorted({b.side_height for b in boxes})
     n = len(boxes)
@@ -724,9 +771,15 @@ def _build_box_steps(boxes: list, cab_cfg) -> list[AssemblyStep]:
                 "Mark the INSIDE face of every part. All corner joinery and "
                 "the bottom groove are cut on that face; a part machined on "
                 "the wrong face is scrap.",
-                "Sides run the box DEPTH; fronts and backs run the box "
-                "WIDTH. They are not interchangeable even when the numbers "
-                "look close.",
+                (("Fronts and backs run the FULL box width and wrap the "
+                  "ends of the sides; the sides are cut short of the box "
+                  "depth to leave room for them. Both numbers are on the "
+                  "parts list — do not re-derive either from the box size.")
+                 if laps_front else
+                 ("Sides run the box DEPTH; fronts and backs are cut SHORT "
+                  "of the box width, because they sit between the sides. "
+                  "Both numbers are on the parts list — do not re-derive "
+                  "either from the box size.")),
             )),
         AssemblyStep(
             "Groove for the bottoms — one saw setup, every part",
@@ -747,10 +800,16 @@ def _build_box_steps(boxes: list, cab_cfg) -> list[AssemblyStep]:
             )),
         AssemblyStep(
             f"Cut the {joint} corners",
-            f"All four corners of each box are {joint}. Set the cut once and "
-            "run every part through it — with the parts already marked "
-            "inside-face, this is repetitive rather than delicate, which is "
-            "exactly what you want before a batch of glue-ups.",
+            (f"All four corners of each box are {joint}. Set the cut once and "
+             "run every part through it — with the parts already marked "
+             "inside-face, this is repetitive rather than delicate, which is "
+             "exactly what you want before a batch of glue-ups."
+             + (f" The parts list assumes a {lip:g} mm lip — the wall left "
+                f"outboard of the socket on the front and back. That lip is "
+                f"a property of your bit and fence, not of the drawing, and "
+                f"the box runs two of them longer than its sides: CONFIRM IT "
+                f"ON A TEST CORNER before cutting the sides to length."
+                if laps_front else "")),
             checklist=(
                 "Dial the setup in on offcut of the SAME stock, and assemble "
                 "a test corner. Check it closes with hand pressure and sits "
@@ -766,8 +825,12 @@ def _build_box_steps(boxes: list, cab_cfg) -> list[AssemblyStep]:
             "captured, so it goes in during assembly and there is no fixing "
             "a forgotten one afterwards.",
             checklist=(
-                "Dry-assemble the box with its bottom in the grooves. Check "
-                "it is square by the diagonals and that it sits flat.",
+                "Dry-assemble the box with its bottom in the grooves and "
+                "measure it against the box size on its own row — the first "
+                "box is where a corner setup that eats the wrong amount "
+                "shows up, and it is cheap to fix there and expensive to "
+                "fix after a batch of glue-ups.",
+                "Check it is square by the diagonals and that it sits flat.",
                 "Glue the corners only. The bottom FLOATS in its grooves — "
                 "it is what keeps the box square, and gluing it in is how "
                 "you turn a seasonal movement into a split panel.",
@@ -1803,9 +1866,11 @@ def generate_assembly_html(
         if plan.drawer_boxes:
             out.append(f"<h3>Drawer boxes — {escape(plan.cabinet_name)} "
                        f"({len(plan.drawer_boxes)})</h3>")
+            out.append(
+                f"<p class='legend'>{escape(_box_table_caption(plan.drawer_boxes))}</p>")
             out.append("<table><tr><th>Box</th><th>Sides (×2)</th>"
                        "<th>Front + back</th><th>Bottom</th>"
-                       "<th>Opening</th></tr>")
+                       "<th>Box (finished)</th><th>Opening</th></tr>")
             for b in plan.drawer_boxes:
                 out.append(
                     "<tr>"
@@ -1816,6 +1881,7 @@ def generate_assembly_html(
                     f"{b.front_back_height:g} × {b.stock_thickness:g}</td>"
                     f"<td class='mm'>{b.bottom_length:g} × {b.bottom_width:g}"
                     f" × {b.bottom_thickness:g}</td>"
+                    f"<td class='mm'>{b.box_width:g} W × {b.box_depth:g} D</td>"
                     f"<td class='in'>{b.opening_width:g} × "
                     f"{b.opening_height:g}</td></tr>")
             out.append("</table>")
@@ -2181,8 +2247,11 @@ def generate_assembly_pdf(
             story.append(_Paragraph(
                 f"Drawer boxes — {xesc(plan.cabinet_name)} "
                 f"({len(plan.drawer_boxes)})", h1))
+            story.append(_Paragraph(
+                xesc(_box_table_caption(plan.drawer_boxes)), norm))
+            story.append(_Spacer(1, 2 * _rl_mm))
             rows = [["Box", "Sides (×2)", "Front + back", "Bottom",
-                     "Opening"]]
+                     "Box (finished)", "Opening"]]
             for b in plan.drawer_boxes:
                 rows.append([
                     _Paragraph(xesc(b.label), cell),
@@ -2192,10 +2261,11 @@ def generate_assembly_pdf(
                     f"{b.stock_thickness:g}",
                     f"{b.bottom_length:g} × {b.bottom_width:g} × "
                     f"{b.bottom_thickness:g}",
+                    f"{b.box_width:g} W × {b.box_depth:g} D",
                     f"{b.opening_width:g} × {b.opening_height:g}",
                 ])
             box_tbl = _Table(rows, colWidths=[CW * f for f in
-                                              (.24, .2, .2, .2, .16)])
+                                              (.2, .18, .18, .18, .14, .12)])
             box_tbl.setStyle(tbl_style())
             story.append(box_tbl)
             story.append(_Spacer(1, 3 * _rl_mm))

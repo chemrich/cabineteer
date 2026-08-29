@@ -82,7 +82,7 @@ Issues carry the measured value against the limit, so you can act on them at the
 **Verify it yourself** — no chat window required:
 
 ```bash
-uv run python -m evals                       # <!--stat:scenarios-->308<!--/stat:scenarios--> scenarios / <!--stat:assertions-->1,182<!--/stat:assertions--> typed assertions on real output numbers
+uv run python -m evals                       # <!--stat:scenarios-->310<!--/stat:scenarios--> scenarios / <!--stat:assertions-->1,196<!--/stat:assertions--> typed assertions on real output numbers
 uv run python scripts/readme_stats.py --check # the counts quoted in this file, regenerated from source
 python -c "from cabineteer.presets import get_preset; from cabineteer.evaluation import evaluate_cabinet, print_report; print_report(evaluate_cabinet(get_preset('kitchen_base_3_drawer').config))"
 ```
@@ -252,7 +252,7 @@ Lite mode exists because CadQuery is a heavy native dependency; everything excep
 
 ```bash
 uv run pytest tests/ -v        # 1,500+ unit + integration tests
-uv run python -m evals         # <!--stat:scenarios-->308<!--/stat:scenarios--> scenarios / <!--stat:assertions-->1,182<!--/stat:assertions--> assertions, runs in ~1 second
+uv run python -m evals         # <!--stat:scenarios-->310<!--/stat:scenarios--> scenarios / <!--stat:assertions-->1,196<!--/stat:assertions--> assertions, runs in ~1 second
 ```
 
 The eval harness ([docs/evals.md](docs/evals.md)) drives the same tool handlers the MCP server and CLI expose, with scenarios written as natural-language prompts plus typed assertions — it's how every feature and bug fix is pinned down. Neither suite requires CadQuery. The counts above are regenerated from source by `scripts/readme_stats.py` and gated in CI, so they can't drift.
