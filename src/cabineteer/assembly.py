@@ -162,6 +162,13 @@ class DrawerBoxPlan:
     #: Finished box, for the check that matters at glue-up.
     box_width: float = 0.0
     box_depth: float = 0.0
+    #: Box width wall to wall. For an undermount runner this is the number
+    #: the slide maker constrains (Blum: opening − 42 mm, "must equal"), so
+    #: it is what a built box gets measured against — the outside width is
+    #: a consequence of it and the side stock, not the other way round.
+    box_inside_width: float = 0.0
+    #: Which box face the slide's side clearance is quoted to.
+    clearance_reference: str = "outside"
 
 
 @dataclass
@@ -669,6 +676,8 @@ def build_drawer_box_plans(cab_cfg, id_map=None) -> list[DrawerBoxPlan]:
                 engagement=d.joinery.engagement_x,
                 box_width=round(d.box_width, 1),
                 box_depth=round(d.box_depth, 1),
+                box_inside_width=round(d.box_inside_width, 1),
+                clearance_reference=d.slide.clearance_reference.value,
                 slide_key=d.slide_key,
                 slide_length=round(d.box_depth, 1),
                 opening_width=round(col_width, 1),
@@ -750,6 +759,9 @@ def _build_box_steps(boxes: list, cab_cfg) -> list[AssemblyStep]:
     bottoms = sorted({b.bottom_thickness for b in boxes})
     heights = sorted({b.side_height for b in boxes})
     n = len(boxes)
+    inside_ref = any(b.clearance_reference == "inside" for b in boxes)
+    widths = sorted({(b.opening_width, b.box_width, b.box_inside_width)
+                     for b in boxes})
 
     bottom_txt = (f"{bottoms[0]:g} mm" if len(bottoms) == 1 else
                   " and ".join(f"{b:g} mm" for b in bottoms) +
@@ -780,7 +792,15 @@ def _build_box_steps(boxes: list, cab_cfg) -> list[AssemblyStep]:
                   "of the box width, because they sit between the sides. "
                   "Both numbers are on the parts list — do not re-derive "
                   "either from the box size.")),
-            )),
+            ) + ((
+                "The width these parts add up to is set by the runners, and "
+                "the runners constrain the INSIDE of the box, not the "
+                "outside: " + "; ".join(
+                    f"a {ow:g} mm opening takes a box {bw:g} outside / "
+                    f"{iw:g} inside" for ow, bw, iw in widths) +
+                ". Measure a finished box across the inside and check it "
+                "against that number before you cut a batch.",
+            ) if inside_ref else ())),
         AssemblyStep(
             "Groove for the bottoms — one saw setup, every part",
             f"Every part of every box takes the same groove: {dado_d:g} mm "
@@ -847,8 +867,15 @@ def _build_box_steps(boxes: list, cab_cfg) -> list[AssemblyStep]:
             "after the carcass is cured and standing on its final feet — a "
             "case fitted on its side rarely stays true.",
             checklist=(
-                "Check the box height and width against the opening one "
-                "last time before drilling anything.",
+                ("Check the box height and the INSIDE width against the "
+                 "opening one last time before drilling anything — "
+                 + "; ".join(f"{ow:g} mm opening → {iw:g} mm inside the box"
+                             for ow, _bw, iw in widths)
+                 + ". An undermount runner will not align to a box that "
+                   "misses this."
+                 if inside_ref else
+                 "Check the box height and width against the opening one "
+                 "last time before drilling anything."),
                 "Mount, then run each box in and out fully before the faces "
                 "go on. Adjust for bind now, while the box is still empty "
                 "and light.",

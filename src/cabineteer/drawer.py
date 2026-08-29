@@ -194,8 +194,38 @@ class DrawerConfig:
 
     @property
     def box_width(self) -> float:
-        """Drawer box width (exterior)."""
-        return self.opening_width - (self.slide.nominal_side_clearance * 2)
+        """Drawer box OUTSIDE width — the finished box, side face to side face.
+
+        Delegated to the slide, because what the clearance is measured to
+        differs by mounting style: an undermount runner constrains the
+        drawer's INSIDE width (Blum: opening − 42 mm), so the outside grows
+        with the side stock; a side-mount slide occupies the gap beside the
+        box and constrains the outside directly.  See
+        :class:`hardware.ClearanceReference`.
+        """
+        return self.slide.drawer_box_width(self.opening_width, self.side_thickness)
+
+    @property
+    def box_inside_width(self) -> float:
+        """Drawer box INSIDE width — wall to wall, what goes in the drawer.
+
+        For an undermount slide this is the dimension the manufacturer
+        actually constrains, so it is the one to measure a built box
+        against: Blum wants it dead on ``opening − 42``.
+        """
+        return self.slide.drawer_inside_width(self.opening_width, self.side_thickness)
+
+    @property
+    def side_gap(self) -> float:
+        """Air gap per side, cabinet side to the box's OUTSIDE face.
+
+        The placement number — where the box sits in the opening.  Equals
+        the slide's ``nominal_side_clearance`` only for side-mount slides;
+        for an undermount it is that minus the side stock (9 mm for Blum's
+        21 mm on 12 mm sides).  Every X-offset that positions a box in a
+        carcass reads this, never the raw clearance.
+        """
+        return (self.opening_width - self.box_width) / 2
 
     @property
     def box_height(self) -> float:
@@ -247,8 +277,12 @@ class DrawerConfig:
 
     @property
     def bottom_panel_width(self) -> float:
-        """Bottom panel width — fits in dados on both sides."""
-        return self.box_width - (self.side_thickness * 2) + (self.bottom_dado_depth * 2)
+        """Bottom panel width — reaches the groove floors in both sides.
+
+        ``box_inside_width`` plus the groove depth at each side, so this
+        tracks the corrected outside width automatically.
+        """
+        return self.box_inside_width + (self.bottom_dado_depth * 2)
 
     @property
     def bottom_panel_depth(self) -> float:
@@ -571,7 +605,7 @@ def build_drawer(
     # Applied face
     if cfg.applied_face:
         face = make_drawer_face(cfg)
-        face_x = -(cfg.face_overlay_sides + cfg.slide.nominal_side_clearance)
+        face_x = -(cfg.face_overlay_sides + cfg.side_gap)
         face_y = -cfg.face_thickness
         face_z = -cfg.face_overlay_bottom
         assy.add(face, name="face",
@@ -614,7 +648,7 @@ def drawers_from_cabinet_config(cab_cfg: CabinetConfig) -> list[tuple["cq.Assemb
             # Position within cabinet: centered in opening with slide clearance,
             # lifted by the slide's minimum bottom clearance (matches
             # build_multi_bay_cabinet's drawer placement).
-            drawer_x = cab_cfg.side_thickness + dcfg.slide.nominal_side_clearance
+            drawer_x = cab_cfg.side_thickness + dcfg.side_gap
             drawer_y = dcfg.front_gap
             drawer_z = current_z + dcfg.slide.min_bottom_clearance
 

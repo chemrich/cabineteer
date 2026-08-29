@@ -71,23 +71,89 @@ class SlideMountLocation(Enum):
     SIDE = "side"      # side-mount slides attach to drawer sides
 
 
+class ClearanceReference(Enum):
+    """Which face of the drawer box a slide's side clearance is measured to.
+
+    This is the single most consequential fact about a slide's clearance
+    number, and getting it wrong is silent: both readings produce a
+    plausible box that is exactly ``2 x side_thickness`` apart.
+
+    ``INSIDE`` — undermount runners (Blum Tandem / Tandem plus / Movento,
+        Salice Futura / Progressa+).  The runner sits UNDER the box, so
+        nothing has to fit beside the drawer side; what the manufacturer
+        constrains is the drawer's INSIDE width, because that is what the
+        runner body, the rear brackets and the front locking devices have
+        to reach across.  Blum states it as one sentence: "inside drawer
+        width must equal opening width minus 42 mm".  The 21 mm per side
+        therefore runs cabinet side -> drawer INSIDE face, and it stays 21
+        at any side thickness (9 mm air + 12 mm side, or 5 mm air + 16 mm
+        side).  The box's outside width GROWS with thicker sides.
+
+    ``OUTSIDE`` — side-mount ball-bearing slides (Accuride and friends).
+        The slide body lives in the gap BESIDE the drawer side, so the
+        clearance is the body thickness and it is measured to the box's
+        OUTSIDE face.  The box's outside width is independent of side
+        thickness.
+
+    Resolved automatically from ``mount_location`` when a spec does not
+    state it, so a newly added undermount cannot silently inherit
+    side-mount arithmetic.
+    """
+    INSIDE = "inside"
+    OUTSIDE = "outside"
+
+
+#: Blum's own "Calculating outside drawer width" table for the TANDEM
+#: undermount family: millimetres to DEDUCT from the cabinet opening width
+#: to get the drawer box's OUTSIDE width, keyed by drawer side thickness.
+#: Source: Blum "TANDEM plus BLUMOTION 563H/563 Installation Instructions",
+#: INST-TDM563H-563 05.16, page 2 (c) 2016 Blum Inc.
+#:
+#: Every entry is ``42 - 2 x side_thickness`` — the arithmetic proof that
+#: the 42 mm is an INSIDE-width rule, kept here as literal published data
+#: so the relation is anchored to something outside this codebase.  A test
+#: asserts ``drawer_box_width`` reproduces it exactly; do not "simplify"
+#: this table into the formula it validates.
+BLUM_UNDERMOUNT_WIDTH_DEDUCTION: dict[float, float] = {
+    12.0: 18.0,
+    13.0: 16.0,
+    14.0: 14.0,
+    15.0: 12.0,
+    16.0: 10.0,
+}
+
+
 @dataclass(frozen=True)
 class DrawerSlideSpec:
     """Specifications for a drawer slide system.
 
-    All clearance values are PER SIDE unless noted otherwise.
+    All clearance values are PER SIDE unless noted otherwise, and each is
+    measured to the drawer-box face named by ``clearance_reference`` — see
+    :class:`ClearanceReference`, which is the whole ballgame.
 
-    For Blum Tandem and Movento undermount families the nominal clearance is
-    21 mm per side — the official formula is:
-        drawer_box_width = interior_opening_width − 42 mm
-    (confirmed in Blum Tandem 550H and Movento 760H/769 installation docs).
+    For the Blum Tandem and Movento undermount families the nominal
+    clearance is 21 mm per side measured to the drawer's INSIDE face, i.e.
+
+        drawer INSIDE  width = opening width − 42 mm      (Blum: "must equal")
+        drawer OUTSIDE width = opening width − 42 mm + 2 × side_thickness
+
+    (Blum TANDEM plus 563H/563 installation instructions, page 2: the NOTE
+    and the "Calculating outside drawer width" deduction table say the same
+    thing two ways — see ``BLUM_UNDERMOUNT_WIDTH_DEDUCTION``.)
+
+    Reading the 42 as an outside-width rule builds every box exactly
+    ``2 × side_thickness`` too narrow, and no gap check can catch it,
+    because the gap is then derived from the same constant it is compared
+    against.  Ask ``drawer_box_width``/``drawer_inside_width`` for the
+    numbers rather than doing the arithmetic at the call site.
     """
     name: str
     manufacturer: str
     slide_type: SlideType
     mount_location: SlideMountLocation
 
-    # Clearance requirements (per side, drawer box side → cabinet side)
+    # Clearance requirements (per side, cabinet side → the drawer-box face
+    # named by ``clearance_reference``).  All three are on the SAME face.
     min_side_clearance: float   # absolute minimum; slide may not engage below this
     max_side_clearance: float   # maximum; coupling won't reach above this
     nominal_side_clearance: float  # recommended / spec clearance
@@ -118,6 +184,13 @@ class DrawerSlideSpec:
     # Drives HardwareLine.pack_quantity and must match the PRICE_LIST basis.
     sold_as_pair: bool = True
 
+    #: Which drawer-box face the three side-clearance numbers above are
+    #: measured to.  ``None`` (the default) resolves from ``mount_location``
+    #: in ``__post_init__``: a BOTTOM-mounted runner sits under the box and
+    #: constrains the INSIDE width; anything mounted beside the box
+    #: constrains the OUTSIDE.  State it explicitly to override.
+    clearance_reference: "ClearanceReference | None" = None
+
     #: Drawer travel: "full" (box comes fully out of the cabinet) or "3/4"
     #: (partial extension). Shown in list_hardware and on every slide BOM
     #: line so the paperwork states it — added after the 563H swap left
@@ -135,25 +208,98 @@ class DrawerSlideSpec:
             )
         return max(candidates)
 
-    def drawer_box_width(self, opening_width: float) -> float:
-        """Compute drawer box width from cabinet opening width."""
-        return opening_width - (self.nominal_side_clearance * 2)
+    def __post_init__(self) -> None:
+        """Resolve ``clearance_reference`` from the mounting location.
+
+        Deliberately a derivation rather than a per-spec default: a slide
+        added later without thinking about it gets the reading that matches
+        how it physically mounts, instead of inheriting whatever the last
+        author typed.
+        """
+        if self.clearance_reference is None:
+            object.__setattr__(
+                self, "clearance_reference",
+                ClearanceReference.INSIDE
+                if self.mount_location is SlideMountLocation.BOTTOM
+                else ClearanceReference.OUTSIDE,
+            )
+
+    def drawer_inside_width(self, opening_width: float,
+                            side_thickness: float) -> float:
+        """INSIDE width of the drawer box for this opening (box wall to wall).
+
+        For an undermount runner this is the dimension the manufacturer
+        constrains (Blum: "must equal opening width minus 42 mm"), so it is
+        the number to check a built box against.
+        """
+        return self.drawer_box_width(opening_width, side_thickness) - 2 * side_thickness
+
+    def drawer_box_width(self, opening_width: float,
+                         side_thickness: float) -> float:
+        """OUTSIDE width of the drawer box for this opening.
+
+        ``side_thickness`` is the drawer-box side stock.  It is REQUIRED,
+        not defaulted: for an inside-referenced slide the outside width is
+        a function of it, and a defaulted 0 would silently reproduce the
+        pre-2026-08 bug (every undermount box ``2 x side_thickness`` too
+        narrow).  It is genuinely unused for side-mount slides.
+        """
+        inner_face = opening_width - 2 * self.nominal_side_clearance
+        if self.clearance_reference is ClearanceReference.INSIDE:
+            return inner_face + 2 * side_thickness
+        return inner_face
+
+    def side_gap(self, opening_width: float, side_thickness: float) -> float:
+        """Air gap per side between the cabinet side and the box's OUTSIDE face.
+
+        This is the placement number — where the box actually sits in the
+        opening — and it equals ``nominal_side_clearance`` only for
+        side-mount slides.  For an undermount it is
+        ``nominal_side_clearance − side_thickness`` (9 mm for Blum's 21 mm
+        with 12 mm sides).
+        """
+        return (opening_width
+                - self.drawer_box_width(opening_width, side_thickness)) / 2
 
     def validate_drawer_dims(
-        self, drawer_width: float, drawer_height: float, drawer_depth: float, opening_width: float
+        self, drawer_width: float, drawer_height: float, drawer_depth: float,
+        opening_width: float, side_thickness: float = 0.0,
     ) -> list[str]:
-        """Check drawer dimensions against slide constraints. Returns list of issues."""
+        """Check drawer dimensions against slide constraints. Returns list of issues.
+
+        ``drawer_width`` is the box's OUTSIDE width; ``side_thickness`` is
+        the box side stock, needed to step in to the inside face for a
+        slide whose clearance is referenced there.
+        """
         issues = []
-        actual_clearance = (opening_width - drawer_width) / 2
+        # Measure the clearance to the face this slide's numbers describe.
+        if self.clearance_reference is ClearanceReference.INSIDE:
+            measured_face_width = drawer_width - 2 * side_thickness
+            face = "inside"
+        else:
+            measured_face_width = drawer_width
+            face = "outside"
+        actual_clearance = (opening_width - measured_face_width) / 2
 
         if actual_clearance < self.min_side_clearance:
             issues.append(
-                f"Side clearance {actual_clearance:.1f}mm < minimum {self.min_side_clearance}mm"
+                f"Side clearance {actual_clearance:.1f}mm (cabinet side to drawer "
+                f"{face} face) < minimum {self.min_side_clearance}mm"
             )
         if actual_clearance > self.max_side_clearance:
             issues.append(
-                f"Side clearance {actual_clearance:.1f}mm > maximum {self.max_side_clearance}mm — "
+                f"Side clearance {actual_clearance:.1f}mm (cabinet side to drawer "
+                f"{face} face) > maximum {self.max_side_clearance}mm — "
                 f"slides won't engage"
+            )
+        if (self.clearance_reference is ClearanceReference.INSIDE
+                and side_thickness >= self.nominal_side_clearance):
+            issues.append(
+                f"Drawer side stock {side_thickness:.1f}mm is at or beyond the "
+                f"{self.nominal_side_clearance:.1f}mm per-side clearance for "
+                f"{self.name} — the box would be as wide as the opening or wider "
+                f"(outside width = opening − "
+                f"{2 * self.nominal_side_clearance:.0f} + 2 × side)."
             )
         if drawer_height < self.min_drawer_height:
             issues.append(
@@ -338,11 +484,17 @@ class HingeSpec:
 #
 # Side clearance note (Blum undermount family):
 #   The Blum installation docs specify:
-#       inside drawer width = inside cabinet opening − 42 mm
-#   i.e. 21 mm per side nominal clearance. This applies to both the Tandem
-#   and Movento families in frameless (Euro-style) cabinets.
+#       INSIDE drawer width = inside cabinet opening − 42 mm
+#   i.e. 21 mm per side measured from the cabinet side to the drawer's
+#   INSIDE face — NOT to the box's outside.  The box's outside width is
+#       outside = opening − 42 + 2 × drawer side thickness
+#   which is why Blum's own table deducts 18 mm for 12 mm sides and only
+#   10 mm for 16 mm sides (see BLUM_UNDERMOUNT_WIDTH_DEDUCTION).  The air
+#   gap beside the box is the leftover, 21 − side thickness.
+#   This applies to both the Tandem and Movento families in frameless
+#   (Euro-style) cabinets.
 #   Adjustment range of the front locking device is ±1.5 mm laterally, giving
-#   a workable window of roughly 19.5–22.5 mm per side.
+#   a workable window of roughly 19.5–22.5 mm per side ON THE INSIDE FACE.
 #
 # Part number conventions:
 #   Tandem 550H  : 550H{length×10}B  e.g. 550H4500B = 450 mm
@@ -366,7 +518,8 @@ BLUM_TANDEM_550H = DrawerSlideSpec(
     manufacturer="Blum",
     slide_type=SlideType.UNDERMOUNT,
     mount_location=SlideMountLocation.BOTTOM,
-    # Blum formula: drawer width = opening − 42 mm → 21 mm per side
+    # Blum formula: INSIDE drawer width = opening − 42 mm → 21 mm per side,
+    # measured to the drawer's inside face (outside = opening − 42 + 2 × side).
     min_side_clearance=19.5,
     max_side_clearance=22.5,
     nominal_side_clearance=21.0,
@@ -482,7 +635,8 @@ BLUM_MOVENTO_760H = DrawerSlideSpec(
     manufacturer="Blum",
     slide_type=SlideType.UNDERMOUNT,
     mount_location=SlideMountLocation.BOTTOM,
-    # Blum formula: drawer width = opening − 42 mm → 21 mm per side
+    # Blum formula: INSIDE drawer width = opening − 42 mm → 21 mm per side,
+    # measured to the drawer's inside face (outside = opening − 42 + 2 × side).
     min_side_clearance=19.5,
     max_side_clearance=22.5,
     nominal_side_clearance=21.0,

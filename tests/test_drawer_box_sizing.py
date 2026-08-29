@@ -158,9 +158,13 @@ def test_every_box_row_says_what_the_joint_took(style):
 
 class TestCharliesBenchNumbers:
     """B/C kids' desks: 12 mm Baltic birch, drawer-lock corners measured at a
-    2 mm lip, 563H 15" runners in a 381-wide carcass. These are the numbers
-    on the 2026-08-26 bench card; the ones on the batch paper before it were
-    303 fronts and 291 x 381 bottoms."""
+    2 mm lip, 563H 15" runners in a 381-wide carcass (345 mm design opening).
+
+    The depth axis was fixed in 2026-08 (#89): sides 377, bottoms 369 deep.
+    The WIDTH axis was wrong until 2026-08-29 — the whole corpus was built
+    to 303 fronts and 291 wide bottoms, which is Blum's INSIDE width read as
+    if it were the outside. The box is 327 outside / 303 inside; the 303 is
+    still there, one layer in."""
 
     def _boxes(self):
         cfg = _cabinet(DrawerJoineryStyle.DRAWER_LOCK, lip=2.0)
@@ -168,19 +172,21 @@ class TestCharliesBenchNumbers:
             cfg, cfg.interior_width, 133.0, cfg.interior_depth,
             cfg.openings[0])
 
-    def test_box_is_303_by_381(self):
+    def test_box_is_327_outside_303_inside_by_381(self):
         d = self._boxes()
-        assert (d.box_width, d.box_depth) == (303.0, 381.0)
+        assert (d.box_width, d.box_depth) == (327.0, 381.0)
+        assert d.box_inside_width == pytest.approx(303.0)
+        assert d.side_gap == pytest.approx(9.0)
 
     def test_sides_are_377(self):
         assert self._boxes().side_panel_length == pytest.approx(377.0)
 
-    def test_fronts_and_backs_are_303(self):
-        assert self._boxes().front_back_panel_length == pytest.approx(303.0)
+    def test_fronts_and_backs_are_327(self):
+        assert self._boxes().front_back_panel_length == pytest.approx(327.0)
 
-    def test_bottom_is_291_by_369(self):
+    def test_bottom_is_315_by_369(self):
         d = self._boxes()
-        assert d.bottom_panel_width == pytest.approx(291.0)
+        assert d.bottom_panel_width == pytest.approx(315.0)
         assert d.bottom_panel_depth == pytest.approx(369.0)
 
 

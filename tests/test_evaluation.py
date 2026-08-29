@@ -131,10 +131,16 @@ class TestDrawerConfigProperties:
     """Unit tests for DrawerConfig derived properties (previously untested)."""
 
     def test_box_width(self):
-        """Box width = opening width minus 2× nominal side clearance."""
+        """Outside width = opening − 2× clearance + 2× side stock.
+
+        The Blum 550H's 21 mm per side reaches the drawer's INSIDE face
+        (opening − 42 = the inside width), so the outside is that plus both
+        walls: 564 − 42 + 2 × 15 = 552.
+        """
         cfg = DrawerConfig(opening_width=564, opening_height=150, opening_depth=541)
-        # Blum Tandem 550H nominal clearance = 21.0mm per side (opening − 42mm)
-        assert abs(cfg.box_width - (564 - 21.0 * 2)) < 0.1
+        assert abs(cfg.box_inside_width - (564 - 21.0 * 2)) < 0.1
+        assert abs(cfg.box_width - (564 - 21.0 * 2 + 2 * 15.0)) < 0.1
+        assert abs(cfg.side_gap - (21.0 - 15.0)) < 0.1
 
     def test_box_height(self):
         """Box height = opening height minus slide bottom clearance minus vertical gap."""
@@ -622,6 +628,7 @@ class TestGeometricPaths:
         issues = check_drawer_in_opening(
             assy, opening_width=564, opening_height=150,
             opening_depth=541, slide=get_slide(dcfg.slide_key),
+            side_thickness=dcfg.side_thickness,
         )
         # The box clears — no width or height fit errors from face overhang.
         bad = [i for i in issues if i.check in ("drawer_fit_width", "drawer_fit_height")]

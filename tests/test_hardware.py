@@ -27,18 +27,26 @@ class TestBlumTandem550H:
         with pytest.raises(ValueError, match="No .* slide fits"):
             BLUM_TANDEM_550H.slide_length_for_depth(100)
 
-    def test_drawer_box_width(self):
-        opening = 564  # 600mm cabinet - 2×18mm sides
-        box_width = BLUM_TANDEM_550H.drawer_box_width(opening)
-        expected = opening - (21.0 * 2)  # 522.0mm — Blum formula: opening − 42mm
-        assert abs(box_width - expected) < 0.1
+    def test_drawer_box_width_is_the_outside_and_grows_with_the_sides(self):
+        """Blum's 42 mm is an INSIDE-width rule, so the outside follows the stock.
+
+        opening 564, 15 mm sides: inside 522 (= 564 − 42, Blum's "must
+        equal"), outside 552. Reading the 42 as an outside rule is the
+        pre-2026-08-29 bug that made every box 2 x side thickness narrow.
+        """
+        opening = 564  # 600 mm cabinet − 2 x 18 mm sides
+        assert BLUM_TANDEM_550H.drawer_inside_width(opening, 15.0) == pytest.approx(522.0)
+        assert BLUM_TANDEM_550H.drawer_box_width(opening, 15.0) == pytest.approx(552.0)
+        # Air beside the box is the leftover, not the quoted clearance.
+        assert BLUM_TANDEM_550H.side_gap(opening, 15.0) == pytest.approx(6.0)
 
     def test_validate_good_dims(self):
         issues = BLUM_TANDEM_550H.validate_drawer_dims(
-            drawer_width=522.0,  # opening(564) − 42mm = 522mm (Blum nominal)
+            drawer_width=552.0,   # OUTSIDE; 522 inside = opening(564) − 42
             drawer_height=120,
             drawer_depth=450,
             opening_width=564,
+            side_thickness=15.0,
         )
         assert len(issues) == 0
 
@@ -48,15 +56,46 @@ class TestBlumTandem550H:
             drawer_height=120,
             drawer_depth=450,
             opening_width=564,
+            side_thickness=15.0,
         )
         assert any("clearance" in i.lower() for i in issues)
 
+    def test_validate_flags_the_old_undersized_box(self):
+        """A box built to the old rule must now be reported as too narrow.
+
+        522 outside in a 564 opening leaves only 507 inside — 28.5 mm per
+        side to the drawer's inside face against Blum's 22.5 mm maximum, so
+        the runners cannot reach it. This is the check the pre-fix code
+        could not make, because the gap was derived from the constant it
+        was compared against.
+        """
+        issues = BLUM_TANDEM_550H.validate_drawer_dims(
+            drawer_width=522.0,
+            drawer_height=120,
+            drawer_depth=450,
+            opening_width=564,
+            side_thickness=15.0,
+        )
+        assert any("clearance" in i.lower() for i in issues)
+
+    def test_validate_rejects_sides_thicker_than_the_clearance(self):
+        """21 mm sides on a 21 mm-per-side undermount leaves no air at all."""
+        issues = BLUM_TANDEM_550H.validate_drawer_dims(
+            drawer_width=564.0,
+            drawer_height=120,
+            drawer_depth=450,
+            opening_width=564,
+            side_thickness=21.0,
+        )
+        assert any("side stock" in i.lower() for i in issues)
+
     def test_validate_too_short(self):
         issues = BLUM_TANDEM_550H.validate_drawer_dims(
-            drawer_width=538,
+            drawer_width=568,
             drawer_height=50,  # below 68mm minimum
             drawer_depth=450,
             opening_width=564,
+            side_thickness=15.0,
         )
         assert any("height" in i.lower() for i in issues)
 
