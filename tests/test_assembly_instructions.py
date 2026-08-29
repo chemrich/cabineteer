@@ -252,3 +252,38 @@ class TestRendering:
         pdf = generate_assembly_pdf(
             [build_assembly_plan(_drawer_cfg())], "t")
         assert pdf.startswith(b"%PDF")
+
+
+class TestSlideNaming:
+    """The slide line is bench-facing: it must name the hardware the way the
+    BOM does, and must not quote one slide as if it covered every box."""
+
+    def test_single_slide_named_not_keyed(self):
+        plan = build_assembly_plan(_drawer_cfg())
+        step = next(s for s in plan.box_steps if s.title == "Fit the slides")
+        assert "Blum" in step.body
+        assert "blum_tandem" not in step.body      # no raw config key
+        assert "throughout" in step.body
+
+    def test_mixed_slides_are_flagged_not_averaged(self):
+        """Charlie puts heavier slides under the heavy drawers only — quoting
+        the first box's slide would be wrong for most of the run."""
+        col = ColumnConfig(
+            width_mm=432.0,
+            openings=(OpeningConfig(height_mm=254.0, opening_type="drawer",
+                                    slide_key="blum_movento_769"),
+                      OpeningConfig(height_mm=104.0, opening_type="drawer")))
+        plan = build_assembly_plan(_cfg(columns=[col]))
+        step = next(s for s in plan.box_steps if s.title == "Fit the slides")
+        assert "MIXED slides" in step.body
+        assert "Movento" in step.body
+        assert "throughout" not in step.body
+
+    def test_unknown_slide_key_does_not_crash_the_doc(self):
+        col = ColumnConfig(
+            width_mm=432.0,
+            openings=(OpeningConfig(height_mm=254.0, opening_type="drawer"),))
+        plan = build_assembly_plan(_cfg(columns=[col],
+                                        drawer_slide="blum_tandem_550h"))
+        step = next(s for s in plan.box_steps if s.title == "Fit the slides")
+        assert step.body

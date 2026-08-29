@@ -661,6 +661,32 @@ def build_drawer_box_plans(cab_cfg, id_map=None) -> list[DrawerBoxPlan]:
     return plans
 
 
+def _slide_name(boxes: list) -> str:
+    """Name the slides the way the hardware BOM does, not by config key.
+
+    A run can mix slides per opening (Charlie puts Movento under the heavy
+    drawers only), so this says so rather than quoting the first one as if
+    it covered every box.
+    """
+    from .hardware import get_slide
+
+    def label(key: str) -> str:
+        try:
+            return get_slide(key).name
+        except Exception:          # unknown key — show what was asked for
+            return key
+
+    keys = []
+    for b in boxes:
+        if b.slide_key not in keys:
+            keys.append(b.slide_key)
+    if len(keys) == 1:
+        return f"{label(keys[0])} throughout."
+    named = ", ".join(label(k) for k in keys)
+    return (f"MIXED slides in this run — {named}. Check each box's row "
+            "before you mount anything; they are not interchangeable.")
+
+
 def _build_box_steps(boxes: list, cab_cfg) -> list[AssemblyStep]:
     """Bench sequence for the drawer boxes.
 
@@ -754,9 +780,9 @@ def _build_box_steps(boxes: list, cab_cfg) -> list[AssemblyStep]:
             )),
         AssemblyStep(
             "Fit the slides",
-            f"{boxes[0].slide_key} throughout. Mount to the box and the "
-            "carcass only after the carcass is cured and standing on its "
-            "final feet — a case fitted on its side rarely stays true.",
+            f"{_slide_name(boxes)} Mount to the box and the carcass only "
+            "after the carcass is cured and standing on its final feet — a "
+            "case fitted on its side rarely stays true.",
             checklist=(
                 "Check the box height and width against the opening one "
                 "last time before drilling anything.",
