@@ -345,6 +345,13 @@ class CabinetConfig:
     # Drawer box corner joinery
     drawer_joinery: DrawerJoineryStyle = DrawerJoineryStyle.HALF_LAP
 
+    # Front-lapping drawer corners (drawer_lock) only: the wall the router
+    # bit leaves outboard of the socket, per corner. The box sides are cut
+    # 2 x this short of the box depth, so it is the difference between a box
+    # that fits its slides and one that does not. MEASURED on a test corner,
+    # never derived — leave None to take the catalogue nominal for the bit.
+    drawer_corner_lip_mm: Optional[float] = None
+
     # Per-method joinery specs (used when the matching joinery method is selected)
     domino_spec: DominoSpec = field(default_factory=lambda: DEFAULT_DOMINO)
     pocket_screw_spec: PocketScrewSpec = field(default_factory=lambda: DEFAULT_POCKET_SCREW)
@@ -1865,6 +1872,7 @@ def build_multi_bay_cabinet(
                         slide_key=op.slide_key or cfg.drawer_slide,
                         applied_face=False,  # faces handled below
                         joinery_style=cfg.drawer_joinery,
+                        corner_lip_mm=cfg.drawer_corner_lip_mm,
                         side_thickness=cfg.drawer_box_thickness,
                         front_back_thickness=cfg.drawer_box_thickness,
                         bottom_thickness=op.bottom_thickness,

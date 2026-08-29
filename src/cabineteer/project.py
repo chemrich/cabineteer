@@ -60,6 +60,7 @@ _SHARED_FIELDS = (
     "back_capture",
     "back_groove_setback",
     "drawer_joinery",
+    "drawer_corner_lip_mm",
     "domino_spec",
     "pocket_screw_spec",
     "biscuit_spec",
@@ -109,6 +110,9 @@ class SharedDesign:
     back_capture: Optional[str] = None
     back_groove_setback: Optional[float] = None    # "dado" capture only
     drawer_joinery:   Optional[DrawerJoineryStyle] = None
+    # Front-lapping drawer corners only: measured wall outboard of the
+    # socket, per corner. A shop constant, so it belongs on the project.
+    drawer_corner_lip_mm: Optional[float] = None
     domino_spec:        Optional[DominoSpec]       = None
     pocket_screw_spec:  Optional[PocketScrewSpec]  = None
     biscuit_spec:       Optional[BiscuitSpec]      = None
@@ -832,6 +836,7 @@ def _config_to_dict(cfg: CabinetConfig) -> dict:
         "back_capture": cfg.back_capture,
         "back_groove_setback": cfg.back_groove_setback,
         "drawer_joinery":  cfg.drawer_joinery.value,
+        "drawer_corner_lip_mm": cfg.drawer_corner_lip_mm,
         # Per-method joinery specs — serialized as field dicts;
         # build_cabinet_config reconstructs the spec objects on load.
         "domino_spec":       _spec_to_dict(cfg.domino_spec),

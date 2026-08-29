@@ -8,6 +8,7 @@ import pytest
 
 from cabineteer.joinery import (
     DrawerJoineryStyle,
+    DRAWER_LOCK_NOMINAL_LIP_MM,
     CarcassJoinery,
     DrawerJoinerySpec,
     drawer_joinery_spec,
@@ -86,10 +87,10 @@ class TestDrawerJoinerySpecQQQ:
         assert s.side_dado_depth_x == pytest.approx(9.5)
         assert s.side_dado_depth_y == pytest.approx(9.5)
 
-    def test_lock_steps_are_zero(self):
+    def test_laps_from_the_side(self):
         s = self._spec()
-        assert s.lock_step_depth_x == 0.0
-        assert s.lock_step_depth_y == 0.0
+        assert not s.laps_front
+        assert s.lip == 0.0
 
 
 class TestDrawerJoinerySpecHalfLap:
@@ -122,14 +123,39 @@ class TestDrawerJoinerySpecDrawerLock:
     def test_requires_router_bit(self):
         assert self._spec().requires_router_bit
 
-    def test_tongue_proportions_one_third(self):
-        t_fb = 15.0
-        s = self._spec(t_fb=t_fb)
-        assert s.side_dado_depth_y == pytest.approx(t_fb / 3)
-
-    def test_lock_step_present(self):
+    def test_laps_from_the_front(self):
+        """The front/back wraps the side ends — the reason the joint resists
+        the front being pulled off, and the reason the SIDES are the parts
+        that get cut short."""
         s = self._spec()
-        assert s.lock_step_depth_y > 0
+        assert s.laps_front
+        assert s.engagement_x == 0.0    # nothing is cut into the side
+
+    def test_lip_and_socket_split_the_front_thickness(self):
+        s = self._spec(t_fb=15.0)
+        assert s.lip + s.socket_depth == pytest.approx(15.0)
+        assert 0 < s.lip < 15.0
+
+    def test_nominal_lip_is_a_default_a_measurement_overrides(self):
+        """The lip belongs to the bit and the fence, not the drawing."""
+        nominal = self._spec(t_s=12.0, t_fb=12.0)
+        assert nominal.lip == pytest.approx(DRAWER_LOCK_NOMINAL_LIP_MM)
+        measured = drawer_joinery_spec(
+            DrawerJoineryStyle.DRAWER_LOCK, 12.0, 12.0, lip=2.0)
+        assert measured.lip == pytest.approx(2.0)
+        assert measured.socket_depth == pytest.approx(10.0)
+
+    def test_impossible_lip_is_refused(self):
+        for bad in (0.0, -1.0, 12.0, 20.0):
+            with pytest.raises(ValueError, match="lip"):
+                drawer_joinery_spec(
+                    DrawerJoineryStyle.DRAWER_LOCK, 12.0, 12.0, lip=bad)
+
+    def test_lip_is_ignored_by_side_lapping_styles(self):
+        """A project-wide lip token must stay harmless on a half-lap box."""
+        s = drawer_joinery_spec(
+            DrawerJoineryStyle.HALF_LAP, 12.0, 12.0, lip=2.0)
+        assert s.lip == 0.0 and not s.laps_front
 
     def test_no_true_thickness_required(self):
         assert not self._spec().requires_true_thickness

@@ -25,11 +25,15 @@ Four styles are supported, selectable via ``DrawerJoineryStyle``:
                  No mechanical interlock, but simple to cut (one rabbet per
                  piece end on the table saw).  No change to box exterior dims.
 
-  DRAWER_LOCK  — Stepped router-bit joint (single bit, one setup per piece
-                 type).  The side gets an L-shaped tongue; the front/back
-                 gets a matching L-shaped socket.  Highest shear resistance of
-                 the four styles.  Tongue proportions follow the ⅓-thickness
-                 convention used by most dedicated drawer-lock router bits.
+  DRAWER_LOCK  — Stepped router-bit joint (single bit, one fence setting per
+                 piece type).  Unlike the other three, this one is
+                 FRONT-LAPPING: the front and back span the full box width and
+                 their end sockets swallow the ends of the sides, which is what
+                 makes the front resist being pulled off.  The number the shop
+                 actually sets is the LIP — the wall left outboard of the
+                 socket — and the sides are cut short by two of them.  The lip
+                 is a property of the bit and the fence, not of the drawing:
+                 measure a test corner (see ``DrawerConfig.corner_lip_mm``).
 
 Carcass joinery
 ---------------
@@ -81,6 +85,24 @@ class DrawerJoineryStyle(Enum):
     QQQ         = "qqq"          # quarter-quarter-quarter locking rabbet
     HALF_LAP    = "half_lap"     # half-lap overlap
     DRAWER_LOCK = "drawer_lock"  # stepped router-bit lock joint
+
+
+#: Corner lap directions — which piece owns the box's outside faces at the
+#: corner, and therefore which piece gets cut short.
+#:
+#: ``LAP_SIDE``  the sides run the full box depth and the front/back is buried
+#:               between them (butt, QQQ, half lap).
+#: ``LAP_FRONT`` the front/back runs the full box width and wraps the ends of
+#:               the sides (drawer lock, and how a dedicated drawer-lock bit is
+#:               cut at the router table).
+LAP_SIDE = "side"
+LAP_FRONT = "front"
+
+#: Nominal wall a standard drawer-lock bit leaves outboard of the socket, per
+#: corner (1/8").  A DEFAULT, not a measurement: the real value comes off a
+#: test corner and belongs in ``DrawerConfig.corner_lip_mm``.  Charlie's setup
+#: on 12 mm Baltic birch measured 2.0 mm (2026-08-26).
+DRAWER_LOCK_NOMINAL_LIP_MM = 3.2
 
 
 class CarcassJoinery(Enum):
@@ -137,9 +159,14 @@ class DrawerJoinerySpec:
     fb_channel_depth_x: float   # how deep the channel is from the outer edge (x)
     fb_channel_depth_y: float   # how wide the channel is from the front face (y)
 
-    # For DRAWER_LOCK only: second step of the L-tongue
-    lock_step_depth_x: float = 0.0  # inner step (x)
-    lock_step_depth_y: float = 0.0  # inner step (y)
+    # Which piece owns the box's outside faces at the corner (LAP_SIDE /
+    # LAP_FRONT).  This decides which part is cut short, so it decides every
+    # box part length — see ``part_lengths``.
+    corner_lap: str = LAP_SIDE
+
+    # LAP_FRONT only: the wall left outboard of the socket on the front/back,
+    # per corner.  An assembled box runs 2 x lip longer than its sides.
+    lip: float = 0.0
 
     # Does the joint require a router bit (True) or a saw blade setup (False)?
     requires_router_bit: bool = False
@@ -167,9 +194,45 @@ class DrawerJoinerySpec:
         full-thickness lip at the very end (Y `0…t_s/2`) that wraps around
         the corner and hides the joint from outside the box.
         """
-        if self.style == DrawerJoineryStyle.BUTT:
+        if self.style == DrawerJoineryStyle.BUTT or self.laps_front:
             return 0.0
         return self.side_dado_depth_x
+
+    @property
+    def laps_front(self) -> bool:
+        """True when the front/back wraps the ends of the sides."""
+        return self.corner_lap == LAP_FRONT
+
+    @property
+    def socket_depth(self) -> float:
+        """LAP_FRONT: how deep the side's end buries into the front/back.
+
+        The rest of the front/back's thickness is the ``lip`` that shows
+        outboard of the side.
+        """
+        return (self.front_back_thickness - self.lip) if self.laps_front else 0.0
+
+    def part_lengths(self, box_width: float, box_depth: float) -> tuple[float, float]:
+        """``(side length, front/back length)`` for a finished box.
+
+        THE single source for box part lengths.  The cutlist, the assembly
+        doc and the 3D model all size from here, so a set of parts always
+        closes into a ``box_width`` x ``box_depth`` box — which is the one
+        thing a drawer-box parts list has to get right and the thing that
+        went wrong before 2026-08: sides were listed at full depth AND
+        fronts at full width, double-counting both corners.
+
+        Which part is cut short follows the lap direction:
+
+        LAP_SIDE   sides run the full depth; the front/back loses
+                   ``2 x (side_thickness - engagement_x)`` and seats
+                   ``engagement_x`` into each side.
+        LAP_FRONT  the front/back runs the full width; the side loses
+                   ``2 x lip``.
+        """
+        if self.laps_front:
+            return box_depth - 2 * self.lip, box_width
+        return box_depth, box_width - 2 * (self.side_thickness - self.engagement_x)
 
     @property
     def glue_area_corner(self) -> float:
@@ -190,8 +253,10 @@ class DrawerJoinerySpec:
             # Lap face + shoulder
             return self.side_dado_depth_x + self.front_back_thickness / 2
         elif self.style == DrawerJoineryStyle.DRAWER_LOCK:
-            # L-tongue has two contact faces
-            return self.side_dado_depth_x + self.lock_step_depth_x + self.side_dado_depth_y
+            # The side's end is swallowed by the front's socket: both faces
+            # of the side glue to the socket walls over its full depth, plus
+            # the end grain on the socket floor.
+            return 2 * self.socket_depth + self.side_thickness
         return 0.0
 
     @classmethod
@@ -200,6 +265,7 @@ class DrawerJoinerySpec:
         style: DrawerJoineryStyle,
         side_thickness: float,
         front_back_thickness: float,
+        lip: float | None = None,
     ) -> "DrawerJoinerySpec":
         """Create a spec with dimensions computed from stock thicknesses.
 
@@ -208,10 +274,16 @@ class DrawerJoinerySpec:
         HALF_LAP:
           Each piece loses half its own thickness at the corner.
         DRAWER_LOCK:
-          Tongue proportions: ⅓ of front_back_thickness for each step.
-          (Matches the geometry produced by most commercial drawer-lock bits.)
+          Front-lapping.  ``lip`` is the wall the bit leaves outboard of the
+          socket, per corner — the number that sets the side length.  Pass the
+          value measured off a test corner; omitting it falls back to
+          ``DRAWER_LOCK_NOMINAL_LIP_MM`` (clamped to a third of the stock),
+          which is a catalogue figure, not a measurement.
         BUTT:
           No cuts; all zero.
+
+        ``lip`` is ignored by the side-lapping styles, which have no such
+        wall — a project-wide lip token stays harmless on a half-lap box.
         """
         t_s = side_thickness
         t_fb = front_back_thickness
@@ -278,18 +350,28 @@ class DrawerJoinerySpec:
             )
 
         elif style == DrawerJoineryStyle.DRAWER_LOCK:
-            # L-tongue: the side gets a stepped tongue of ⅓ / ⅓ proportions
-            step = t_fb / 3
+            # Front-lapping.  Nothing is cut into the side but its length:
+            # the front/back carries the socket, and the wall left outboard
+            # of that socket — the lip — is what the box grows by.
+            eff_lip = (min(DRAWER_LOCK_NOMINAL_LIP_MM, t_fb / 3)
+                       if lip is None else float(lip))
+            if not 0 < eff_lip < t_fb:
+                raise ValueError(
+                    f"Drawer-lock lip must sit between 0 and the front/back "
+                    f"thickness ({t_fb} mm), got {eff_lip}. The lip is the "
+                    f"wall left outboard of the socket — measure it on a "
+                    f"test corner."
+                )
             return cls(
                 style=style,
                 side_thickness=t_s,
                 front_back_thickness=t_fb,
-                side_dado_depth_x=t_s / 2,   # outer step of L (from inside face)
-                side_dado_depth_y=step,        # depth of first step (into end)
-                fb_channel_depth_x=t_s / 2,   # matching socket outer step
-                fb_channel_depth_y=step,       # matching socket depth
-                lock_step_depth_x=t_s / 2,    # inner step of L
-                lock_step_depth_y=step * 2,    # extends further into end
+                side_dado_depth_x=0.0,   # the side is cut to length, not cut into
+                side_dado_depth_y=0.0,
+                fb_channel_depth_x=t_s,           # socket is as wide as the side
+                fb_channel_depth_y=t_fb - eff_lip,  # ...and this deep into the end
+                corner_lap=LAP_FRONT,
+                lip=eff_lip,
                 requires_router_bit=True,
                 requires_true_thickness=False,
             )
@@ -301,9 +383,11 @@ def drawer_joinery_spec(
     style: DrawerJoineryStyle,
     side_thickness: float,
     front_back_thickness: float,
+    lip: float | None = None,
 ) -> DrawerJoinerySpec:
     """Convenience wrapper for DrawerJoinerySpec.from_stock()."""
-    return DrawerJoinerySpec.from_stock(style, side_thickness, front_back_thickness)
+    return DrawerJoinerySpec.from_stock(
+        style, side_thickness, front_back_thickness, lip)
 
 
 # ─── Festool Domino floating tenon ────────────────────────────────────────────
@@ -802,7 +886,7 @@ def _require_cq() -> None:
 def apply_drawer_joinery_to_side(
     panel: "cq.Workplane",
     spec: DrawerJoinerySpec,
-    box_depth: float,
+    panel_length: float,
     box_height: float,
     side: str = "left",
 ) -> "cq.Workplane":
@@ -810,10 +894,15 @@ def apply_drawer_joinery_to_side(
 
     The panel is assumed to start at the origin (0, 0, 0) with:
       X = 0 … side_thickness
-      Y = 0 … box_depth
+      Y = 0 … panel_length   (the SIDE's own length, which for a front-lapping
+                              joint is shorter than the box depth)
       Z = 0 … box_height
 
     For BUTT: no cut.
+
+    For a FRONT-LAPPING joint (drawer lock): no cut either — the socket that
+    makes the corner is cut into the front/back, and the side is simply cut
+    ``2 x lip`` short of the box depth.
 
     For HALF_LAP / DRAWER_LOCK: a uniform inner-face rabbet — ``engagement_x``
     deep in X, full ``front_back_thickness`` deep in Y — at the very end of the
@@ -833,7 +922,7 @@ def apply_drawer_joinery_to_side(
     """
     _require_cq()
 
-    if spec.style == DrawerJoineryStyle.BUTT:
+    if spec.style == DrawerJoineryStyle.BUTT or spec.laps_front:
         return panel
 
     if side not in ("left", "right"):
@@ -859,7 +948,7 @@ def apply_drawer_joinery_to_side(
 
     back_cut = (
         cq.Workplane("XY")
-        .transformed(offset=(cut_x_start, box_depth - dy - cut_y_inset, 0))
+        .transformed(offset=(cut_x_start, panel_length - dy - cut_y_inset, 0))
         .box(dx, dy, box_height, centered=False)
     )
     panel = panel.cut(back_cut)
@@ -870,14 +959,21 @@ def apply_drawer_joinery_to_side(
 def apply_drawer_joinery_to_front_back(
     panel: "cq.Workplane",
     spec: DrawerJoinerySpec,
-    interior_width: float,
+    panel_length: float,
     box_height: float,
     position: str = "back",
 ) -> "cq.Workplane":
-    """Cut the QQQ outer-face rabbet on the sub-front / back panel.
+    """Cut the end sockets (front-lapping) or the QQQ outer-face rabbet.
 
-    For BUTT / HALF_LAP / DRAWER_LOCK this is a no-op — the sub-front's solid
-    body fills the side's rabbet directly.
+    For a FRONT-LAPPING joint (drawer lock) the panel spans the full box
+    width, and each end carries a socket that swallows the end of a side:
+    ``side_thickness`` wide in X, ``socket_depth`` deep in Y measured from
+    the INSIDE face, full height.  What is left outboard of it is the
+    ``lip``.  The bottom groove dies into these sockets, which is why no
+    groove shows on the outside of the finished box.
+
+    For BUTT / HALF_LAP this is a no-op — the sub-front's solid body fills
+    the side's rabbet directly.
 
     For QQQ each end of the front/back gets an outer-face rabbet that removes
     the corner (panel-local X = 0…fb_channel_depth_x, Y = 0…(t_fb − tongue_y),
@@ -895,6 +991,19 @@ def apply_drawer_joinery_to_front_back(
     _require_cq()
     if position not in ("front", "back"):
         raise ValueError(f"position must be 'front' or 'back', got {position!r}")
+
+    if spec.laps_front:
+        # The inside face is Y = t_fb for a sub-front (its outer face looks
+        # out of the box at Y = 0) and Y = 0 for the back.
+        depth = spec.socket_depth
+        y0 = spec.lip if position == "front" else 0.0
+        for x0 in (0.0, panel_length - spec.side_thickness):
+            panel = panel.cut(
+                cq.Workplane("XY")
+                .transformed(offset=(x0, y0, 0))
+                .box(spec.side_thickness, depth, box_height, centered=False)
+            )
+        return panel
 
     if spec.style != DrawerJoineryStyle.QQQ:
         return panel
@@ -915,7 +1024,7 @@ def apply_drawer_joinery_to_front_back(
 
     right_cut = (
         cq.Workplane("XY")
-        .transformed(offset=(interior_width - dx, rabbet_y_start, 0))
+        .transformed(offset=(panel_length - dx, rabbet_y_start, 0))
         .box(dx, rabbet_dy, box_height, centered=False)
     )
     panel = panel.cut(right_cut)
