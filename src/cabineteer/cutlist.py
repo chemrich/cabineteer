@@ -668,6 +668,19 @@ def optimize_cutlist(
             algorithm_used="",
         )
 
+    result = _dispatch_optimizer(panels, stock_sheet, kerf, algorithm)
+    # Post-condition, not a test: a layout that puts two parts in the same
+    # place, or a part off the sheet, is drawn on the SVG and cut from real
+    # plywood. The 2026-08 review found this surface has no closure coverage
+    # at all — a one-character kerf-sign flip produced 12 overlapping pairs
+    # with the whole suite green. Checking here covers optimizers not yet
+    # written, which a test over today's four cannot.
+    _assert_placements_valid(result)
+    return result
+
+
+def _dispatch_optimizer(panels, stock_sheet, kerf, algorithm):
+    """Pick the packer. Split out so every path shares one post-condition."""
     if algorithm == "rips_first":
         # Opt-in shop-sequence layout (rips first, then cross-cuts);
         # deliberately NOT part of "auto" while Charlie evaluates it.
@@ -697,6 +710,53 @@ def optimize_cutlist(
     if _RECTPACK_AVAILABLE:
         return _optimize_with_rectpack(panels, stock_sheet, kerf)
     return _optimize_strip(panels, stock_sheet, kerf)
+
+
+#: Placement geometry tolerance, mm. Sheet dimensions and kerf arithmetic
+#: accumulate float error across a packing run; a real overlap is at least a
+#: kerf wide, three orders of magnitude above this.
+PLACEMENT_TOL_MM = 0.01
+
+
+def _assert_placements_valid(result: "OptimizationResult") -> None:
+    """Every piece on the sheet, and no two pieces in the same place.
+
+    Raises rather than warns: a bad layout is not a degraded layout, it is
+    a drawing that will be cut. Cost measured at 2.45 ms for 240 placements,
+    so this runs on every optimisation rather than under a flag.
+    """
+    sheet = result.stock_sheet
+    if sheet is None:
+        return
+    by_sheet: dict[int, list] = {}
+    for pl in result.placements:
+        if (pl.x < -PLACEMENT_TOL_MM or pl.y < -PLACEMENT_TOL_MM
+                or pl.x + pl.placed_length > sheet.length + PLACEMENT_TOL_MM
+                or pl.y + pl.placed_width > sheet.width + PLACEMENT_TOL_MM):
+            raise ValueError(
+                f"{result.algorithm_used or 'optimizer'} placed "
+                f"{pl.panel_name!r} ({pl.placed_length:g} x {pl.placed_width:g}) "
+                f"at ({pl.x:g}, {pl.y:g}) — off a "
+                f"{sheet.length:g} x {sheet.width:g} sheet.")
+        by_sheet.setdefault(pl.sheet_index, []).append(pl)
+
+    for idx, pieces in by_sheet.items():
+        for i in range(len(pieces)):
+            a = pieces[i]
+            for j in range(i + 1, len(pieces)):
+                b = pieces[j]
+                if (a.x + a.placed_length <= b.x + PLACEMENT_TOL_MM
+                        or b.x + b.placed_length <= a.x + PLACEMENT_TOL_MM
+                        or a.y + a.placed_width <= b.y + PLACEMENT_TOL_MM
+                        or b.y + b.placed_width <= a.y + PLACEMENT_TOL_MM):
+                    continue
+                ox = min(a.x + a.placed_length, b.x + b.placed_length) - max(a.x, b.x)
+                oy = min(a.y + a.placed_width, b.y + b.placed_width) - max(a.y, b.y)
+                raise ValueError(
+                    f"{result.algorithm_used or 'optimizer'} overlapped "
+                    f"{a.panel_name!r} at ({a.x:g}, {a.y:g}) and "
+                    f"{b.panel_name!r} at ({b.x:g}, {b.y:g}) on sheet {idx} "
+                    f"by {ox:g} x {oy:g} mm.")
 
 
 def _optimize_with_rectpack(
