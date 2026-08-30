@@ -4011,6 +4011,24 @@ def _is_sheet_material(material: str) -> bool:
         or material.endswith("_ply")
 
 
+def _door_hinge_overlay(cfg, panel) -> float:
+    """The hinge's overlay for this leaf, or 0.0 for an inset hinge."""
+    from .hardware import get_hinge
+    try:
+        return float(get_hinge(cfg.door_hinge).overlay or 0.0)
+    except Exception:              # unknown key — say nothing rather than lie
+        return 0.0
+
+
+def _door_overlay_style(cfg) -> str:
+    """"full" | "half" | "inset", from the hinge the door actually uses."""
+    from .hardware import get_hinge
+    try:
+        return str(get_hinge(cfg.door_hinge).overlay_type.value).lower()
+    except Exception:
+        return ""
+
+
 def _face_note(material: str, detail: str) -> str:
     """Cutlist note for a show-face panel (false front or door leaf)."""
     if material == "finished_wood":
@@ -4382,7 +4400,15 @@ def _raw_panels_for_cabinet(
                     return f"flush with the {member}"
                 return f"{v:g} mm over the {member}"
 
-            lead = ("inset" if pl.left_lap < -0.005 else "full overlay")
+            # A drawer face is always full overlay; a door leaf's style is
+            # the HINGE's, and "full overlay — 9.5 mm" was printed for a
+            # half-overlay hinge.
+            if fp.kind == "door":
+                lead = {"full": "full overlay", "half": "half overlay",
+                        "inset": "inset"}.get(
+                            _door_overlay_style(cfg), "overlay")
+            else:
+                lead = "inset" if pl.left_lap < -0.005 else "full overlay"
             if (pl.left_member == pl.right_member
                     and abs(pl.left_lap - pl.right_lap) < 0.005):
                 return f"{lead} — {_lap(pl.left_lap, pl.left_member)} at each edge"
@@ -4438,7 +4464,12 @@ def _raw_panels_for_cabinet(
             door_note = _face_note(
                 cfg.face_material,
                 (f"{n_leaves} leaf" if n_leaves == 1 else f"{n_leaves} leaves")
-                + " — width set by the hinge overlay; "
+                + (" — width set by the hinge overlay; "
+                   if _door_hinge_overlay(cfg, p0) else
+                   # An inset hinge has no overlay: the leaf is sized to the
+                   # opening less its gaps, so "width set by the hinge
+                   # overlay" names a quantity that is zero.
+                   " — sized to the opening less its gaps (inset hinge); ")
                 # A door leaf's WIDTH comes from the hinge, so the row does
                 # not claim to have chosen it — but whether the leaf sits
                 # OVER the carcass or INSIDE the opening is the first thing

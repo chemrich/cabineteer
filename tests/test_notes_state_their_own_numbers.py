@@ -50,6 +50,15 @@ general shape of the limit: this test proves a number BELONGS to the object,
 not that it is attached to the right clause. Pinning the clause is the job of
 the closure module's physical predicates (faces tile their span) and of the
 per-defect tests beside them.
+
+**It does not catch D5 at all**, and an early write-up of this module claimed
+it did. Measured: reinstating the ``boxes[0]`` groove step leaves all of these
+green, because 6 mm and 13 mm are real numbers of real boxes in that run — the
+defect is that the sentence asserts them of EVERY box, which is a claim about
+scope, not about a value. ``test_assembly_instructions`` catches that, by
+scanning the whole run of steps for "one saw setup" and by requiring the
+sentences to be invariant under reversing the box order. Three different
+mechanisms for three different shapes; none of them subsumes the others.
 """
 
 from __future__ import annotations
@@ -568,3 +577,40 @@ class TestAnchoredEndsAreDerivedToo:
         assert xs[1] == bays[0].width - bays[0].side_thickness
         # Closure: the run the faces are laid out on IS the cabinet.
         assert total == pytest.approx(cfg.width)
+
+
+class TestDoorRowsNameTheirOwnHinge:
+    """A door's style is the hinge's, and the row asserted one for all three.
+
+    "width set by the hinge overlay" is false for an inset hinge, whose
+    overlay is 0.0 — the leaf is sized to the opening less its gaps. And
+    "full overlay — 9.5 mm" was printed for a HALF-overlay hinge: the number
+    was read from the object and the word beside it was not.
+    """
+
+    @staticmethod
+    def _note(hinge):
+        cfg = _cfg(width=400, door_hinge=hinge, drawer_config=[[724, "door"]])
+        _c, _t, _b, faces = _raw_panels_for_cabinet(cfg, None)
+        return next(p.notes for p in faces if p.name == "door")
+
+    @pytest.mark.parametrize("hinge,lead,overlay", [
+        ("blum_clip_top_blumotion_110_full", "full overlay", 16.0),
+        ("blum_clip_top_blumotion_110_half", "half overlay", 9.5),
+    ])
+    def test_the_lead_matches_the_hinges_overlay_type(self, hinge, lead,
+                                                      overlay):
+        from cabineteer.hardware import get_hinge
+        note = self._note(hinge)
+        assert get_hinge(hinge).overlay == overlay
+        assert f"{lead} — {overlay:g} mm over the cabinet side" in note
+        assert "width set by the hinge overlay" in note
+
+    def test_an_inset_leaf_is_not_described_by_an_overlay_it_has_not_got(self):
+        from cabineteer.hardware import get_hinge
+        note = self._note("blum_clip_top_110_inset")
+        assert get_hinge("blum_clip_top_110_inset").overlay == 0.0
+        assert "width set by the hinge overlay" not in note
+        assert "sized to the opening less its gaps" in note
+        assert "inset — 2 mm inside the cabinet side" in note
+        assert "full overlay" not in note
