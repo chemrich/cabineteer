@@ -63,9 +63,9 @@ class TestBlumTandem550H:
     def test_validate_flags_the_old_undersized_box(self):
         """A box built to the old rule must now be reported as too narrow.
 
-        522 outside in a 564 opening leaves only 507 inside — 28.5 mm per
-        side to the drawer's inside face against Blum's 22.5 mm maximum, so
-        the runners cannot reach it. This is the check the pre-fix code
+        522 outside on 15 mm sides leaves 492 inside — 36.0 mm per side to
+        the drawer's inside face against Blum's 22.5 mm maximum, so the
+        runners cannot reach it. This is the check the pre-fix code
         could not make, because the gap was derived from the constant it
         was compared against.
         """
@@ -114,10 +114,25 @@ class TestBlumTandemPlus563H:
         assert length <= 500
 
     def test_validate_good_dims(self):
+        """552 OUTSIDE is the correct box for a 564 opening on 15 mm sides.
+
+        522 -- the number this test used to pass -- is the INSIDE width, and
+        a box built to it is the 2026-08 scrap box: see
+        ``test_validate_flags_the_old_undersized_box``.
+        """
         issues = BLUM_TANDEM_PLUS_563H.validate_drawer_dims(
-            drawer_width=522.0, drawer_height=120, drawer_depth=450, opening_width=564
+            drawer_width=552.0, drawer_height=120, drawer_depth=450,
+            opening_width=564, side_thickness=15.0,
         )
         assert len(issues) == 0
+
+    def test_validate_rejects_the_inside_width_as_an_outside_width(self):
+        """The same 522 box must now fail. Guards the P0 regression directly."""
+        issues = BLUM_TANDEM_PLUS_563H.validate_drawer_dims(
+            drawer_width=522.0, drawer_height=120, drawer_depth=450,
+            opening_width=564, side_thickness=15.0,
+        )
+        assert any("clearance" in i.lower() for i in issues)
 
 
 class TestBlumMovento769:
@@ -144,14 +159,17 @@ class TestSaliceFutura:
         assert SALICE_FUTURA.min_drawer_height > BLUM_TANDEM_550H.min_drawer_height
 
     def test_validate_good_dims(self):
+        """Salice is undermount too: 552 outside, not the 522 inside."""
         issues = SALICE_FUTURA.validate_drawer_dims(
-            drawer_width=522.0, drawer_height=100, drawer_depth=380, opening_width=564
+            drawer_width=552.0, drawer_height=100, drawer_depth=380,
+            opening_width=564, side_thickness=15.0,
         )
         assert len(issues) == 0
 
     def test_validate_too_short(self):
         issues = SALICE_FUTURA.validate_drawer_dims(
-            drawer_width=538.6, drawer_height=50, drawer_depth=380, opening_width=564
+            drawer_width=552.0, drawer_height=50, drawer_depth=380,
+            opening_width=564, side_thickness=15.0,
         )
         assert any("height" in i.lower() for i in issues)
 

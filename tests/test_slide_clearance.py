@@ -173,3 +173,76 @@ class TestTheOldBugCannotComeBack:
         slide = get_slide("blum_tandem_plus_563h")
         with pytest.raises(TypeError):
             slide.drawer_box_width(345.0)
+
+
+class TestTheGuardsCannotBeBypassed:
+    """P0: the datum discriminator only works if its companion is mandatory.
+
+    #91 introduced ClearanceReference and then defaulted ``side_thickness``
+    to 0.0 on both validators, which inverts their verdict — a box built to
+    the old outside-width reading passed and a correct one failed. These
+    tests are the reason the argument is positional and required.
+    """
+
+    def test_validate_drawer_dims_requires_the_side_stock(self):
+        slide = get_slide("blum_tandem_plus_563h")
+        with pytest.raises(TypeError):
+            slide.validate_drawer_dims(
+                drawer_width=552.0, drawer_height=120,
+                drawer_depth=450, opening_width=564)
+
+    def test_check_drawer_in_opening_requires_the_side_stock(self):
+        import inspect
+        from cabineteer.evaluation import check_drawer_in_opening
+        sig = inspect.signature(check_drawer_in_opening)
+        assert sig.parameters["side_thickness"].default is inspect.Parameter.empty
+
+    def test_no_width_validator_defaults_the_side_stock(self):
+        """Catches the same shape on any validator added later."""
+        import inspect
+        from cabineteer.hardware import DrawerSlideSpec
+        for name in ("drawer_box_width", "drawer_inside_width", "side_gap",
+                     "validate_drawer_dims"):
+            sig = inspect.signature(getattr(DrawerSlideSpec, name))
+            assert sig.parameters["side_thickness"].default is inspect.Parameter.empty, (
+                f"{name} defaults side_thickness — a defaulted 0 reproduces the "
+                f"pre-2026-08 undermount width bug")
+
+
+class TestTheAdviceIsFollowable:
+    """A remedy derived a second way is a remedy that can disagree with its check.
+
+    The 2026-08 review found exactly that: the too-narrow error advised a
+    width that still errored. This follows the advice and asserts it clears.
+    """
+
+    @pytest.mark.parametrize("slide_key,side_t", [
+        ("blum_tandem_plus_563h", 12.0),
+        ("blum_tandem_550h", 15.0),
+        ("accuride_3832", 15.0),
+    ])
+    @pytest.mark.parametrize("start_width", [100.0, 140.0, 180.0])
+    def test_widening_to_the_advised_interior_clears_the_error(
+            self, slide_key, side_t, start_width):
+        import re
+        from cabineteer.cabinet import CabinetConfig
+        from cabineteer.evaluation import check_drawer_carcass_clearances
+
+        def issues_for(width):
+            cfg = CabinetConfig(width=width, height=720, depth=550,
+                                drawer_box_thickness=side_t,
+                                drawer_slide=slide_key,
+                                openings=[(150.0, "drawer")])
+            return check_drawer_carcass_clearances(cfg)
+
+        found = [i for i in issues_for(start_width)
+                 if "Widen the opening to at least" in i.message]
+        if not found:
+            pytest.skip("already wide enough for this slide/stock")
+        advised = float(re.search(r"at least (\d+(?:\.\d+)?) mm",
+                                  found[0].message).group(1))
+        # The advice names an INTERIOR width; the config takes an exterior.
+        after = issues_for(advised + 2 * 18.0)
+        assert not [i for i in after if "inside the drawer box" in i.message], (
+            f"advised {advised} mm interior, which still reports: "
+            f"{[i.message for i in after]}")

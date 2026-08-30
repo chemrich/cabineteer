@@ -32,6 +32,7 @@ from .door import DoorConfig
 from .hardware import (
     ClearanceReference,
     DrawerSlideSpec,
+    SlideMountLocation,
     HingeSpec,
     MountStyle,
     OverlayType,
@@ -1766,7 +1767,7 @@ def check_drawer_in_opening(
     opening_height: float,
     opening_depth: float,
     slide: DrawerSlideSpec,
-    side_thickness: float = 0.0,
+    side_thickness: float,
 ) -> list[Issue]:
     """Check that an assembled drawer fits within its cabinet opening.
 
@@ -1877,6 +1878,57 @@ def check_drawer_in_opening(
     return issues
 
 
+#: Practicality floor on a drawer box's INSIDE width, in mm. OURS, not a
+#: published slide limit — no manufacturer in the catalogue states a minimum
+#: drawer width — so the message that quotes it says so. It exists because the
+#: degenerate-geometry guard it replaced could only ever fire by accident: it
+#: compared the OUTSIDE width against 2x the side stock, a condition the
+#: corrected width arithmetic makes unreachable.
+MIN_DRAWER_INSIDE_WIDTH_FLOOR = 100.0
+
+#: Air beside the box, box outside face to cabinet side, in mm. Blum's front
+#: locking devices adjust ±1.5 mm laterally, so 3 mm is the point where there
+#: is no longer room to adjust into.
+MIN_BOX_SIDE_AIR_GAP_MM = 3.0
+
+
+def _min_interior_width(cab_cfg, inside_w: float) -> float:
+    """Interior width that would satisfy the inside-width floor.
+
+    Derived by INVERTING the guard rather than restating the arithmetic that
+    produced it: whatever the reference face, one more mm of opening is one
+    more mm inside the box, so the shortfall transfers directly. A remedy
+    computed a second way is a remedy that can disagree with the check it
+    is offered for — the 2026-08 review found exactly that here, advising a
+    width that still errored.
+
+    Rounded UP to a whole millimetre, for two reasons: the message prints
+    whole millimetres, so rounding to nearest would advise a width that
+    still trips the guard by a fraction; and cut targets are whole
+    millimetres at the bench anyway.
+    """
+    import math
+    return float(math.ceil(
+        cab_cfg.interior_width + (MIN_DRAWER_INSIDE_WIDTH_FLOOR - inside_w)))
+
+
+def _width_budget(slide, dcfg) -> str:
+    """One sentence saying where the opening's width went.
+
+    Reference-aware: an undermount's clearance reaches the drawer's INSIDE
+    face, so its 42 mm already contains both box walls and naming them
+    again double-counts them.
+    """
+    if slide.clearance_reference is ClearanceReference.INSIDE:
+        return (f"{slide.name} takes "
+                f"{slide.nominal_side_clearance * 2:.0f} mm of it for the runners, "
+                f"and that figure already includes both "
+                f"{dcfg.side_thickness:g} mm box walls.")
+    return (f"{slide.name} takes {slide.nominal_side_clearance * 2:.0f} mm of it "
+            f"for the runners and the box walls take "
+            f"{dcfg.side_thickness * 2:.0f} more.")
+
+
 def check_drawer_carcass_clearances(cab_cfg: CabinetConfig) -> list[Issue]:
     """Verify that every drawer box clears the carcass interior walls.
 
@@ -1905,18 +1957,6 @@ def check_drawer_carcass_clearances(cab_cfg: CabinetConfig) -> list[Issue]:
         return issues
 
     MIN_REAR_CLEARANCE = 10.0  # mm — space needed for rear mounting bracket
-    # Practicality floor on the drawer's INSIDE width, in mm. This is OUR
-    # judgement, not a published slide limit — no manufacturer in the
-    # catalogue states a minimum drawer width — so the message says so and
-    # names the way out. It exists because the degenerate-geometry guard it
-    # replaced could only ever fire by accident: it compared the OUTSIDE
-    # width against 2x the side stock, which is a condition the corrected
-    # arithmetic makes unreachable.
-    MIN_DRAWER_INSIDE_WIDTH = 100.0
-    # Air beside the box, box outside face to cabinet side. Blum's front
-    # locking devices adjust ±1.5 mm laterally, so 3 mm is the point where
-    # there is no longer room to adjust into.
-    MIN_BOX_SIDE_AIR_GAP = 3.0
 
     for idx, op in enumerate(cab_cfg.openings):
         if op.opening_type != "drawer":
@@ -1977,33 +2017,33 @@ def check_drawer_carcass_clearances(cab_cfg: CabinetConfig) -> list[Issue]:
                 message=(
                     f"{label}: interior width {cab_cfg.interior_width:.1f} mm is too "
                     f"narrow for {slide.name} — the box would have no interior at "
-                    f"all ({inside_w:.1f} mm between the walls). {slide.name} needs "
-                    f"{slide.nominal_side_clearance * 2:.0f} mm of the opening for "
-                    f"the runners; minimum practical interior width "
-                    f"{slide.nominal_side_clearance * 2 + 50:.0f} mm."
+                    f"all ({inside_w:.1f} mm between the walls). {_width_budget(slide, dcfg)} "
+                    f"Widen the opening to at least "
+                    f"{_min_interior_width(cab_cfg, inside_w):.0f} mm."
                 ),
                 part_a=label,
                 value=inside_w,
                 limit=0.0,
             ))
-        elif inside_w < MIN_DRAWER_INSIDE_WIDTH:
+        elif inside_w < MIN_DRAWER_INSIDE_WIDTH_FLOOR:
             issues.append(Issue(
                 check="drawer_carcass_clearance",
                 severity=Severity.ERROR,
                 message=(
-                    f"{label}: only {inside_w:.1f} mm inside the drawer box — "
-                    f"{slide.name} takes {slide.nominal_side_clearance * 2:.0f} mm "
-                    f"of the {cab_cfg.interior_width:.1f} mm opening and the box "
-                    f"walls take {dcfg.side_thickness * 2:.0f} more. Below "
-                    f"{MIN_DRAWER_INSIDE_WIDTH:.0f} mm the hardware is wider than "
-                    f"the drawer it carries; widen the cabinet, or use a "
-                    f"side-mount slide, which gives up its clearance to the box's "
-                    f"outside rather than its inside. (Practicality floor, not a "
-                    f"{slide.manufacturer} limit.)"
+                    f"{label}: only {inside_w:.1f} mm inside the drawer box out of a "
+                    f"{cab_cfg.interior_width:.1f} mm opening. "
+                    f"{_width_budget(slide, dcfg)} Below "
+                    f"{MIN_DRAWER_INSIDE_WIDTH_FLOOR:.0f} mm the hardware is wider than the "
+                    f"drawer it carries. Widen the opening to at least "
+                    f"{_min_interior_width(cab_cfg, inside_w):.0f} mm"
+                    + (", or use a side-mount slide, which gives up its clearance to "
+                       "the box's outside rather than its inside"
+                       if slide.mount_location is SlideMountLocation.BOTTOM else "")
+                    + f". (Practicality floor, not a {slide.manufacturer} limit.)"
                 ),
                 part_a=label,
                 value=inside_w,
-                limit=MIN_DRAWER_INSIDE_WIDTH,
+                limit=MIN_DRAWER_INSIDE_WIDTH_FLOOR,
             ))
 
         # A box wider than its opening. Only reachable on an inside-referenced
@@ -2027,7 +2067,7 @@ def check_drawer_carcass_clearances(cab_cfg: CabinetConfig) -> list[Issue]:
                 value=dcfg.side_gap,
                 limit=0.0,
             ))
-        elif dcfg.side_gap < MIN_BOX_SIDE_AIR_GAP:
+        elif dcfg.side_gap < MIN_BOX_SIDE_AIR_GAP_MM:
             issues.append(Issue(
                 check="drawer_carcass_clearance",
                 severity=Severity.WARNING,
@@ -2035,12 +2075,12 @@ def check_drawer_carcass_clearances(cab_cfg: CabinetConfig) -> list[Issue]:
                     f"{label}: only {dcfg.side_gap:.1f} mm of air between the box "
                     f"side and the cabinet side ({dcfg.side_thickness:.1f} mm box "
                     f"sides on a {slide.name}). The front locking devices adjust "
-                    f"±1.5 mm laterally; under {MIN_BOX_SIDE_AIR_GAP:.0f} mm there "
+                    f"±1.5 mm laterally; under {MIN_BOX_SIDE_AIR_GAP_MM:.0f} mm there "
                     f"is nothing left to adjust into."
                 ),
                 part_a=label,
                 value=dcfg.side_gap,
-                limit=MIN_BOX_SIDE_AIR_GAP,
+                limit=MIN_BOX_SIDE_AIR_GAP_MM,
             ))
 
         # ── Depth / rear clearance ─────────────────────────────────────────

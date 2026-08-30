@@ -463,7 +463,7 @@ def add_manga_stack(assy: "cq.Assembly", cfg: DrawerConfig) -> None:
     MANGA_MAX_STACK volumes of height under the box rim.
     """
     floor_z    = cfg.bottom_dado_inset + cfg.bottom_thickness
-    interior_w = cfg.box_width  - 2 * cfg.side_thickness
+    interior_w = cfg.box_inside_width
     interior_d = cfg.box_depth  - 2 * cfg.front_back_thickness
     interior_h = cfg.box_height - floor_z
     need_w = MANGA_WIDTH_MM + MANGA_CLEARANCE_MM

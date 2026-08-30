@@ -263,13 +263,19 @@ class DrawerSlideSpec:
 
     def validate_drawer_dims(
         self, drawer_width: float, drawer_height: float, drawer_depth: float,
-        opening_width: float, side_thickness: float = 0.0,
+        opening_width: float, side_thickness: float,
     ) -> list[str]:
         """Check drawer dimensions against slide constraints. Returns list of issues.
 
         ``drawer_width`` is the box's OUTSIDE width; ``side_thickness`` is
         the box side stock, needed to step in to the inside face for a
         slide whose clearance is referenced there.
+
+        ``side_thickness`` is REQUIRED for the same reason it is required on
+        :meth:`drawer_box_width`: with it defaulted to 0 this method inverts
+        its own verdict, passing a box built to the old outside-width
+        reading and failing a correct one.  A datum discriminator has to
+        make its companion measurement mandatory or it does nothing.
         """
         issues = []
         # Measure the clearance to the face this slide's numbers describe.
