@@ -106,6 +106,7 @@ from .cabinet import (
     bays_from_config as _bays_from_config,
     carcass_panel_dims as _carcass_panel_dims,
     face_layout as _face_layout,
+    face_placements as _face_placements,
     stack_from_column as _stack_from_column,
     to_opening as _to_opening,
 )
@@ -4319,6 +4320,13 @@ def _raw_panels_for_cabinet(
                     "(evaluate_cabinet reports this as face_clearance).")
 
         layout = _face_layout(bays)
+        # Keyed by the panel's identity in the layout, not by id(): the
+        # placement pass builds its own FacePanel objects, so object identity
+        # does not survive the call.
+        def _key(fp):
+            return (fp.kind, fp.bay, fp.slot, fp.leaf)
+
+        placements = {_key(fp.panel): fp for fp in _face_placements(bays)}
         # Where each face sits in its own stack — the note's numbers come
         # from the panel and its neighbours, never from face_gap_mm. The
         # hardcoded "{gap} mm gaps above/below" was right at the three
@@ -4328,31 +4336,30 @@ def _raw_panels_for_cabinet(
         # describe.py suppresses its reveal sentence at the default gap and
         # the assembly doc says nothing about hanging faces — so it now
         # carries the datum too.
-        stacks: dict[tuple[int, int], list] = {}
-        for fp in layout:
-            if fp.kind in ("drawer_face", "door"):
-                stacks.setdefault((fp.bay, fp.leaf), []).append(fp)
-        for col in stacks.values():
-            col.sort(key=lambda q: q.z)
+        def _edge_txt(v: float, member: str) -> str:
+            """One formula per end; the SIGN is what makes it one formula.
 
-        def _reveals(fp) -> tuple[float, float]:
-            """(below, above) — measured against this face's own neighbours.
-
-            An anchored end returns 0: the face runs to the carcass, and
-            there is no reveal there to shim.
+            A reveal, flush, or a lap over the member. Writing "0 mm reveal"
+            at an anchored end was a second hardcoded constant standing where
+            the first one had just been removed: a furniture_top bottom face
+            hangs 18 mm OVER the bottom panel, and an inset door has a real
+            2 mm reveal there.
             """
-            col = stacks[(fp.bay, fp.leaf)]
-            i = col.index(fp)
-            below = fp.z - (col[i - 1].z + col[i - 1].height) if i else 0.0
-            above = (col[i + 1].z - (fp.z + fp.height)
-                     if i + 1 < len(col) else 0.0)
-            return round(below, 2), round(above, 2)
+            if abs(v) < 0.005:
+                return f"flush with the {member}"
+            if v > 0:
+                return f"{v:g} mm reveal to the {member}"
+            return f"laps the {member} by {-v:g} mm"
 
         def _position_note(fp) -> str:
-            below, above = _reveals(fp)
-            return (f"{below:g} mm reveal below / {above:g} mm above; "
-                    f"bottom edge {fp.z - cfg.bottom_thickness:g} mm above "
-                    "the bottom panel's top face")
+            pl = placements[_key(fp)]
+            datum = (f"bottom edge {pl.datum:g} mm above the bottom panel's "
+                     "top face" if pl.datum >= 0 else
+                     f"bottom edge {-pl.datum:g} mm BELOW the bottom panel's "
+                     "top face")
+            return (f"below: {_edge_txt(pl.reveal_below, pl.below_member)}; "
+                    f"above: {_edge_txt(pl.reveal_above, pl.above_member)}; "
+                    f"{datum}")
 
         def _overlay_note(fp) -> str:
             """Which carcass member each edge laps, and by how much.
@@ -4363,16 +4370,24 @@ def _raw_panels_for_cabinet(
             row — which then carried both "18 mm left / 8 mm right" and
             "8 mm left / 18 mm right" on the same line of shop paper.
             """
-            outer_l = fp.bay == 0
-            outer_r = fp.bay == n_bays - 1
-            side_t = cfg.side_thickness
-            if outer_l and outer_r:
-                return f"full overlay — {side_t:g} mm over the cabinet side at each edge"
-            if outer_l or outer_r:
-                return (f"full overlay — {side_t:g} mm over the cabinet side, "
-                        f"{INNER_FACE_OVERLAY_MM:g} mm over the divider")
-            return (f"full overlay — {INNER_FACE_OVERLAY_MM:g} mm over the "
-                    "divider at each edge")
+            pl = placements[_key(fp)]
+
+            def _lap(v: float, member: str) -> str:
+                # An INSET leaf laps nothing — it sits inside the opening,
+                # and its lap is negative. "full overlay — -2 mm over the
+                # cabinet side" is not a sentence anyone can act on.
+                if v < -0.005:
+                    return f"{-v:g} mm inside the {member}"
+                if abs(v) < 0.005:
+                    return f"flush with the {member}"
+                return f"{v:g} mm over the {member}"
+
+            lead = ("inset" if pl.left_lap < -0.005 else "full overlay")
+            if (pl.left_member == pl.right_member
+                    and abs(pl.left_lap - pl.right_lap) < 0.005):
+                return f"{lead} — {_lap(pl.left_lap, pl.left_member)} at each edge"
+            return (f"{lead} — {_lap(pl.left_lap, pl.left_member)}, "
+                    f"{_lap(pl.right_lap, pl.right_member)}")
 
         door_groups: dict[tuple[int, int], list] = {}
         for p in layout:
@@ -4424,10 +4439,11 @@ def _raw_panels_for_cabinet(
                 cfg.face_material,
                 (f"{n_leaves} leaf" if n_leaves == 1 else f"{n_leaves} leaves")
                 + " — width set by the hinge overlay; "
-                # A door leaf's WIDTH comes from the hinge, so no overlay
-                # number is claimed for it — but where it hangs is the same
-                # question as for a false front, and the answer was on no
-                # document at all.
+                # A door leaf's WIDTH comes from the hinge, so the row does
+                # not claim to have chosen it — but whether the leaf sits
+                # OVER the carcass or INSIDE the opening is the first thing
+                # a person needs, and the row said nothing at all.
+                + _overlay_note(p0) + "; "
                 + _position_note(p0))
             if band_t:
                 door_note += "; " + _core_note(

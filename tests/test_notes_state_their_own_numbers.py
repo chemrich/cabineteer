@@ -194,36 +194,34 @@ IDS = [c[0] for c in MATRIX]
 
 
 def _face_values(cfg, columns_raw) -> set[float]:
-    """Every number a show-face note may state, from the layout itself."""
+    """Every number a show-face note may state.
+
+    Read straight off ``cabinet.face_placements`` — the object's own
+    computed values, which is precisely the rule being enforced. That the
+    placement is itself correct is a different question, pinned by
+    ``TestAnchoredEndsAreDerivedToo`` (explicit numbers for a flush stack,
+    an inset door and a furniture_top) and by the closure module's predicate
+    that a face stack tiles its span. This test's job is only that the PROSE
+    quotes nothing else.
+    """
+    from cabineteer.cabinet import face_placements
+
     band_t = (float(cfg.edge_band_thickness_mm)
               if cfg.edge_band_mode == "hardwood" else 0.0)
     bays = bays_from_config(cfg, columns_raw)
-    panels = [p for p in face_layout(bays)
-              if p.kind in ("drawer_face", "door", "top_cap")]
-    stacks: dict = {}
-    for p in panels:
-        stacks.setdefault((p.bay, p.leaf), []).append(p)
-    for col in stacks.values():
-        col.sort(key=lambda q: q.z)
 
     vals: set[float] = {float(cfg.side_thickness),
                         float(INNER_FACE_OVERLAY_MM)}
     if band_t:
-        vals.add(round(band_t, 1))
-    for p in panels:
-        col = stacks[(p.bay, p.leaf)]
-        i = col.index(p)
-        below = p.z - (col[i - 1].z + col[i - 1].height) if i else 0.0
-        above = (col[i + 1].z - (p.z + p.height)
-                 if i + 1 < len(col) else 0.0)
-        vals |= {
-            round(p.width, 1), round(p.height, 1),          # finished
-            round(p.width - 2 * band_t, 1),                 # core
-            round(p.height - 2 * band_t, 1),
-            round(below, 1), round(above, 1),
-            round(p.z - cfg.bottom_thickness, 1),           # the datum
-            round(p.thickness, 1),
-        }
+        vals.add(band_t)
+    for p in face_layout(bays):
+        vals |= {p.width, p.height, p.thickness,
+                 p.width - 2 * band_t, p.height - 2 * band_t}
+    for pl in face_placements(bays):
+        vals |= {pl.reveal_below, pl.reveal_above, pl.datum,
+                 pl.left_lap, pl.right_lap,
+                 abs(pl.reveal_below), abs(pl.reveal_above), abs(pl.datum),
+                 abs(pl.left_lap), abs(pl.right_lap)}
     return vals
 
 
@@ -481,3 +479,92 @@ class TestClaimsAboutStockAndMachines:
         from cabineteer.joinery import get_domino_size
         wall = _wall_text(plan, get_domino_size(plan.size_key))
         assert wall in step.body
+
+
+class TestAnchoredEndsAreDerivedToo:
+    """The second hardcoded constant, standing where the first had been.
+
+    The first pass at D4 replaced ``face_gap_mm`` with the panel's real
+    neighbour gaps — and wrote a literal 0.0 at the ends of every stack,
+    on the reasoning that "the face runs to the carcass so there is no
+    reveal there". That is true of exactly one build style. It is wrong for
+    an inset door (a real 2 mm reveal at both ends) and inverted for a
+    furniture_top, whose bottom face hangs 18 mm OVER the bottom panel and
+    was described as "0 mm reveal below; bottom edge -18 mm ABOVE the
+    bottom panel's top face" — a negative distance in a stated direction,
+    which is not a sentence anyone can act on.
+
+    One formula per end now, with the sign carrying the meaning.
+    """
+
+    @staticmethod
+    def _placements(cfg):
+        from cabineteer.cabinet import face_placements
+        return face_placements(bays_from_config(cfg, None))
+
+    def test_a_flush_overlay_stack_is_flush_at_both_ends(self):
+        cfg = _cfg(drawer_config=[[282.7, "drawer"], [110.3, "drawer"],
+                                  [110.3, "drawer"], [220.7, "drawer"]])
+        pl = self._placements(cfg)
+        assert pl[0].reveal_below == 0.0
+        assert pl[-1].reveal_above == 0.0
+        assert pl[0].datum == 0.0
+
+    def test_an_inset_door_has_a_real_reveal_at_the_carcass(self):
+        cfg = _cfg(width=400, door_hinge="blum_clip_top_110_inset",
+                   drawer_config=[[724, "door"]])
+        pl, = self._placements(cfg)
+        assert pl.reveal_below == 2.0
+        assert pl.reveal_above == 2.0
+        # And it laps nothing — it sits inside the opening.
+        assert pl.left_lap < 0 and pl.right_lap < 0
+
+    def test_a_furniture_top_bottom_face_laps_the_panel(self):
+        cfg = _cfg(furniture_top=True,
+                   drawer_config=[[282.7, "drawer"], [110.3, "drawer"],
+                                  [110.3, "drawer"], [220.7, "drawer"]])
+        pl = self._placements(cfg)
+        assert pl[0].reveal_below == -cfg.bottom_thickness
+        assert pl[0].datum == -cfg.bottom_thickness
+        # And the topmost face meets the CAP, not the top panel.
+        assert pl[-1].above_member == "top cap"
+        assert pl[-1].reveal_above > 0
+
+    @pytest.mark.parametrize("style,expect", [
+        ("plain", ["flush with the bottom panel", "flush with the top panel"]),
+        ("furniture_top", ["laps the bottom panel by 18 mm",
+                           "BELOW the bottom panel's top face"]),
+        ("inset", ["2 mm reveal to the bottom panel", "inset —",
+                   "2 mm inside the cabinet side"]),
+    ])
+    def test_the_row_says_it_in_words_a_person_can_act_on(self, style, expect):
+        if style == "inset":
+            cfg = _cfg(width=400, door_hinge="blum_clip_top_110_inset",
+                       drawer_config=[[724, "door"]])
+        else:
+            cfg = _cfg(furniture_top=(style == "furniture_top"),
+                       drawer_config=[[282.7, "drawer"], [110.3, "drawer"],
+                                      [110.3, "drawer"], [220.7, "drawer"]])
+        _c, _t, _b, faces = _raw_panels_for_cabinet(cfg, None)
+        notes = " ".join(p.notes for p in faces)
+        for phrase in expect:
+            assert phrase in notes, f"{style}: missing {phrase!r}\n{notes}"
+        assert "-" not in notes.replace("—", "").replace("pre-", ""), (
+            f"{style}: a negative number reached the paper\n{notes}")
+
+    def test_the_x_offset_loop_has_one_home(self):
+        """It was written out three times; a fourth was about to appear."""
+        from cabineteer.cabinet import bay_x_offsets
+        # Columns plus their dividers must fill the interior: 900 exterior
+        # on 18 mm sides is an 864 interior, less two 18 mm dividers = 828.
+        cfg = _cfg(width=900, columns=[
+            {"width_mm": 300.0, "openings": [[200, "drawer"]]},
+            {"width_mm": 228.0, "openings": [[200, "drawer"]]},
+            {"width_mm": 300.0, "openings": [[200, "drawer"]]}])
+        bays = bays_from_config(cfg, None)
+        xs, total = bay_x_offsets(bays)
+        assert xs[0] == 0.0
+        # Adjacent bays share a divider, so each step is one side thinner.
+        assert xs[1] == bays[0].width - bays[0].side_thickness
+        # Closure: the run the faces are laid out on IS the cabinet.
+        assert total == pytest.approx(cfg.width)
