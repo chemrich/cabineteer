@@ -130,11 +130,38 @@ class TestGeometry:
         assert geo.clear_depth == pytest.approx(18.0)  # setback + thickness
         assert geo.captive                             # cannot go in later
 
-    def test_dado_costs_interior_depth_the_pocket_does_not(self):
-        """Drawer boxes size off interior_depth, so the capture has to move
-        it — a groove holds the back 12 mm further forward."""
-        assert _cfg().interior_depth == pytest.approx(D - 9)
+    def test_the_capture_sets_the_interior_depth(self):
+        """The interior stops where the back's front face is, and the capture
+        decides where that is.
+
+        Was ``D − 9`` for a pocket until 2026-08-29 — the DADO_RABBET-era
+        ``back_rabbet_width``, which no butt carcass machines and which put
+        the datum 3 mm in front of the panel the cutlist actually cut. It is
+        now the capture's own clear depth: a pocket takes the back's 6 mm,
+        a groove takes 12 more holding it forward of the rear edge.
+        """
+        assert _cfg().interior_depth == pytest.approx(D - 6)
+        assert _cfg(back_capture="rabbet").interior_depth == pytest.approx(D - 6)
         assert _cfg(back_capture="dado").interior_depth == pytest.approx(D - 18)
+
+    def test_the_interior_depth_is_where_an_interior_panel_stops(self):
+        """Closure, not a restatement: the datum equals the panel it describes.
+
+        A divider is an interior panel — it runs front to back and stops at
+        the back. If the datum and the divider's cut depth ever disagree, one
+        of them is wrong, and before P2 they did (448 against 451).
+        """
+        from cabineteer.server import _raw_panels_for_cabinet
+        for capture in BACK_CAPTURES:
+            cfg = _cfg(back_capture=capture)
+            cols = [{"width_mm": 200.0, "openings": [[300, "open"]]},
+                    {"width_mm": 200.0, "openings": [[300, "open"]]}]
+            carcass, _thin, _box, _faces = _raw_panels_for_cabinet(cfg, cols)
+            dividers = [p for p in carcass if p.name == "column_divider"]
+            assert dividers, f"{capture}: no divider emitted"
+            assert dividers[0].width == pytest.approx(cfg.interior_depth), (
+                f"{capture}: datum says {cfg.interior_depth:g}, the divider "
+                f"is cut {dividers[0].width:g}")
 
     @pytest.mark.parametrize("bad", ["rebate", "", None])
     def test_unknown_capture_resolves_as_pocket_not_as_machined(self, bad):
@@ -146,7 +173,15 @@ class TestGeometry:
         assert geo.top_depth == pytest.approx(D - 6)
 
     def test_interior_depth_never_grows(self):
-        """A shallower capture must not silently deepen boxes already cut."""
+        """A machined capture must not silently deepen boxes already cut.
+
+        This used to be enforced by a ``min(legacy, …)`` clamp inside the
+        property. The clamp is gone — it was the thing pinning the datum to
+        a rabbet width nothing machines — and the property now holds because
+        every machined capture genuinely takes MORE depth than a pocket, not
+        because an expression forces it to. Worth keeping precisely because
+        it would fail if a future capture broke that.
+        """
         for capture in BACK_CAPTURES:
             cfg = _cfg(back_capture=capture)
             assert cfg.interior_depth <= _cfg().interior_depth

@@ -3718,7 +3718,7 @@ async def _tool_design_multi_column_cabinet(args: dict) -> list[types.TextConten
     # reads — the two tools must never report different cut sizes for one
     # design.
     _geo = back_capture_geometry(cfg)
-    interior_depth  = cfg.depth - _geo.clear_depth
+    interior_depth  = cfg.interior_depth   # the datum, not a second derivation
 
     # Build per-column breakdown
     col_x = 0.0  # running interior x from left column
@@ -4020,7 +4020,7 @@ def _raw_panels_for_cabinet(
     # including back_style's full-depth top cap.
     geo = back_capture_geometry(cfg)
     # Interior panels (shelves, dividers) stop at the back's front face.
-    interior_depth = cfg.depth - geo.clear_depth
+    interior_depth = cfg.interior_depth    # the datum, not a second derivation
     under_top = getattr(cfg, "back_style", "full_height") == "under_top" and not miter
     top_depth = geo.top_depth
     bottom_depth = geo.bottom_depth

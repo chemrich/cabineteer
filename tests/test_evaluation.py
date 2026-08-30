@@ -6,6 +6,7 @@ is available.
 """
 
 import pytest
+from cabineteer.joinery import CarcassJoinery
 from cabineteer.cabinet import CabinetConfig
 from cabineteer.drawer import DrawerConfig
 from cabineteer.door import DoorConfig
@@ -172,9 +173,23 @@ class TestCabinetConfigProperties:
         assert cfg.interior_width == 600 - 18 * 2  # 564mm
 
     def test_interior_depth(self):
-        """Interior depth = total depth minus back rabbet width."""
+        """Interior depth = total depth minus what the back capture takes.
+
+        Not ``back_rabbet_width``, which this asserted until 2026-08-29:
+        that is a DADO_RABBET-era side-rabbet width and no butt carcass
+        machines it. The datum follows the thing that actually holds the
+        back, so the number agrees with the panels the cutlist cuts.
+        """
+        from cabineteer.cabinet import back_capture_geometry
         cfg = CabinetConfig(width=600, height=720, depth=550)
-        assert cfg.interior_depth == 550 - cfg.back_rabbet_width  # 541mm
+        assert cfg.interior_depth == 550 - back_capture_geometry(cfg).clear_depth
+        assert cfg.drawer_opening_depth == cfg.interior_depth
+
+    def test_interior_depth_keeps_the_rabbet_allowance_on_dado_rabbet(self):
+        """The one construction that really does machine a side rabbet."""
+        cfg = CabinetConfig(width=600, height=720, depth=550,
+                            carcass_joinery=CarcassJoinery.DADO_RABBET)
+        assert cfg.interior_depth == 550 - cfg.back_rabbet_width
 
     def test_back_panel_width(self):
         """Back panel width fits in rabbets on both sides."""
@@ -515,7 +530,10 @@ class TestRearClearanceMath:
     def test_rear_gap_accounts_for_front_gap(self):
         # Depth chosen so box_depth is front-gap-limited; the true rear gap is
         # 0, which must be flagged (formerly overstated by front_gap = 2 mm).
-        cfg = CabinetConfig(width=600, height=720, depth=284,
+        # 281 with the corrected datum: the depth that makes box_depth
+        # front-gap-limited moved by the 3 mm the old back_rabbet_width
+        # allowance was over-reserving.
+        cfg = CabinetConfig(width=600, height=720, depth=281,
                             openings=[(150, "drawer")])
         issues = check_drawer_carcass_clearances(cfg)
         rear = [i for i in issues
