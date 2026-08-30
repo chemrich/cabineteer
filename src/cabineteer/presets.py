@@ -229,11 +229,13 @@ _p(CabinetPreset(
         width=600,
         height=2100,
         depth=550,
-        # Opening stack sums to 2064 mm (2100 - 18 - 18)
+        # Openings sum to 2046 = the 2064 mm interior less the 18 mm floor
+        # under the upper door pair. The middle section gives it up so both
+        # door pairs stay at 700.
         openings=[
             (700, "door_pair"),   # lower door pair
-            (664, "shelf"),       # mid shelf section
-            (700, "door_pair"),   # upper door pair
+            (646, "shelf"),       # mid shelf section
+            (700, "door_pair"),   # upper door pair — stands on its floor
         ],
         adj_shelf_holes=True,
         # Pin rows must span the full 2100 mm carcass ("holes throughout") —
@@ -596,8 +598,10 @@ _p(CabinetPreset(
         width=500,
         height=1350,
         depth=450,
-        # Opening stack sums to 1314 mm (1350 - 18 - 18)
-        # Bottom-to-top: 6 drawers (4×186 + 2×185 = 1114) + 1 top door (200)
+        # Openings sum to 1296 = the 1314 mm interior less the 18 mm floor
+        # under the top door. Bottom-to-top: 6 drawers (4×186 + 2×185 =
+        # 1114) + 1 top door (182); the door compartment gives up the floor
+        # it stands on, so the drawer series stays regular.
         openings=[
             (185, "drawer"),
             (185, "drawer"),
@@ -605,7 +609,7 @@ _p(CabinetPreset(
             (186, "drawer"),
             (186, "drawer"),
             (186, "drawer"),
-            (200, "door"),    # small top compartment — mirror or display
+            (182, "door"),    # small top compartment — mirror or display
         ],
         drawer_slide="blum_tandem_550h",
         door_hinge="blum_clip_top_blumotion_110_full",
@@ -619,7 +623,7 @@ _p(CabinetPreset(
     description=(
         "44\" × 71\" tall armoire (100 mm legs included) with two equal columns of "
         "three drawers at the base (10\"/6\"/4\") and a full-width two-door section "
-        "above. A transition shelf separates the drawer and door zones. "
+        "above. A floor under the doors separates the drawer and door zones. "
         "21\" deep, floating-tenon carcass, Blum Tandem 550H slides. "
         "Pass this preset's columns array to design_multi_column_cabinet or "
         "visualize_cabinet (with divider_full_height=false)."
@@ -639,7 +643,7 @@ _p(CabinetPreset(
                     (254.0,  "drawer"),   # 10" bottom
                     (152.4,  "drawer"),   # 6"  middle
                     (101.6,  "drawer"),   # 4"  top of drawer zone
-                    (1159.4, "door"),     # door zone (transition shelf accounts for 18 mm)
+                    (1141.4, "door"),     # door zone, standing on its 18 mm floor
                 ),
             ),
             ColumnConfig(
@@ -648,7 +652,7 @@ _p(CabinetPreset(
                     (254.0,  "drawer"),
                     (152.4,  "drawer"),
                     (101.6,  "drawer"),
-                    (1159.4, "door"),
+                    (1141.4, "door"),     # door zone, standing on its 18 mm floor
                 ),
             ),
         ],

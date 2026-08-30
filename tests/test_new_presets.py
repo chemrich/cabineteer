@@ -56,15 +56,20 @@ class TestOpeningStackIntegrity:
         preset = get_preset(slug)
         cfg = preset.config
 
+        # A stack shares its interior with any door floors — a door standing
+        # on something needs one, and its thickness is the stack's, the same
+        # way a divider's is the cabinet's and not a column's.
+        from cabineteer.cabinet import bays_from_config, openings_span
+
         if cfg.columns:
-            interior_h = cfg.interior_height
-            for i, col in enumerate(cfg.columns):
-                total = sum(op.height_mm for op in col.openings)
+            for i, bay in enumerate(bays_from_config(cfg, None)):
+                interior_h = openings_span(bay)
+                total = sum(op.height_mm for op in bay.openings)
                 assert abs(total - interior_h) < 0.01, (
-                    f"{slug} column {i}: stack {total} ≠ interior {interior_h}"
+                    f"{slug} column {i}: stack {total} ≠ available {interior_h}"
                 )
         else:
-            interior_h = cfg.interior_height
+            interior_h = openings_span(cfg)
             total = sum(op.height_mm for op in cfg.openings)
             assert abs(total - interior_h) < 0.01, (
                 f"{slug}: stack {total} ≠ interior {interior_h}"

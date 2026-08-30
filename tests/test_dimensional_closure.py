@@ -279,31 +279,19 @@ KNOWN_DEFECTS: dict[tuple[str, str | None], str] = {
      "miter+hardwood"):
         "D19 — same: side_panel 457 finished, 453.8 cut.",
 
-    # ── D8 · the render-only transition shelf ────────────────────────────
-    # server.py:5087 derives transition_shelf_zs, which emits a panel the
-    # cutlist has never had and spans it at min() of the columns, driving it
-    # through the divider. The shipped armoire_2col preset triggers it.
-    # Fix: delete the auto-derivation (fixed_shelf_positions already does
-    # this properly through every document), or make it a real per-bay panel.
-    ("test_no_two_carcass_solids_occupy_the_same_space",
-     "2col_uneven_door_over_drawer"):
-        "D8 — the transition shelf is driven through the divider. Measured "
-        "at 179,496 mm³ in the review.",
-    ("test_the_render_contains_exactly_the_carcass_the_cutlist_cuts",
-     "2col_uneven_door_over_drawer"):
-        "D8 — the render grows a shelf that appears on no cutlist. Same "
-        "shape as the furniture_top cap, which cost a batch of paper.",
-    # D8's second face, found when P3 gave the render a DIMENSION check to
-    # sit beside its part-name check: deriving a transition shelf also flips
-    # build_multi_bay_cabinet off its continuous top and bottom
-    # (`non_stacked = not transition_shelf_zs`, cabinet.py:1860), so the
-    # picture shows a 380 and a 366 where the paper cuts one 764 of each.
-    # Deleting the auto-derivation closes both entries at once.
-    ("test_the_render_draws_the_carcass_at_the_size_the_cutlist_cuts",
-     "2col_uneven_door_over_drawer"):
-        "D8 — per-bay top and bottom (380 and 366) where the cutlist cuts "
-        "one 764 of each, because the derived transition shelf turns off "
-        "the continuous top/bottom.",
+    # ── D8 · CLOSED 2026-08-30 ───────────────────────────────────────────
+    # The render used to invent a shelf at each drawer-to-door boundary: one
+    # panel spanning every column at min() of their transitions, on no
+    # cutlist, driven clean through the divider (170,878 mm3 — the divider's
+    # whole thickness over its whole depth), and it also flipped the case off
+    # its continuous top and bottom so the picture showed a 380 and a 366
+    # where the paper cut one 764.
+    #
+    # Closed by making it a REAL part rather than by deleting it: a door
+    # standing on anything needs a floor, or what goes behind it sits on the
+    # drawer. `floor` is now a carcass member with its own part-ID family,
+    # emitted per column by cabinet.carcass_panel_dims, cut on the paper and
+    # drawn in the picture at the same place. Three entries deleted.
 
     # ── D12 · the render does not model the corner style ────────────────
     # cabinet.py reads carcass_corner_style in exactly two places, neither of
@@ -425,6 +413,12 @@ def render_carcass_name(raw: str) -> str | None:
         return n
     if n.startswith("divider"):
         return "column_divider"
+    # Before the shelf test: a door floor is its own family and must not be
+    # counted as one. It also has to be named here at all — a new carcass
+    # part that no mapper knows about simply vanishes from the render side
+    # of this comparison, and the test then passes by not looking.
+    if "floor" in n:
+        return "floor"
     if "shelf" in n:
         return "shelf"
     return None

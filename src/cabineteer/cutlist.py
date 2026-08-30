@@ -146,6 +146,16 @@ _PART_ID_CODES = (
     ("drawer_box", "DB"),
     ("false_front", "FF"),
     ("door", "DR"),
+    # The compartment floor under a door. Named "floor" and not
+    # "door_floor" for a reason worth recording: panel names are matched by
+    # SUBSTRING in three places plus the closure module's carcass filter,
+    # and "door" is one of the tokens. A part called door_floor filed itself
+    # as a door LEAF here (DR2 on the paper — show stock), and vanished
+    # entirely from the closure module's render comparison, whose exclusion
+    # list also matches "door", so that test passed by not looking. "floor"
+    # collides with nothing. Human-facing names stay "door floor": a dict
+    # key or a sentence is never substring-matched.
+    ("floor", "FL"),
     ("column_divider", "CD"),
     ("shelf", "SH"),
     ("worktop", "WT"),
@@ -2612,7 +2622,15 @@ def joinery_lines_for_cabinet_config(
             col_shelves += len(getattr(col, "fixed_shelf_positions", ()) or ())
     else:
         n_dividers = 0
-    n_joints = 4 + 2 * n_dividers + 2 * global_shelves + 2 * col_shelves
+    # A door floor joins into two walls exactly as a fixed shelf does, and
+    # it is not optional — a door standing on something has one. Counting
+    # the shelves and not the floors under-orders the tenons for every
+    # door-over-drawer cabinet.
+    from .cabinet import bays_from_config, door_floor_count
+    n_floors = sum(door_floor_count(b)
+                   for b in bays_from_config(cab_cfg, columns_raw))
+    n_joints = (4 + 2 * n_dividers + 2 * global_shelves + 2 * col_shelves
+                + 2 * n_floors)
 
     if joinery == CarcassJoinery.FLOATING_TENON:
         from .joinery import (

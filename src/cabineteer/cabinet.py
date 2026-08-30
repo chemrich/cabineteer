@@ -1152,6 +1152,87 @@ class FacePanel:
     thickness: float
 
 
+#: Opening types that stand a door in front of a compartment.
+DOOR_TYPES = ("door", "door_pair")
+
+
+@dataclass(frozen=True)
+class OpeningSlot:
+    """One opening in a column's vertical stack, with where it sits.
+
+    THE vertical-stack walk. Every consumer of "where does opening N start"
+    reads this rather than accumulating heights itself — the same rule
+    ``bays_from_config`` fixed on the horizontal axis, applied to the one
+    that now has a member in it.
+    """
+
+    index: int
+    opening: object                 # OpeningConfig
+    #: Bottom of the CLEAR opening — above its floor, where it has one.
+    z: float
+    #: Underside of the door floor beneath this opening, or None.
+    floor_z: Optional[float] = None
+
+    @property
+    def has_floor(self) -> bool:
+        return self.floor_z is not None
+
+
+def opening_needs_floor(openings, index: int) -> bool:
+    """True when opening ``index`` is a door standing on something.
+
+    A door with anything below it in its column needs a floor, or whatever
+    goes behind it sits on the drawer underneath. A door at the BOTTOM of a
+    column already has one — the carcass bottom — so it gets no part.
+
+    This is a rule about the furniture, not a rendering convenience: the
+    3D used to invent a panel here and no cutlist ever carried it.
+    """
+    op = openings[index]
+    return index > 0 and getattr(op, "opening_type", "") in DOOR_TYPES
+
+
+def opening_stack(cfg: "CabinetConfig") -> "list[OpeningSlot]":
+    """One column's openings, bottom to top, stepping over its door floors.
+
+    A floor's thickness is ADDITIONAL to the opening heights, exactly as a
+    divider's is additional to the column widths on the horizontal axis
+    (``columns_fill_interior`` checks
+    ``col_sum == interior_width − n_dividers × side_t``). So a stack fills
+    its cabinet when ``sum(openings) + n_floors × shelf_thickness ==
+    interior_height``. The alternative — quietly taking the floor out of the
+    door opening — would mean the number a person typed is not the opening
+    they get.
+    """
+    out: list[OpeningSlot] = []
+    z = float(cfg.bottom_thickness)
+    ops = list(cfg.openings)
+    for i, op in enumerate(ops):
+        floor_z = None
+        if opening_needs_floor(ops, i):
+            floor_z = z
+            z += float(cfg.shelf_thickness)
+        out.append(OpeningSlot(index=i, opening=op, z=z, floor_z=floor_z))
+        z += float(op.height_mm)
+    return out
+
+
+def door_floor_count(cfg: "CabinetConfig") -> int:
+    """How many door floors one column's stack carries."""
+    return sum(1 for s in opening_stack(cfg) if s.has_floor)
+
+
+def openings_span(cfg: "CabinetConfig") -> float:
+    """Height the openings must sum to, once their floors are accounted for."""
+    n = door_floor_count(cfg)
+    # No floors, no change — return the interior untouched rather than a
+    # float copy of it, so a cabinet without a door over anything reports
+    # byte-identical numbers to before this existed.
+    if not n:
+        return cfg.interior_height
+    return float(cfg.interior_height) - n * float(cfg.shelf_thickness)
+
+
 def bays_from_config(
     cfg: "CabinetConfig",
     columns: Optional[list] = None,
@@ -1367,6 +1448,22 @@ def carcass_panel_dims(
                     width=float(cfg.interior_depth),
                     thickness=float(cfg.shelf_thickness),
                     banded_edges=front, z=float(z), column=ci))
+
+    # Door floors. A door standing on anything gets one, and it stops at the
+    # divider like any other interior panel — the 3D used to invent a single
+    # panel spanning every column and drive it straight through the divider,
+    # on no cutlist at all.
+    for ci, bay in enumerate(bays_from_config(cfg, columns)):
+        for slot in opening_stack(bay):
+            if not slot.has_floor:
+                continue
+            panels.append(CarcassPanel(
+                kind="floor", name="floor", quantity=1,
+                length=float(bay.interior_width),
+                width=float(cfg.interior_depth),
+                thickness=float(cfg.shelf_thickness),
+                banded_edges=front, z=slot.floor_z,
+                column=ci if cols else None))
 
     # The back is not banded and is not cut from carcass stock, but it is a
     # carcass panel and its dimensions come from the same capture geometry —
@@ -1651,19 +1748,38 @@ def face_layout(
                         if op.opening_type == "drawer"]
         last_drawer = drawer_slots[-1] if drawer_slots else -1
 
-        z_acc = cfg.bottom_thickness
+        # The vertical stack, stepping over any door floors — one walk,
+        # shared with carcass_panel_dims and the 3D. A floor is a MEMBER of
+        # this stack, so the boundary between the faces either side of it is
+        # its CENTRELINE, with the usual face_gap split across it: each face
+        # laps the floor by (thickness − gap) / 2, exactly as two bays' faces
+        # lap a divider horizontally, and the reveal stays face_gap_mm so a
+        # 2.5 mm shim still works at every boundary.
+        slots = opening_stack(cfg)
+        shelf_t = float(cfg.shelf_thickness)
+
+        def _boundary(i: int) -> float:
+            """Plane the faces meet at, below slot ``i``."""
+            sl = slots[i]
+            return (sl.floor_z + shelf_t / 2.0) if sl.has_floor else sl.z
+
         for slot_idx, op in enumerate(cfg.openings):
             opening_h = op.height_mm
+            z_acc = slots[slot_idx].z
+            bot_bound = _boundary(slot_idx)
+            top_bound = (_boundary(slot_idx + 1)
+                         if slot_idx + 1 < len(slots)
+                         else z_acc + opening_h)
             slot_type = op.opening_type
             is_first = slot_idx == 0
             is_last  = slot_idx == n_slots - 1
 
             if slot_type == "drawer":
-                face_z_bot = z_face_start if is_first else z_acc + gap / 2
+                face_z_bot = z_face_start if is_first else bot_bound + gap / 2
                 if slot_idx == last_drawer and is_last:
                     face_z_top = z_face_end
                 else:
-                    face_z_top = z_acc + opening_h - gap / 2
+                    face_z_top = top_bound - gap / 2
                 panels.append(FacePanel(
                     kind="drawer_face", bay=bay_idx, slot=slot_idx, leaf=0,
                     x=face_x, z=face_z_bot,
@@ -1684,8 +1800,8 @@ def face_layout(
                     face_z_bot = z_acc + dc.gap_bottom
                     face_z_top = z_acc + opening_h - dc.gap_top
                 else:
-                    face_z_bot = z_face_start if is_first else z_acc + gap / 2
-                    face_z_top = z_face_end if is_last else z_acc + opening_h - gap / 2
+                    face_z_bot = z_face_start if is_first else bot_bound + gap / 2
+                    face_z_top = z_face_end if is_last else top_bound - gap / 2
                 interior_left = bx + cfg.side_thickness
                 for leaf in range(n_doors):
                     if inset:
@@ -1703,7 +1819,7 @@ def face_layout(
                         width=dc.door_width, height=face_z_top - face_z_bot,
                         thickness=dc.door_thickness,
                     ))
-            z_acc += opening_h
+            # z_acc now comes from the shared walk; nothing to accumulate.
 
     if furniture_top:
         panels.append(FacePanel(
@@ -1912,7 +2028,6 @@ def build_multi_bay_cabinet(
     include_feet: bool = True,
     feet_at_dividers: bool = True,
     furniture_top: Optional[bool] = None,
-    transition_shelf_zs: Optional[list[float]] = None,
     divider_top_z: Optional[float] = None,
     include_manga: bool = False,
 ) -> tuple["cq.Assembly", list["PartInfo"]]:
@@ -2021,13 +2136,14 @@ def build_multi_bay_cabinet(
     face_colour   = cq.Color(0.55, 0.38, 0.22, 1.0)
     foot_colour   = cq.Color(0.25, 0.25, 0.28, 1.0)
 
-    # ── Continuous top/bottom when non-stacked ─────────────────────────────────
-    # When the layout has no transition shelves AND dividers run full height,
-    # the cabinet has a single bottom and a single top spanning all bays
-    # instead of one per bay.  Stacked layouts (armoires with a transition
-    # shelf, or clipped dividers) keep per-bay top/bottom.
-    non_stacked = not transition_shelf_zs and divider_top_z is None
-    suppress_bay_tb = non_stacked
+    # ── Continuous top/bottom ──────────────────────────────────────────────────
+    # One bottom and one top spanning all bays — which is what the cutlist
+    # cuts, always. This used to switch to a per-bay pair whenever a
+    # transition shelf was derived, so an armoire's picture showed two 531.8
+    # bottoms against one 1081.6 on the paper. A door floor is an interior
+    # member like a fixed shelf; it does not divide the case into stacked
+    # boxes, so it does not change what the top and bottom are.
+    suppress_bay_tb = divider_top_z is None
 
     # ── Carcass bays ───────────────────────────────────────────────────────────
     for bay_idx, (cfg, bx) in enumerate(zip(bay_configs, x_offsets)):
@@ -2207,35 +2323,43 @@ def build_multi_bay_cabinet(
         notes="1/4 inch plywood — single panel spanning all bays",
     ))
 
-    # ── Transition shelves ─────────────────────────────────────────────────────
-    # Full-width horizontal panels at drawer-to-door boundaries (e.g. armoire base).
-    if transition_shelf_zs:
-        shelf_colour_ts = cq.Color(0.87, 0.72, 0.53, 1.0)
-        ts_cfg  = bay_configs[0]
-        ts_w    = total_width - 2 * ts_cfg.side_thickness
-        # Like every other interior panel, a transition shelf stops at the
-        # back's front face. This conditional was interior_depth's exact
-        # body written out a second time, DADO_RABBET branch included.
-        ts_dep  = ts_cfg.interior_depth
-        ts_thk  = ts_cfg.shelf_thickness
-        for ts_idx, ts_z in enumerate(transition_shelf_zs):
-            ts_panel = (
+    # ── Door floors ────────────────────────────────────────────────────────────
+    # A door standing on anything gets a floor, PER COLUMN, stopping at the
+    # divider — the same panel the cutlist cuts, placed at the same z.
+    #
+    # This block used to invent one panel spanning every bay at min() of the
+    # columns' transitions, on no cutlist and driven clean through the
+    # divider (170,878 mm3 — the divider's whole thickness over its whole
+    # depth). Registered as D8; closed by making it a real part instead of
+    # by deleting it, because a door over a drawer really does need a floor.
+    floor_colour = cq.Color(0.87, 0.72, 0.53, 1.0)
+    floor_nodes: list[str] = []
+    for bay_idx, (bcfg, bx) in enumerate(zip(bay_configs, x_offsets)):
+        for slot in opening_stack(bcfg):
+            if not slot.has_floor:
+                continue
+            fl_panel = (
                 cq.Workplane("XY")
-                .box(ts_w, ts_dep, ts_thk, centered=False)
+                .box(bcfg.interior_width, bcfg.interior_depth,
+                     bcfg.shelf_thickness, centered=False)
             )
-            assy.add(
-                ts_panel,
-                name=f"transition_shelf_{ts_idx}",
-                loc=cq.Location((ts_cfg.side_thickness, 0.0, ts_z)),
-                color=shelf_colour_ts,
-            )
+            # Numbered globally like divider_0, NOT bay{i}_floor{j}: the
+            # viewer's diagnostic-colour lookup strips a trailing _N and
+            # matches the remainder against a name table, so "bay0_floor1"
+            # would reduce to "bay0_floor" and never match anything.
+            nm = f"floor_{len(floor_nodes)}"
+            floor_nodes.append(nm)
+            assy.add(fl_panel, name=nm,
+                     loc=cq.Location((bx + bcfg.side_thickness, 0.0,
+                                      slot.floor_z)),
+                     color=floor_colour)
             all_parts.append(PartInfo(
-                name=f"transition_shelf_{ts_idx}",
-                shape=ts_panel,
-                material_thickness=ts_thk,
+                name=nm,
+                shape=fl_panel,
+                material_thickness=bcfg.shelf_thickness,
                 grain_direction="width",
                 edge_band=["front"],
-                notes="transition shelf — drawer-to-door boundary",
+                notes="door floor — the compartment the door closes on",
             ))
 
     # ── Furniture top cap ──────────────────────────────────────────────────────

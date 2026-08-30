@@ -413,16 +413,28 @@ class TestEvaluatorSeesRealGeometry:
 
 class TestHardwareBomUsesRealFaces:
     def test_hinge_count_bills_the_stack_leaf(self):
-        # #3: leaf is cut at 916 mm (stack), not DoorConfig's 896 —
-        # hinges_for_height crosses the 900 mm threshold: 3, not 2.
+        """Hinges are billed for the leaf that gets CUT, not DoorConfig's.
+
+        The leaf is taller than its opening because it laps the carcass, and
+        that carries it over the 900 mm three-hinge threshold. The exact
+        number moved from 916 to 907 when door floors became real: this door
+        stands on a drawer, so an 18 mm floor now sits under it and the face
+        boundary is that floor's centreline. Both facts this test exists for
+        still hold, and it derives the leaf now instead of pinning it.
+        """
+        from cabineteer.cabinet import bays_from_config, face_layout
         from cabineteer.cutlist import hinge_lines_for_cabinet_config
         cfg = build_cabinet_config(dict(
             width=600, height=1182, depth=550,
             drawer_config=[[246, "drawer"], [900, "door"]]))
+        leaf = next(p for p in face_layout(bays_from_config(cfg, None))
+                    if p.kind == "door")
+        assert leaf.height > 900.0 > 896.0, (
+            "the leaf must clear the threshold its OPENING does not")
         hinge = next(l for l in hinge_lines_for_cabinet_config(cfg)
                      if l.category == "hinge")
         assert hinge.pieces_needed == 3
-        assert "@ 916 mm" in hinge.notes
+        assert f"@ {leaf.height:.0f} mm" in hinge.notes
 
     def test_pull_count_bills_the_real_face_width(self):
         # #4: 776-wide flush face crosses the dual-pull threshold the
@@ -439,18 +451,34 @@ class TestHardwareBomUsesRealFaces:
 
 class TestDesignPullsRealLeaf:
     def test_door_branch_reports_stack_leaf_height(self):
-        # #5: drilling coords must land on the leaf that gets cut (590),
-        # not DoorConfig's opening − reveals phantom (534).
+        """Drilling coords land on the leaf that gets CUT, not a phantom.
+
+        The original point stands — this reported DoorConfig's
+        opening-minus-reveals (534) where the stack cuts a taller leaf. The
+        number moved from 590 to 581 when door floors became real parts: a
+        door standing on a drawer now has an 18 mm floor beneath it, and the
+        face boundary is that floor's centreline, so the leaf starts 9 mm
+        higher. Derived here rather than pinned, so it stays honest if the
+        floor's thickness ever changes.
+        """
         import asyncio, json
+        from cabineteer.cabinet import (bays_from_config, build_cabinet_config,
+                                        face_layout)
         from cabineteer.server import TOOL_DISPATCH
-        r = asyncio.get_event_loop().run_until_complete(
-            TOOL_DISPATCH["design_pulls"]({
-                "width": 609.6, "height": 720, "depth": 550,
+        args = {"width": 609.6, "height": 720, "depth": 550,
                 "door_pull": "topknobs-hb-160",
-                "drawer_config": [[110, "drawer"], [538, "door_pair"]]}))
+                "drawer_config": [[110, "drawer"], [538, "door_pair"]]}
+        r = asyncio.get_event_loop().run_until_complete(
+            TOOL_DISPATCH["design_pulls"](dict(args)))
         slot = json.loads(r[0].text)["door_slots"][0]
-        assert abs(slot["leaf_height_mm"] - 590.0) < 0.1
+
+        cfg = build_cabinet_config(dict(args))
+        leaf = next(p for p in face_layout(bays_from_config(cfg, None))
+                    if p.kind == "door")
+        assert abs(slot["leaf_height_mm"] - leaf.height) < 0.1
         assert slot["num_doors"] == 2
+        # And it is NOT the opening: the leaf laps the floor and the top.
+        assert leaf.height > 538.0
 
 
 class TestFurnitureTopCutlistInteractions:

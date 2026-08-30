@@ -2739,7 +2739,7 @@ _s(Scenario(
     difficulty="standard",
     description=(
         "interior_h = 900 - 36 = 864 mm.  "
-        "264 mm door + 3 × 200 mm drawers = 864 mm."
+        "246 mm door + 3 × 200 mm drawers + an 18 mm door floor = 864 mm."
     ),
     tool_calls=[
         ToolCall(
@@ -2748,7 +2748,7 @@ _s(Scenario(
                 "width": 600, "height": 900, "depth": 600,
                 "drawer_config": [
                     [200, "drawer"], [200, "drawer"], [200, "drawer"],
-                    [264, "door"],
+                    [246, "door"],
                 ],
             },
             label="workbench base — drawers over door",
@@ -2765,7 +2765,7 @@ _s(Scenario(
                 "width": 600, "height": 900, "depth": 600,
                 "drawer_config": [
                     [200, "drawer"], [200, "drawer"], [200, "drawer"],
-                    [264, "door"],
+                    [246, "door"],
                 ],
             },
             label="evaluate workbench base",
@@ -2798,7 +2798,7 @@ _s(Scenario(
                 "drawer_config": [
                     [172, "drawer"], [172, "drawer"], [172, "drawer"],
                     [172, "drawer"], [176, "drawer"],
-                    [900, "door_pair"],
+                    [882, "door_pair"],
                 ],
             },
             label="tall tool cabinet — 5 drawers over door pair",
@@ -2816,7 +2816,7 @@ _s(Scenario(
                 "drawer_config": [
                     [172, "drawer"], [172, "drawer"], [172, "drawer"],
                     [172, "drawer"], [176, "drawer"],
-                    [900, "door_pair"],
+                    [882, "door_pair"],
                 ],
             },
             label="evaluate tall tool cabinet",
@@ -2992,7 +2992,7 @@ _s(Scenario(
             tool="design_cabinet",
             args={
                 "width": 500, "height": 600, "depth": 450,
-                "drawer_config": [[200, "drawer"], [364, "door"]],
+                "drawer_config": [[200, "drawer"], [346, "door"]],
             },
             label="nightstand — drawer over door",
             assertions=[
@@ -3006,7 +3006,7 @@ _s(Scenario(
             tool="evaluate_cabinet",
             args={
                 "width": 500, "height": 600, "depth": 450,
-                "drawer_config": [[200, "drawer"], [364, "door"]],
+                "drawer_config": [[200, "drawer"], [346, "door"]],
             },
             label="evaluate nightstand",
             assertions=[
@@ -3084,7 +3084,7 @@ _s(Scenario(
                 "width": 900, "height": 2100, "depth": 600,
                 "drawer_config": [
                     [200, "drawer"], [264, "drawer"],
-                    [1600, "door_pair"],
+                    [1582, "door_pair"],
                 ],
             },
             label="900 mm wardrobe — 2 drawers below door pair",
@@ -3101,7 +3101,7 @@ _s(Scenario(
                 "width": 900, "height": 2100, "depth": 600,
                 "drawer_config": [
                     [200, "drawer"], [264, "drawer"],
-                    [1600, "door_pair"],
+                    [1582, "door_pair"],
                 ],
             },
             label="evaluate wardrobe",
@@ -3370,7 +3370,7 @@ _s(Scenario(
                 "width": 600, "height": 900, "depth": 600,
                 "drawer_config": [
                     [200, "drawer"], [200, "drawer"], [200, "drawer"],
-                    [264, "door"],
+                    [246, "door"],
                 ],
             },
             label="600 mm workbench base",
@@ -3389,7 +3389,7 @@ _s(Scenario(
             args={
                 "drawer_config": [
                     [200, "drawer"], [200, "drawer"], [200, "drawer"],
-                    [264, "door"],
+                    [246, "door"],
                 ],
             },
             label="describe workbench base (chained dimensions)",
@@ -8116,7 +8116,7 @@ _PROJECT_TRIO = {
     },
     "cabinets": [
         {"name": n, "config": {"width": 1219, "height": 762, "depth": 500,
-                               "openings": [[150, "drawer"], [570, "door_pair"]]}}
+                               "openings": [[150, "drawer"], [552, "door_pair"]]}}
         for n in ("left", "center", "right")
     ],
 }
@@ -8975,12 +8975,14 @@ _s(Scenario(
                 {"name": "a", "config": {"width": 800, "height": 762,
                                          "depth": 500,
                                          "openings": [[150, "drawer"],
-                                                       [576, "door_pair"]]}}]}},
+                                                       [558, "door_pair"]]}}]}},
             label="default faces: doors emitted, species TBD group",
             assertions=[
-                Assertion("panels_summary.9.name", Op.EQ, "door"),
-                Assertion("panels_summary.9.qty", Op.EQ, 2),
-                Assertion("panels_summary.9.material", Op.EQ, "finished_wood"),
+                # Index 10, not 9: the door now stands on a floor, and that floor is
+                # a carcass row of its own.
+                Assertion("panels_summary.10.name", Op.EQ, "door"),
+                Assertion("panels_summary.10.qty", Op.EQ, 2),
+                Assertion("panels_summary.10.material", Op.EQ, "finished_wood"),
                 # 1 false front + 2 door leaves in the order-out group
                 Assertion("sheet_goods.3.material", Op.CONTAINS, "species TBD"),
                 Assertion("sheet_goods.3.panel_count", Op.EQ, 3),
@@ -8994,14 +8996,14 @@ _s(Scenario(
                 {"name": "a", "config": {"width": 800, "height": 762,
                                          "depth": 500,
                                          "openings": [[150, "drawer"],
-                                                       [576, "door_pair"]]}}]}},
+                                                       [558, "door_pair"]]}}]}},
             label="baltic_birch faces pool into the 18 mm sheets",
             assertions=[
-                Assertion("panels_summary.9.material", Op.EQ, "baltic_birch"),
+                Assertion("panels_summary.10.material", Op.EQ, "baltic_birch"),
                 # No order-out group: the last sheet_goods entry is real stock
                 Assertion("sheet_goods", Op.LEN_EQ, 3),
-                # 18 mm group now counts carcass (4) + faces (3)
-                Assertion("sheet_goods.0.panel_count", Op.EQ, 7),
+                # 18 mm group counts carcass (4) + the door floor + faces (3)
+                Assertion("sheet_goods.0.panel_count", Op.EQ, 8),
             ],
         ),
     ],

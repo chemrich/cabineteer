@@ -164,7 +164,14 @@ def describe_design(cfg: CabinetConfig) -> dict:
         # interior − _FILL_EPSILON_MM = 1 mm, then floors slots to whole mm, so a
         # repaired stack sits ~1–2 mm short by design). A genuine under-fill
         # (open top compartment) is far larger, so this still flags real cases.
-        return sum(op.height_mm for op in stack) >= cfg.interior_height - 2.5
+        #
+        # The openings share the interior with any door floors, exactly as
+        # the columns share the interior width with their dividers.
+        from .cabinet import DOOR_TYPES
+        n_floors = sum(1 for i, op in enumerate(stack)
+                       if i > 0 and op.opening_type in DOOR_TYPES)
+        available = cfg.interior_height - n_floors * cfg.shelf_thickness
+        return sum(op.height_mm for op in stack) >= available - 2.5
 
     openings: dict = {
         "total_stack_height_mm":  stack_total,
