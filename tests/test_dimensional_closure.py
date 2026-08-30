@@ -365,9 +365,12 @@ def render_carcass_name(raw: str) -> str | None:
     in the assertion keeps the assertion readable.
     """
     import re
-    n = raw.split("/")[0]
-    if any(t in n for t in _NOT_CARCASS):
+    # Exclude on the WHOLE path: a drawer box's back panel is a node called
+    # "back" under "bay0_drawer0", identical to the carcass's back except
+    # for its ancestry.
+    if any(t in raw for t in _NOT_CARCASS):
         return None
+    n = raw.split("/")[-1]
     n = re.sub(r"^bay\d+_", "", n)
     n = re.sub(r"_\d+$", "", n)
     if n in ("left_side", "right_side", "side"):
@@ -404,16 +407,19 @@ def placed_solids(case: Case):
 
     out = []
 
-    def walk(node, loc):
+    def walk(node, loc, path):
         for child in node.children:
             child_loc = child.loc if child.loc is not None else cq.Location()
             world = (loc * child_loc) if loc is not None else child_loc
+            name = f"{path}/{child.name}" if path else child.name
             if child.obj is not None:
                 for solid in child.obj.solids().vals():
-                    out.append((child.name, solid.moved(world)))
-            walk(child, world)
+                    out.append((name, solid.moved(world)))
+            walk(child, world, name)
 
-    walk(assy, None)
+    # Full paths, not bare node names: a drawer box's back panel is called
+    # "back", the same as the carcass's, and only the path tells them apart.
+    walk(assy, None, "")
     return out
 
 
