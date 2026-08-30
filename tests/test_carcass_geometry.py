@@ -520,6 +520,15 @@ class TestTheCaveatReachesTheToolResult:
             return {"html": "x.html", "glb": "x.glb", "parts": [],
                     "glb_size_kb": 1.0}
 
+        # Stub BOTH halves. The subject here is the wiring — does the caveat
+        # reach the result — not the geometry, so building a real assembly
+        # would only make these tests need CadQuery, which the lite install
+        # does not have. Stubbing the visualize step alone is not enough:
+        # the tool builds the assembly first, and that is what calls
+        # _require_cq. (Learned from lite CI, which has no CadQuery and went
+        # red on all six jobs while all three full jobs passed.)
+        monkeypatch.setattr(server, "_cabinet_assembly",
+                            lambda *_a, **_kw: (None, [], {}))
         monkeypatch.setattr(server, "_visualize_assembly", _stub)
         loop = asyncio.new_event_loop()
         try:
