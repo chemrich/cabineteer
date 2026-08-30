@@ -93,6 +93,13 @@ class PanelMortiseMap:
     part_id: str               # cutlist part ID ("A-S1") or ""
     draw_width: float          # mm — horizontal extent of the drawing
     draw_height: float         # mm — vertical extent
+    #: The cutlist row family this drawing is OF — "side", "bottom", "top",
+    #: "column_divider", "shelf". ``panel`` is display prose ("side (make 2,
+    #: mirror-image)", "col 2 fixed shelf") and cannot be joined on; without
+    #: this, a closure test comparing the map to the paper could only match
+    #: the two panels whose display name happened to equal their row name,
+    #: and silently skipped the other four.
+    canonical: str
     width_label: str           # axis meaning, e.g. "depth (front → back)"
     height_label: str
     rows: tuple[MortiseRow, ...]
@@ -343,16 +350,49 @@ def build_assembly_plan(
     # ── Panel mortise maps ────────────────────────────────────────────────
     panels: list[PanelMortiseMap] = []
     depth = float(cab_cfg.depth)
-    # Interior panels (bottom/top/shelves/dividers) are CUT to
-    # depth − back_thickness (the cutlist convention) — draw them that way
-    # so map dims match the parts in hand. Mortise positions still span
+    # Panel outlines come from cabinet.carcass_panel_dims — the same source
+    # the cutlist and the 3D read — so a map can no longer draw a panel the
+    # paper does not cut. It used to hardcode ``depth − back_thickness``
+    # under a comment calling that "the cutlist convention", which it stopped
+    # being when back_capture landed: a rabbet or a dado runs the top AND the
+    # bottom full depth, and the map drew them 6 mm short on 6 of the 12
+    # cabinets in the saved projects. Mortise positions still span
     # interior_depth from the front edge, safely inside the panel.
-    interior_panel_depth = depth - float(
-        getattr(cab_cfg, "back_thickness", 6.0))
+    from .cabinet import (back_capture_geometry, carcass_panel_dims,
+                          divider_cut_length)
+    _dims = carcass_panel_dims(cab_cfg)
+    _by_kind: dict[str, list] = {}
+    for _p in _dims:
+        _by_kind.setdefault(_p.kind, []).append(_p)
+    geo = back_capture_geometry(cab_cfg)
+    # Interior panels (dividers, fixed shelves) stop at the back's front
+    # face whatever the capture; only the perimeter members hold the back.
+    interior_panel_depth = float(cab_cfg.interior_depth)
+    # These are FINISHED dims. Under hardwood banding the cutlist cuts a core
+    # one band thickness shorter on the front edge, but the band is glued and
+    # flush-trimmed BEFORE any mortising (see the banding step), so the panel
+    # in hand when this map is used measures the finished number. The note
+    # says so rather than leaving the reader to guess which face is meant.
+    #
+    # Per PANEL, not per cabinet: a furniture_top top is never banded (the
+    # cap strip covers that edge, and carcass_panel_dims says so with
+    # banded_edges=()), so a cabinet-wide note would tell the builder to band
+    # the one edge the cutlist row forbids banding — the same pair of
+    # contradictory instructions the cutlist comment says it exists to remove,
+    # re-created in the document taped to the other machine.
+    def _band_note(panel) -> str:
+        if band_mode != "hardwood" or not panel.banded_edges:
+            return ""
+        return (f" Dims are FINISHED — the front edge already carries its "
+                f"{band_t:g} mm band (the cutlist cut the core that much "
+                f"shorter).")
     # back_style "under_top": the top runs full depth and caps the back —
     # its map must draw the panel at the dims in hand (butt corners only).
+    # Nothing caps the back under a machined capture: a rabbet or a dado
+    # seats it inside the perimeter, with the top full depth either way.
     under_top = (getattr(cab_cfg, "back_style", "full_height") == "under_top"
                  and not miter)
+    caps_back = under_top and not geo.machined
     height = float(cab_cfg.height)
     bottom_t = float(getattr(cab_cfg, "bottom_thickness", side_t))
     top_t = float(getattr(cab_cfg, "top_thickness", side_t))
@@ -395,16 +435,18 @@ def build_assembly_plan(
                 side_rows.append(MortiseRow(
                     f"col {n_cols} shelf {si} (right side only)", "h",
                     float(z) + _ref_offset(shelf_t), positions, "face"))
+    _side = _by_kind["side"][0]
     panels.append(PanelMortiseMap(
         panel="side (make 2, mirror-image)", part_id=pid("side"),
-        draw_width=depth, draw_height=height,
+        draw_width=_side.width, draw_height=_side.length,
+        canonical="side",
         width_label="depth — front edge at left",
         height_label="height" + (" (long-point)" if miter else ""),
         rows=tuple(side_rows),
         note=(("Ends beveled 45° — mortise the MITER FACES top and bottom. "
                if miter else "Mortise the INNER face. ")
               + "The two sides are a mirrored pair — mark them L and R "
-              "before machining."),
+              "before machining." + _band_note(_side)),
     ))
 
     # Divider centrelines from the left END of the top/bottom panel.
@@ -438,14 +480,24 @@ def build_assembly_plan(
         end_txt = ("45° miter faces both ends"
                    if miter else "Edge mortises in both ends (ride the "
                    "fence/plate on the OUTSIDE face)")
-        panel_draw_depth = (depth if (pname == "top" and under_top)
-                            else interior_panel_depth)
-        cap_txt = (" Full-depth panel — rear edge flush with the sides; "
-                   "it caps the back." if (pname == "top" and under_top)
-                   else "")
+        _tb = _by_kind[pname][0]
+        panel_draw_depth = _tb.width
+        if pname == "top" and caps_back:
+            cap_txt = (" Full-depth panel — rear edge flush with the sides; "
+                       "it caps the back.")
+        elif geo.machined:
+            # Both members run full depth under a machined capture, and the
+            # back seats into them — say which, so a full-depth panel is
+            # never read as a drawing error.
+            cap_txt = (f" Full-depth panel — the {geo.capture.replace('_', ' ')} "
+                       f"in its {'top face' if pname == 'bottom' else 'underside'} "
+                       f"takes the back {geo.engagement:g} mm.")
+        else:
+            cap_txt = ""
         panels.append(PanelMortiseMap(
             panel=pname, part_id=pid(canonical),
-            draw_width=tb_width, draw_height=panel_draw_depth,
+            draw_width=_tb.length, draw_height=panel_draw_depth,
+            canonical=canonical,
             width_label=("length (= exterior width, long-point)" if miter
                          else "length (= interior width)"),
             height_label="depth — front edge at bottom",
@@ -454,8 +506,8 @@ def build_assembly_plan(
                   f"({'top face' if pname == 'bottom' else 'underside'}) "
                   f"{_ref_offset(side_t):g} mm past each divider's "
                   "LEFT-face line — mark left-face lines, not centrelines."
-                  f"{cap_txt}"
-                  if div_centres else f"{end_txt}.{cap_txt}"),
+                  f"{cap_txt}{_band_note(_tb)}"
+                  if div_centres else f"{end_txt}.{cap_txt}{_band_note(_tb)}"),
         ))
 
     if n_dividers:
@@ -496,11 +548,13 @@ def build_assembly_plan(
                          f"{', '.join(str(d) for d in ds)} (make {len(ds)})")
             else:
                 label = f"column divider {ds[0]}"
+            _div_panel = (_by_kind.get("divider") or [_by_kind["side"][0]])[0]
             panels.append(PanelMortiseMap(
                 panel=label,
                 part_id=pid("column_divider"),
                 draw_width=interior_panel_depth,
-                draw_height=float(cab_cfg.interior_height),
+                draw_height=divider_cut_length(cab_cfg),
+                canonical="column_divider",
                 width_label="depth — front edge at left",
                 height_label="height (fits between bottom and top)",
                 rows=rows_key,
@@ -510,7 +564,8 @@ def build_assembly_plan(
                       "row, measured from the shelf's UNDERSIDE line)."
                       if has_faces else
                       "Both faces show; mortise the two ENDS only — ride "
-                      "the fence/plate on the LEFT face (mark it)."),
+                      "the fence/plate on the LEFT face (mark it).")
+                     + _band_note(_div_panel),
             ))
 
     shelf_like = []
@@ -522,6 +577,9 @@ def build_assembly_plan(
             shelf_like.append(
                 (f"col {ci + 1} fixed shelf", ns, float(cols[ci].width_mm)))
     for label, count, length in shelf_like:
+        # A shelf's banding follows the shelf rows, which all band the front
+        # edge; fall back to the side when a cfg somehow has no shelf panel.
+        _shelf_panel = (_by_kind.get("shelf") or [_by_kind["side"][0]])[0]
         panels.append(PanelMortiseMap(
             panel=f"{label} (make {count})" if count > 1 else label,
             # Length-qualified lookup first: global and column shelf
@@ -529,6 +587,7 @@ def build_assembly_plan(
             # cutlist rows (review 2026-07-29).
             part_id=pid(f"shelf_1@{round(length, 1)}") or pid("shelf_1"),
             draw_width=length, draw_height=interior_panel_depth,
+            canonical="shelf",
             width_label="length",
             height_label="depth — front edge at bottom",
             rows=(
@@ -536,7 +595,7 @@ def build_assembly_plan(
                 MortiseRow("", "v", length, positions, "edge"),
             ),
             note="Edge mortises in both ends — ride the fence/plate on "
-                 "the UNDERSIDE.",
+                 "the UNDERSIDE." + _band_note(_shelf_panel),
         ))
 
     thicknesses = {side_t, bottom_t, top_t}

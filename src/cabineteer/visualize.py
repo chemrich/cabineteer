@@ -1074,6 +1074,13 @@ def _build_html(
     # Build info panel rows.  Title and info values are interpolated straight
     # into the HTML, so escape them to prevent markup injection / breakage.
     safe_title = html_escape(title)
+    # A caveat that only reaches the tool's JSON does not reach the person
+    # approving the picture. `render_caveats` is the whole justification for
+    # leaving the mitered-corner divergence unfixed, and approval-from-the-
+    # viewer is precisely the failure it exists to prevent — the furniture_top
+    # cap "existed in approved renders and never on any cutlist" and cost a
+    # batch of paper. So it goes on the page, not only in the result.
+    caveats = [c for c in (info.pop("render_caveats", None) or []) if c]
     info_rows: list[str] = []
     if "width" in info:
         info_rows.append(f'<div class="row">W <span>{info["width"]:.0f} mm</span></div>')
@@ -1088,6 +1095,13 @@ def _build_html(
                 f'<div class="row">{label} <span>{html_escape(str(v))}</span></div>'
             )
     info_html = "\n    ".join(info_rows)
+    caveat_html = ""
+    if caveats:
+        items = "\n      ".join(
+            f"<li>{html_escape(c)}</li>" for c in caveats)
+        caveat_html = (
+            '<div id="caveats"><b>This render does not show everything the '
+            'cutlist cuts</b><ul>\n      ' + items + "\n    </ul></div>")
 
     return f"""\
 <!DOCTYPE html>
@@ -1197,6 +1211,17 @@ def _build_html(
       color: #f0c060; border-radius: 5px; padding: 4px 12px; cursor: pointer;
       font-size: 12px; font-family: inherit;
     }}
+
+    #caveats {{
+      margin-top: 10px; padding: 8px 10px; border-radius: 6px;
+      background: rgba(190, 120, 30, 0.22);
+      border-left: 3px solid #e0913a;
+      color: #f0d9b8; font-size: 11px; line-height: 1.35;
+      max-width: 320px;
+    }}
+    #caveats b {{ display: block; margin-bottom: 4px; color: #ffcf90; }}
+    #caveats ul {{ margin: 0; padding-left: 16px; }}
+    #caveats li {{ margin-bottom: 3px; }}
   </style>
 </head>
 <body>
@@ -1205,6 +1230,7 @@ def _build_html(
   <div id="panel">
     <h2>{safe_title}</h2>
     {info_html}
+    {caveat_html}
     <div id="finish-ui">
       <select id="finish-sel" title="Exterior finish (drawer boxes stay Baltic birch)"></select>
       <button id="grain-btn" title="Toggle show-surface grain orientation">Grain: vertical</button>

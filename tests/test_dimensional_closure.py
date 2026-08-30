@@ -70,16 +70,17 @@ def _run(coro):
     """Drive an async tool handler without leaking an event loop.
 
     A bare ``asyncio.run`` in a test module breaks later files in the same
-    session (recorded in CLAUDE.md's gotchas).
+    session (recorded in CLAUDE.md's gotchas), so this owns its loop and
+    closes it. It does NOT reuse ``get_event_loop()``: under
+    ``pytest-randomly`` another module can close the loop this one adopted,
+    and 57 tests here then fail with "Event loop is closed" — phantoms that
+    look exactly like a broken change and cost a reviewer an afternoon.
     """
+    loop = asyncio.new_event_loop()
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_closed():
-            raise RuntimeError
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    return loop.run_until_complete(coro)
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
 
 
 # ─── The matrix ───────────────────────────────────────────────────────────
@@ -143,6 +144,36 @@ def _matrix() -> list[Case]:
         cases.append(Case(f"depth={depth:g}", _base(depth=depth)))
 
     cases.append(Case("furniture_top", _base(furniture_top=True)))
+    # The matrix had no mitered case at all, so nothing in this module ever
+    # looked at the axis D12 lives on: the paper cuts the top and bottom to
+    # the full exterior long point and the render draws neither the length
+    # nor the bevels.
+    cases.append(Case("corner=miter", _base(carcass_corner_style="miter")))
+
+    # ── Crossed axes ─────────────────────────────────────────────────────
+    # Every case above varies ONE thing. That is how the band note came to
+    # claim a hardwood band on a furniture_top's capped edge: the note was
+    # per-cabinet, the banding is per-panel, and no case combined the two,
+    # so the contradiction was invisible while the assertion it justified
+    # was being edited. Each of these is a pair that has actually hidden a
+    # defect or plausibly can.
+    cases.append(Case("hardwood+furniture_top",
+                      _base(edge_band_mode="hardwood",
+                            edge_band_thickness_mm=3.2,
+                            furniture_top=True)))
+    cases.append(Case("miter+hardwood",
+                      _base(carcass_corner_style="miter",
+                            edge_band_mode="hardwood",
+                            edge_band_thickness_mm=3.2)))
+    # A shelf family with two DIFFERENT widths, which is what makes a
+    # per-family set comparison unable to fail.
+    cases.append(Case(
+        "shelf+columns",
+        _base(width=800.0, openings=[]),
+        [{"width_mm": 300.0, "openings": [[243, "open"]],
+          "fixed_shelf_positions": [120.0]},
+         {"width_mm": 446.0, "openings": [[243, "open"]],
+          "fixed_shelf_positions": [120.0]}]))
     cases.append(Case("face_gap=2.5", _base(face_gap_mm=2.5)))
     cases.append(Case("banding=hardwood",
                       _base(edge_band_mode="hardwood", edge_band_thickness_mm=3.2)))
@@ -152,6 +183,14 @@ def _matrix() -> list[Case]:
                                                 door_hinge="blum_clip_top_blumotion_110_full")))
     cases.append(Case("shelf", _base(openings=[(684.0, "open")],
                                      fixed_shelf_positions=[350.0])))
+    # A shelf under a GROOVED back. The shelf cases above are all pocket, so
+    # a mutation regrowing `depth - back_thickness` for shelf depth passed
+    # this whole module: pocket is the one capture where that expression is
+    # accidentally right. Under dado the back's front face sits a further
+    # back_groove_setback forward, and an interior panel must stop there.
+    cases.append(Case("dado+shelf", _base(openings=[(684.0, "open")],
+                                          back_capture="dado",
+                                          fixed_shelf_positions=[350.0])))
 
     cols = [{"width_mm": 300.0, "openings": [[133, "drawer"], [110, "drawer"]]},
             {"width_mm": 446.0, "openings": [[243, "open"]]}]
@@ -205,37 +244,21 @@ KNOWN_DEFECTS: dict[tuple[str, str | None], str] = {
     # assertions above started passing, which is what closing a defect looks
     # like here: delete the line, never edit the assertion.
 
-    # ── D2 · assembly map draws the bottom 6 mm short ────────────────────
-    # assembly.py:350 hardcodes `depth − back_thickness` under a comment
-    # calling it "the cutlist convention", which it stopped being when
-    # back_capture landed. Live on 6 of the 11 real cabinets. Fix: read
-    # back_capture_geometry, and geo.top_depth/bottom_depth at :441.
-    ("test_the_assembly_map_draws_the_panel_the_cutlist_cuts",
-     "capture=rabbet/back=full_height"): "D2 — map bottom 451, cut 457.",
-    ("test_the_assembly_map_draws_the_panel_the_cutlist_cuts",
-     "capture=rabbet/back=under_top"): "D2 — map bottom 451, cut 457.",
-    ("test_the_assembly_map_draws_the_panel_the_cutlist_cuts",
-     "capture=dado/back=full_height"): "D2 — map bottom 451, cut 457.",
-    ("test_the_assembly_map_draws_the_panel_the_cutlist_cuts",
-     "capture=dado/back=under_top"): "D2 — map bottom 451, cut 457.",
-    ("test_the_assembly_map_draws_the_panel_the_cutlist_cuts",
-     "dado/depth=470"): "D2 — same, at a depth that also trips D1.",
-    ("test_the_assembly_map_draws_the_panel_the_cutlist_cuts",
-     "banding=hardwood"): "D2 — the map draws the finished panel where the "
-                          "cutlist cuts a core, or the reverse. Under hardwood "
-                          "banding the two differ by the band thickness.",
+    # ── D2 · CLOSED 2026-08-29 (plan step P3) ───────────────────────────
+    # The assembly map hardcoded `depth − back_thickness` under a comment
+    # calling it "the cutlist convention" — which it stopped being when
+    # back_capture landed, so it drew the bottom 6 mm short on 6 of the 12
+    # cabinets in the saved projects. Every map dimension now comes from
+    # cabinet.carcass_panel_dims. Six entries deleted, including the
+    # banding=hardwood one: the band is glued and trimmed BEFORE mortising,
+    # so the map is right to draw the finished panel — what was missing was
+    # the sentence saying so, which the map now carries.
 
-    # ── D3 · the design payload reports a full-height divider ────────────
-    # server.py:3747 hardcodes cfg.height; server.py:4151 correctly cuts to
-    # interior height for every butt joinery. The payload reports an 800 mm
-    # divider standing in its own 764 mm interior — and it is the FIRST
-    # document read, at approval time. Fix: cabinet.divider_cut_length(cfg),
-    # called by both.
-    ("test_the_design_payload_quotes_the_cutlist_dimensions", "2col"):
-        "D3 — divider reported 720 mm (exterior), cut 684 mm (interior).",
-    ("test_the_design_payload_quotes_the_cutlist_dimensions",
-     "2col_uneven_door_over_drawer"):
-        "D3 — same divider, plus D8's shelf in the same cabinet.",
+    # ── D3 · CLOSED 2026-08-29 (plan step P3) ───────────────────────────
+    # design_multi_column_cabinet hardcoded cfg.height for the divider while
+    # every other document cut it to the interior height. Both design
+    # payloads are now built by server._payload_carcass_panels off the same
+    # carcass_panel_dims the cutlist cuts from.
 
     # ── D19 · the design payload reports FINISHED, the cutlist cuts CORE ──
     # Under hardwood banding the payload says the side is 457 deep and the
@@ -246,6 +269,15 @@ KNOWN_DEFECTS: dict[tuple[str, str | None], str] = {
     ("test_the_design_payload_quotes_the_cutlist_dimensions", "banding=hardwood"):
         "D19 — payload 457 (finished) vs cutlist 453.8 (core), with no "
         "statement of which the number is.",
+    # The same defect on the crossed cases added in P3. They are listed
+    # separately rather than folded into a "*" because each names a real
+    # combination a person can build, and a fix has to make all three pass.
+    ("test_the_design_payload_quotes_the_cutlist_dimensions",
+     "hardwood+furniture_top"):
+        "D19 — same: side_panel 457 finished, 453.8 cut.",
+    ("test_the_design_payload_quotes_the_cutlist_dimensions",
+     "miter+hardwood"):
+        "D19 — same: side_panel 457 finished, 453.8 cut.",
 
     # ── D8 · the render-only transition shelf ────────────────────────────
     # server.py:5087 derives transition_shelf_zs, which emits a panel the
@@ -261,6 +293,36 @@ KNOWN_DEFECTS: dict[tuple[str, str | None], str] = {
      "2col_uneven_door_over_drawer"):
         "D8 — the render grows a shelf that appears on no cutlist. Same "
         "shape as the furniture_top cap, which cost a batch of paper.",
+    # D8's second face, found when P3 gave the render a DIMENSION check to
+    # sit beside its part-name check: deriving a transition shelf also flips
+    # build_multi_bay_cabinet off its continuous top and bottom
+    # (`non_stacked = not transition_shelf_zs`, cabinet.py:1860), so the
+    # picture shows a 380 and a 366 where the paper cuts one 764 of each.
+    # Deleting the auto-derivation closes both entries at once.
+    ("test_the_render_draws_the_carcass_at_the_size_the_cutlist_cuts",
+     "2col_uneven_door_over_drawer"):
+        "D8 — per-bay top and bottom (380 and 366) where the cutlist cuts "
+        "one 764 of each, because the derived transition shelf turns off "
+        "the continuous top/bottom.",
+
+    # ── D12 · the render does not model the corner style ────────────────
+    # cabinet.py reads carcass_corner_style in exactly two places, neither of
+    # them a panel maker, so a mitered cabinet is DRAWN butt-cornered: the
+    # top and bottom come out 2 x side_thickness narrow and no bevel exists.
+    # The paper is correct throughout. P3 made the divergence loud rather
+    # than silent — visualize_* now returns a render_caveat naming it, and
+    # the makers take the butt length deliberately with a comment saying why
+    # a half-modelled miter would be worse. Closing this entry means MODELLING
+    # the corner (beveled ends, long-point placement), which is PR D's
+    # deferred viewer work alongside 3D banding.
+    ("test_the_render_draws_the_carcass_at_the_size_the_cutlist_cuts",
+     "corner=miter"):
+        "D12 — the render draws the top and bottom 764 wide; the cutlist "
+        "cuts 800 long-point with 45 degree bevels on both ends.",
+    ("test_the_render_draws_the_carcass_at_the_size_the_cutlist_cuts",
+     "miter+hardwood"):
+        "D12 — same, with banding on. Listed separately so a corner-style "
+        "fix has to satisfy both and cannot pass by special-casing one.",
 
     # ── D14 · five Domino rows have tenons longer than their mortises ────
     # Fix the five depths in DOMINO_SIZES, and derive
@@ -514,11 +576,28 @@ def test_carcass_parts_close_into_the_stated_box(case: Case):
     assert sides and tops and bottoms, f"{case.id}: missing a carcass panel"
 
     side_t = sides[0][3]
-    # Width: the top spans between the sides (butt) or the full exterior.
     top_len = tops[0][1]
-    assert top_len + 2 * side_t == pytest.approx(case.cfg.width, abs=0.05), (
-        f"{case.id}: top {top_len:g} + two {side_t:g} sides = "
-        f"{top_len + 2 * side_t:g}, not the stated width {case.cfg.width:g}")
+    if case.cfg.carcass_corner_style == "miter":
+        # A 45° corner has no butt joint to add up: the top and the sides
+        # each run to the same exterior plane and meet at their long points,
+        # so the top alone IS the width. Asserting the butt sum here would
+        # have demanded a 764 top on a cabinet whose every other document
+        # cuts 800 — a test enforcing the wrong construction.
+        # Dimension the BOTTOM too. The butt branch never did either, and a
+        # mitered bottom cut 36 mm short — the exact D12 error, on the paper
+        # instead of in the picture — passed an assertion that only looked
+        # at the top.
+        for label, dims in (("top", tops[0]), ("bottom", bottoms[0])):
+            assert dims[1] == pytest.approx(case.cfg.width, abs=0.05), (
+                f"{case.id}: a mitered {label} is cut long-point to the "
+                f"full exterior; {dims[1]:g} is not {case.cfg.width:g}")
+    else:
+        for label, dims in (("top", tops[0]), ("bottom", bottoms[0])):
+            assert dims[1] + 2 * side_t == pytest.approx(
+                case.cfg.width, abs=0.05), (
+                f"{case.id}: {label} {dims[1]:g} + two {side_t:g} sides = "
+                f"{dims[1] + 2 * side_t:g}, not the stated width "
+                f"{case.cfg.width:g}")
     # Height: the sides run the full exterior on a butt carcass.
     assert sides[0][1] == pytest.approx(case.cfg.height, abs=0.05), (
         f"{case.id}: side length {sides[0][1]:g} is not the stated height "
@@ -619,6 +698,101 @@ def test_the_render_contains_exactly_the_carcass_the_cutlist_cuts(case: Case):
         f"  cutlist: {dict(sorted(cut_norm.items()))}")
 
 
+@skipif_no_cq
+@pytest.mark.parametrize("case", MATRIX, ids=IDS)
+def test_the_render_draws_the_carcass_at_the_size_the_cutlist_cuts(case: Case):
+    """A part in the picture at the wrong size is a part he cuts wrong.
+
+    Its sibling above compares which parts exist; nothing compared their
+    DIMENSIONS, so the render could have drawn every panel to a different
+    rule and stayed green — which is #88 exactly, one dimension with two
+    producers.
+
+    The render draws the FINISHED cabinet and the cutlist cuts CORES, so the
+    row's own ``edge_band`` markers convert one to the other. That is the
+    same single conversion the assembly-map test applies, stated in both
+    places rather than hidden in a helper, because it is the fact most
+    likely to be wrong.
+    """
+    band_t = (float(case.cfg.edge_band_thickness_mm)
+              if case.cfg.edge_band_mode == "hardwood" else 0.0)
+
+    # MULTISETS, not sets. A family with two differently-sized members —
+    # two shelves at different column widths — would otherwise let the
+    # render draw BOTH at the first one's size and still pass, because the
+    # wrong size is a member of the family's set. Demonstrated at 146 mm:
+    # cutlist shelf_1 300x451 + shelf_1 446x451, render both at 300, all
+    # three closure tests green. Counting how many of each size exist is
+    # what makes "the picture contains the parts" mean something.
+    cut: Counter = Counter()
+    families = set()
+    for p in cutlist_panels(case):
+        name = "shelf" if p.name.startswith("shelf_") else p.name
+        if name not in ("side", "bottom", "top", "column_divider", "shelf"):
+            continue
+        families.add(name)
+        cut[(name, tuple(sorted((
+            round(p.length, 1),
+            round(p.width + len(p.edge_band or ()) * band_t, 1),
+            round(p.thickness, 1)))))] += p.quantity
+
+    drawn: Counter = Counter()
+    for part in render_parts(case):
+        name = render_carcass_name(part.name)
+        if name is None or name not in families:
+            continue
+        bb = part.shape.val().BoundingBox()
+        drawn[(name, tuple(sorted((round(bb.xlen, 1), round(bb.ylen, 1),
+                                   round(bb.zlen, 1)))))] += 1
+
+    assert sum(drawn.values()) >= 4, (
+        f"{case.id}: only compared {sum(drawn.values())} solids — check "
+        "render_carcass_name against the render's node names.")
+    assert drawn == cut, (
+        f"{case.id}: the render and the cutlist disagree about carcass "
+        f"sizes.\n  render:  {dict(sorted(drawn.items()))}\n"
+        f"  cutlist: {dict(sorted(cut.items()))}")
+
+
+def design_tool_call(case: Case) -> tuple[str, dict]:
+    """``(tool name, args)`` that asks the design tool for THIS case's cabinet.
+
+    Every axis of the matrix goes in. The first version of this listed nine
+    keys and dropped ``edge_band_mode``, ``carcass_corner_style``,
+    ``furniture_top`` and ``fixed_shelf_positions`` — so on those cases the
+    tool designed a different cabinet than the collector measured, and the
+    comparison was between two unrelated objects. A payload test that
+    designs the wrong cabinet cannot be trusted in either direction.
+    """
+    cfg = case.cfg
+    tool = ("design_multi_column_cabinet" if case.columns_raw
+            else "design_cabinet")
+    args: dict = {
+        "width": cfg.width, "height": cfg.height, "depth": cfg.depth,
+        "side_thickness": cfg.side_thickness,
+        "bottom_thickness": cfg.bottom_thickness,
+        "top_thickness": cfg.top_thickness,
+        "shelf_thickness": cfg.shelf_thickness,
+        "back_thickness": cfg.back_thickness,
+        "carcass_joinery": cfg.carcass_joinery.value,
+        "back_capture": cfg.back_capture,
+        "back_style": cfg.back_style,
+        "carcass_corner_style": cfg.carcass_corner_style,
+        "edge_band_mode": cfg.edge_band_mode,
+        "edge_band_thickness_mm": cfg.edge_band_thickness_mm,
+        "furniture_top": cfg.furniture_top,
+        "face_gap_mm": cfg.face_gap_mm,
+    }
+    if cfg.fixed_shelf_positions:
+        args["fixed_shelf_positions"] = list(cfg.fixed_shelf_positions)
+    if case.columns_raw:
+        args["columns"] = case.columns_raw
+    else:
+        args["drawer_config"] = [[o.height_mm, o.opening_type]
+                                 for o in cfg.openings]
+    return tool, args
+
+
 #: design_* payload panel key -> cutlist row name.
 _PAYLOAD_TO_CUTLIST = {
     "side_panel": "side",
@@ -642,22 +816,7 @@ def test_the_design_payload_quotes_the_cutlist_dimensions(case: Case):
     case — a check that cannot fail, which is the exact class this module
     exists to catch.
     """
-    tool = ("design_multi_column_cabinet" if case.columns_raw
-            else "design_cabinet")
-    args: dict = {"width": case.cfg.width, "height": case.cfg.height,
-                  "depth": case.cfg.depth,
-                  "side_thickness": case.cfg.side_thickness,
-                  "bottom_thickness": case.cfg.bottom_thickness,
-                  "top_thickness": case.cfg.top_thickness,
-                  "back_thickness": case.cfg.back_thickness,
-                  "carcass_joinery": case.cfg.carcass_joinery.value,
-                  "back_capture": case.cfg.back_capture,
-                  "back_style": case.cfg.back_style}
-    if case.columns_raw:
-        args["columns"] = case.columns_raw
-    else:
-        args["drawer_config"] = [[o.height_mm, o.opening_type]
-                                 for o in case.cfg.openings]
+    tool, args = design_tool_call(case)
     payload = json.loads(_run(TOOL_DISPATCH[tool](args))[0].text)
 
     rows: dict[str, tuple[float, float, float]] = {}
@@ -695,22 +854,7 @@ def test_the_design_payload_does_not_contradict_itself(case: Case):
     ``interior.depth_mm 448`` beside its own ``bottom_panel 451`` and a
     ``fixed_shelf 448``, in the same object.
     """
-    tool = ("design_multi_column_cabinet" if case.columns_raw
-            else "design_cabinet")
-    args: dict = {"width": case.cfg.width, "height": case.cfg.height,
-                  "depth": case.cfg.depth,
-                  "side_thickness": case.cfg.side_thickness,
-                  "bottom_thickness": case.cfg.bottom_thickness,
-                  "top_thickness": case.cfg.top_thickness,
-                  "back_thickness": case.cfg.back_thickness,
-                  "carcass_joinery": case.cfg.carcass_joinery.value,
-                  "back_capture": case.cfg.back_capture,
-                  "back_style": case.cfg.back_style}
-    if case.columns_raw:
-        args["columns"] = case.columns_raw
-    else:
-        args["drawer_config"] = [[o.height_mm, o.opening_type]
-                                 for o in case.cfg.openings]
+    tool, args = design_tool_call(case)
     payload = json.loads(_run(TOOL_DISPATCH[tool](args))[0].text)
 
     from cabineteer.cabinet import back_capture_geometry
@@ -731,46 +875,93 @@ def test_the_design_payload_does_not_contradict_itself(case: Case):
             f"{case.id}: {tool} cuts the bottom {bottom:g} mm deep; a "
             f"{case.cfg.back_capture} capture wants {geo.bottom_depth:g}")
 
-    # A divider stops at the back, so it IS the interior depth. This is the
-    # pair that contradicted itself before P2 — 448 stated, 451 cut.
-    divider = (panels.get("column_divider") or {}).get("depth_mm")
-    if divider is None:
+    # A divider or a fixed shelf stops at the back, so it IS the interior
+    # depth. This is the pair that contradicted itself before P2 — 448
+    # stated, 451 cut.
+    #
+    # Shelves are checked as well as dividers because on the divider alone
+    # this test skipped 28 of its 30 cases: only the two multi-column cases
+    # have one, so the assertion that names the defect almost never ran.
+    for key, blk in panels.items():
+        if key != "column_divider" and not key.startswith("fixed_shelf"):
+            continue
+        got = (blk or {}).get("depth_mm")
+        if got is None:
+            continue
+        assert round(stated, 1) == round(got, 1), (
+            f"{case.id}: {tool} says the interior is {stated:g} mm deep and "
+            f"in the same payload cuts {key} — an interior panel, which "
+            f"stops at the back — {got:g} mm deep")
+        break
+    else:
         pytest.skip("no interior panel in this payload to compare against")
-    assert round(stated, 1) == round(divider, 1), (
-        f"{case.id}: {tool} says the interior is {stated:g} mm deep and in "
-        f"the same payload cuts the divider — an interior panel, which stops "
-        f"at the back — {divider:g} mm deep")
 
 
 @pytest.mark.parametrize("case", MATRIX, ids=IDS)
 def test_the_assembly_map_draws_the_panel_the_cutlist_cuts(case: Case):
     """The mortise map's own comment promises "map dims match the parts in hand".
 
-    D2: it draws the bottom 6 mm short on 6 of the 11 real cabinets, because
-    it hardcodes ``depth − back_thickness`` under a comment calling that
-    "the cutlist convention", which it stopped being when back_capture landed.
+    D2: it drew the bottom 6 mm short on 6 of the 12 cabinets in the saved
+    projects, because it hardcoded ``depth − back_thickness`` under a comment
+    calling that "the cutlist convention", which it stopped being when
+    back_capture landed. Both members run FULL depth under a rabbet or a dado.
+
+    Two things this compares that the first version did not:
+
+    * **Every panel, not two.** It used to join the map to the paper on the
+      map's *display* name, and only "top" and "bottom" happen to equal their
+      cutlist row name — the side, the divider and the shelves were silently
+      skipped, so four of the six drawings were unchecked. Maps now carry a
+      ``canonical`` row name to join on.
+    * **The panel in hand, which under hardwood banding is not the cut size.**
+      The band is glued and flush-trimmed BEFORE any mortising (the banding
+      step says so, and says the panels were cut short by the band thickness),
+      so the panel this map is used on measures the FINISHED number. The
+      expectation is therefore the cutlist row plus its own banded edges —
+      derived from the paper and the banding rule, not from the map's source.
+      A map that quotes a number without saying which face it means is the
+      G1/D19 defect, so the map states it too.
     """
     from cabineteer.assembly import build_assembly_plan
     if case.cfg.carcass_joinery is not CarcassJoinery.FLOATING_TENON:
         pytest.skip("assembly plan is floating-tenon only")
     plan = build_assembly_plan(case.cfg)
-    rows = {}
-    for p in cutlist_panels(case):
-        rows.setdefault(p.name, (p.length, p.width))
 
-    alias = {"left side": "side", "right side": "side", "top": "top",
-             "bottom": "bottom", "column divider": "column_divider"}
+    band_t = (float(case.cfg.edge_band_thickness_mm)
+              if case.cfg.edge_band_mode == "hardwood" else 0.0)
+
+    def finished(row):
+        """The row as it measures once its bands are on and trimmed."""
+        return row.length, row.width + len(row.edge_band or ()) * band_t
+
+    rows: dict[str, list] = {}
+    for p in cutlist_panels(case):
+        rows.setdefault("shelf" if p.name.startswith("shelf_") else p.name,
+                        []).append(p)
+
+    compared = 0
     for pm in plan.panels:
-        key = alias.get(pm.panel.lower())
-        if key is None or key not in rows:
+        candidates = rows.get(pm.canonical)
+        if not candidates:
             continue
-        cut_l, cut_w = rows[key]
         drawn = {round(pm.draw_width, 1), round(pm.draw_height, 1)}
-        expect = {round(cut_l, 1), round(cut_w, 1)}
+        # A shelf family collapses several cutlist rows into one drawing per
+        # length; match the row this drawing is of.
+        matches = [r for r in candidates
+                   if round(r.length, 1) in drawn] or candidates
+        row = matches[0]
+        fin_l, fin_w = finished(row)
+        expect = {round(fin_l, 1), round(fin_w, 1)}
         assert drawn == expect, (
             f"{case.id}: the assembly map draws '{pm.panel}' at "
-            f"{pm.draw_width:g} × {pm.draw_height:g}, the cutlist cuts "
-            f"{cut_l:g} × {cut_w:g}")
+            f"{pm.draw_width:g} × {pm.draw_height:g}; the cutlist cuts "
+            f"{row.name} at {row.length:g} × {row.width:g}, which finishes "
+            f"{fin_l:g} × {fin_w:g}")
+        compared += 1
+
+    assert compared >= 3, (
+        f"{case.id}: only compared {compared} panel maps — this test has gone "
+        "vacuous. Check PanelMortiseMap.canonical against the cutlist names.")
 
 
 # ─── Anchors that are not derived from anything in this repo ──────────────

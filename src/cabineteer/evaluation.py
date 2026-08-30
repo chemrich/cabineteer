@@ -1118,7 +1118,13 @@ def check_carcass_joinery(cab_cfg: CabinetConfig) -> list[Issue]:
         return issues  # covered by check_dado_alignment / check_back_panel_fit
 
     interior_w = cab_cfg.interior_width
-    interior_d = cab_cfg.depth - cab_cfg.back_rabbet_width
+    # THE depth datum. This branch has already returned for DADO_RABBET, so
+    # ``back_rabbet_width`` — that construction's side-rabbet width — was
+    # being applied to a butt carcass that never machines one: 448 here
+    # against the 451 the assembly doc mortises and the hardware BOM counts
+    # tenons for. Same census, two spellings; #93's D1, in the one place it
+    # did not reach.
+    interior_d = cab_cfg.interior_depth
 
     if method == CarcassJoinery.FLOATING_TENON:
         spec = cab_cfg.domino_spec
@@ -2570,7 +2576,7 @@ def evaluate_cabinet(
         for shelf_name, load in shelf_loads_kg.items():
             all_issues.extend(check_shelf_deflection(
                 span=cab_cfg.interior_width,
-                depth=cab_cfg.depth - cab_cfg.back_rabbet_width,
+                depth=cab_cfg.interior_depth,
                 thickness=cab_cfg.shelf_thickness,
                 load_kg=load,
             ))

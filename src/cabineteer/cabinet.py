@@ -15,6 +15,7 @@ All dimensions in millimeters. The cabinet is oriented with:
 - Origin at front-bottom-left exterior corner
 """
 
+import dataclasses
 import math
 from dataclasses import dataclass, field
 from typing import Optional
@@ -813,15 +814,16 @@ def make_side_panel(cfg: CabinetConfig, mirror: bool = False) -> "cq.Workplane":
 
     if _is_butt(cfg):
         # Plain slab; only the shelf-pin holes apply. The rear pin row
-        # references the back's seat plane (depth − back_thickness).
+        # references the back's seat plane, which back_capture sets.
         if cfg.adj_shelf_holes:
             x_start = (cfg.side_thickness - cfg.shelf_pin_depth) if not mirror else 0
             z = cfg.shelf_pin_start_z
             # The rear pin row references the shelf's rear edge, which sits
             # at the back's front face — a deep groove setback moves it
             # forward, and a row measured off back_thickness alone would
-            # land behind the shelf (or bore into the groove).
-            rear_ref = cfg.depth - back_capture_geometry(cfg).clear_depth
+            # land behind the shelf (or bore into the groove). That plane is
+            # interior_depth, THE datum; read it rather than spell it again.
+            rear_ref = cfg.interior_depth
             while z <= cfg.shelf_pin_end_z:
                 for y_inset in [cfg.shelf_pin_row_inset,
                                 rear_ref - cfg.shelf_pin_row_inset]:
@@ -919,8 +921,16 @@ def make_bottom_panel(cfg: CabinetConfig) -> "cq.Workplane":
     """
     _require_cq()
     if _is_butt(cfg):
-        panel_width = cfg.interior_width
-        panel_depth = back_capture_geometry(cfg).bottom_depth
+        _p = carcass_panel(cfg, "bottom")
+        # The render does not model mitered corners — it draws butt corners,
+        # so this panel spans BETWEEN the sides even where the paper cuts it
+        # to the full exterior long point. Taking the long-point length here
+        # without also cutting the bevels and moving the panel out would
+        # drive it straight through both side solids, which is a worse
+        # picture than an honest butt one. server._render_caveats states the
+        # divergence in the tool result; modelling it is a separate job.
+        panel_width = cfg.interior_width if _p.bevel_ends else _p.length
+        panel_depth = _p.width
     else:
         # Width: interior width + dado depth on each side (extends into dados)
         panel_width = cfg.interior_width + (cfg.dado_depth * 2)
@@ -946,8 +956,16 @@ def make_top_panel(cfg: CabinetConfig) -> "cq.Workplane":
     """
     _require_cq()
     if _is_butt(cfg):
-        panel_width = cfg.interior_width
-        panel_depth = back_capture_geometry(cfg).top_depth
+        _p = carcass_panel(cfg, "top")
+        # The render does not model mitered corners — it draws butt corners,
+        # so this panel spans BETWEEN the sides even where the paper cuts it
+        # to the full exterior long point. Taking the long-point length here
+        # without also cutting the bevels and moving the panel out would
+        # drive it straight through both side solids, which is a worse
+        # picture than an honest butt one. server._render_caveats states the
+        # divergence in the tool result; modelling it is a separate job.
+        panel_width = cfg.interior_width if _p.bevel_ends else _p.length
+        panel_depth = _p.width
     else:
         panel_width = cfg.interior_width + (cfg.dado_depth * 2)
         panel_depth = cfg.depth
@@ -967,8 +985,10 @@ def make_shelf(cfg: CabinetConfig) -> "cq.Workplane":
     if _is_butt(cfg):
         panel_width = cfg.interior_width
         # Shelves stop at the back's FRONT face whatever the capture — only
-        # the perimeter members (sides, top, bottom) hold the back.
-        panel_depth = cfg.depth - back_capture_geometry(cfg).clear_depth
+        # the perimeter members (sides, top, bottom) hold the back. That is
+        # interior_depth, THE datum; deriving it again here is how the five
+        # competing spellings got started.
+        panel_depth = cfg.interior_depth
     else:
         panel_width = cfg.interior_width + (cfg.dado_depth * 2)
         panel_depth = cfg.depth - cfg.back_rabbet_width
@@ -1044,7 +1064,8 @@ def make_interior_divider(
         # armoire dividers. Matches the cutlist's column_divider row.
         # Depth stops at the back's FRONT face, which the capture sets — a
         # groove holds the back further forward than its thickness alone.
-        panel_depth = cfg.depth - back_capture_geometry(cfg).clear_depth
+        # interior_depth IS that number; read it, never re-derive it.
+        panel_depth = cfg.interior_depth
         top_z = cfg.height - cfg.top_thickness if height_override is None \
             else height_override
         height = top_z - cfg.bottom_thickness
@@ -1171,6 +1192,204 @@ def bays_from_config(
             fixed_shelf_positions=shelves,
         ))
     return bays
+
+
+# ─── Carcass panel geometry — the single source for the case ──────────────────
+
+
+def divider_cut_length(cfg: "CabinetConfig") -> float:
+    """Cut length (the vertical dimension) of one column divider.
+
+    Butt-joint carcasses — floating tenon, pocket screw, biscuit, dowel, i.e.
+    everything Charlie builds — seat the divider BETWEEN the bottom and top
+    panels, so it is cut to the interior height (Charlie, 2026-07-26). Only
+    dado/rabbet construction keeps the dado-era full-height divider housed in
+    the top and bottom.
+
+    This is a named function because the number had two spellings:
+    ``_raw_panels_for_cabinet`` cut ``height − bottom_t − top_t`` while
+    ``design_multi_column_cabinet`` reported ``cfg.height`` — a 720 mm divider
+    standing in its own 684 mm interior, in the first document anyone reads,
+    at approval time.
+    """
+    if cfg.carcass_joinery == CarcassJoinery.DADO_RABBET:
+        return float(cfg.height)
+    return float(cfg.interior_height)
+
+
+@dataclass(frozen=True)
+class CarcassPanel:
+    """One carcass panel at its FINISHED size in the assembled cabinet.
+
+    The carcass-axis analogue of :class:`FacePanel`. ``face_layout`` owns
+    every show-face dimension; this owns every case dimension, and for the
+    same reason: before it, the cutlist, the 3D makers, the design payload
+    and the assembly map each re-derived the same panel and three of them
+    got a different answer (the assembly map drew the bottom 6 mm short on 6
+    of the 12 cabinets in the saved projects; the payload reported the
+    divider at exterior height).
+
+    Like ``FacePanel`` these are FINISHED dimensions — the panel in the
+    assembled cabinet. Hardwood edge banding replaces core stock, so the saw
+    cuts something smaller; :meth:`core` is that view, and it lives here
+    rather than at each call site because the rule differs per panel (a
+    ``furniture_top`` cap covers the top's front edge, so that one is never
+    banded and its core must not be shrunk for a band it will not carry).
+
+    ``name`` is the cutlist row name. For the five single-family members
+    that is a join key on its own; for shelves it is not — three different
+    panels can all be called ``shelf_1`` (one per column, plus a cabinet-wide
+    one), so a shelf is identified by ``name`` WITH ``length`` and
+    ``column``. That is the same length-qualified key the assembly doc's
+    part-ID lookup already uses.
+
+    Scope: this is the BUTT-carcass convention, which is also the convention
+    every cutlist has used since 2026-08. ``DADO_RABBET`` panels are housed —
+    the 3D makers add ``2 × dado_depth`` and rabbet-based depths — and its
+    cutlist has never carried those allowances (a known, documented gap; see
+    CLAUDE.md "Known issues"). Callers on the dado path must not read these
+    dims as that construction's cut sizes.
+    """
+
+    #: side | bottom | top | divider | shelf | back
+    kind: str
+    #: The cutlist row name: "side", "bottom", "top", "column_divider",
+    #: "shelf_1", "back".
+    name: str
+    quantity: int
+    #: Finished, along the grain — the height for a side, a divider or the
+    #: back, the left-to-right run for a top, bottom or shelf.
+    length: float
+    #: Finished, across the grain — the depth for every carcass member
+    #: except the back, whose other axis is its left-to-right run.
+    width: float
+    thickness: float
+    #: Edges carrying hardwood banding. Carcass panels band the FRONT edge
+    #: and nothing else, and a carcass panel's front edge always lies on the
+    #: ``width`` axis, so a hardwood core is
+    #: ``width − len(banded_edges) × band_thickness``. Faces band all four
+    #: edges, which is why they are ``face_layout``'s business, not this
+    #: function's.
+    banded_edges: tuple[str, ...] = ()
+    #: True when this panel's two ENDS are cut at 45° for a mitered corner.
+    #: Mitered dimensions are LONG-POINT.
+    bevel_ends: bool = False
+    #: Height of a shelf above the carcass floor. None for everything else.
+    z: Optional[float] = None
+    #: 0-based column this panel belongs to, for a per-column fixed shelf.
+    #: None for cabinet-wide panels — including a cabinet-level shelf, which
+    #: runs the full interior width across every column.
+    column: Optional[int] = None
+
+    def core(self, band_thickness: float) -> tuple[float, float]:
+        """``(length, width)`` as the saw cuts it, given a band thickness.
+
+        Pass 0 for hot-melt and for no banding: hot-melt veneer is ironed on
+        after the panel is cut and grows it by ~0.6 mm rather than replacing
+        stock, so it changes no cut dimension. Only hardwood banding shrinks
+        a core.
+        """
+        if not band_thickness or not self.banded_edges:
+            return self.length, self.width
+        return self.length, self.width - len(self.banded_edges) * band_thickness
+
+
+def carcass_panel_dims(
+    cfg: "CabinetConfig",
+    columns: Optional[list] = None,
+) -> "list[CarcassPanel]":
+    """Every carcass panel of one cabinet, at finished size.
+
+    THE case-geometry source: the cutlist, the design payloads, the 3D panel
+    makers and the assembly-doc mortise maps all read this instead of each
+    deriving ``depth − something`` for themselves. Ordered sides → bottom →
+    top → cabinet shelves → dividers → column shelves → back, which is the
+    order ``_raw_panels_for_cabinet`` emits its rows in, so a consumer can
+    zip the two.
+
+    ``columns`` takes the raw tool-argument dicts
+    (``{"width_mm": …, "openings": […]}``); omitted, ``cfg.columns`` is used
+    — the same contract as :func:`bays_from_config`, which does the
+    normalizing. Cabinet-level ``fixed_shelf_positions`` are emitted once for
+    the whole case; per-column ones are emitted per column at that column's
+    width. A single-stack cabinet has no dividers and no column shelves.
+    """
+    geo = back_capture_geometry(cfg)
+    miter = getattr(cfg, "carcass_corner_style", "butt") == "miter"
+    side_t = float(cfg.side_thickness)
+    # Mitered corners run the top and bottom to the FULL exterior width
+    # (long point); butt corners seat them between the sides.
+    tb_length = float(cfg.width) if miter else float(cfg.interior_width)
+    front = ("front",)
+
+    panels: list[CarcassPanel] = [
+        CarcassPanel(
+            kind="side", name="side", quantity=2,
+            length=float(cfg.height), width=float(cfg.depth),
+            thickness=side_t, banded_edges=front, bevel_ends=miter),
+        CarcassPanel(
+            kind="bottom", name="bottom", quantity=1,
+            length=tb_length, width=float(geo.bottom_depth),
+            thickness=float(cfg.bottom_thickness),
+            banded_edges=front, bevel_ends=miter),
+        CarcassPanel(
+            kind="top", name="top", quantity=1,
+            length=tb_length, width=float(geo.top_depth),
+            thickness=float(cfg.top_thickness),
+            # A furniture-top cap strip is glued to the top panel's front
+            # edge, so that edge is never banded — and the core must not be
+            # shrunk for a band the panel will not carry.
+            banded_edges=() if cfg.furniture_top else front,
+            bevel_ends=miter),
+    ]
+
+    for i, z in enumerate(cfg.fixed_shelf_positions, start=1):
+        panels.append(CarcassPanel(
+            kind="shelf", name=f"shelf_{i}", quantity=1,
+            length=float(cfg.interior_width),
+            width=float(cfg.interior_depth),
+            thickness=float(cfg.shelf_thickness),
+            banded_edges=front, z=float(z)))
+
+    cols = columns if columns is not None else (cfg.columns or None)
+    if cols:
+        if len(cols) > 1:
+            panels.append(CarcassPanel(
+                kind="divider", name="column_divider", quantity=len(cols) - 1,
+                length=divider_cut_length(cfg),
+                width=float(cfg.interior_depth),
+                thickness=side_t, banded_edges=front))
+        for ci, bay in enumerate(bays_from_config(cfg, columns)):
+            for i, z in enumerate(bay.fixed_shelf_positions, start=1):
+                panels.append(CarcassPanel(
+                    kind="shelf", name=f"shelf_{i}", quantity=1,
+                    length=float(bay.interior_width),
+                    width=float(cfg.interior_depth),
+                    thickness=float(cfg.shelf_thickness),
+                    banded_edges=front, z=float(z), column=ci))
+
+    # The back is not banded and is not cut from carcass stock, but it is a
+    # carcass panel and its dimensions come from the same capture geometry —
+    # keeping it here means a consumer never has to reach past this function
+    # for one member of the case.
+    panels.append(CarcassPanel(
+        kind="back", name="back", quantity=1,
+        length=float(geo.height), width=float(geo.width),
+        thickness=float(cfg.back_thickness)))
+    return panels
+
+
+def carcass_panel(cfg: "CabinetConfig", kind: str) -> "CarcassPanel":
+    """The one cabinet-wide carcass panel of ``kind``.
+
+    Convenience for the 3D makers, which build one panel at a time and want
+    the case's own dimensions without walking the list. Only for the members
+    every cabinet has exactly one family of — side, bottom, top, back.
+    """
+    for p in carcass_panel_dims(cfg):
+        if p.kind == kind:
+            return p
+    raise KeyError(f"no {kind!r} panel in this carcass")
 
 
 def _door_transition_exists(bay_configs: "list[CabinetConfig]") -> bool:
@@ -1694,11 +1913,23 @@ def build_multi_bay_cabinet(
         butt = _is_butt(cfg0)
         if butt:
             # Butt: panels seat BETWEEN the outer sides at interior width —
-            # the cutlist dims. Rear setback = back thickness (the back's
-            # seat).
-            cont_panel_width = total_width - 2 * cfg0.side_thickness
+            # the cutlist dims, read from the SAME source the cutlist cuts
+            # from. These two panels are the ones the picture actually
+            # shows (make_top/bottom_panel run only on stacked layouts), so
+            # a private derivation here is a private derivation of the
+            # numbers that matter most: `depth − back_thickness` sat here
+            # until 2026-08 and is exactly the expression D2 was about.
+            # The whole-run config is the object the cutlist sizes from —
+            # one cabinet, its full exterior width, no columns.
+            _whole = dataclasses.replace(cfg0, width=total_width, columns=[])
+            _cont_b = carcass_panel(_whole, "bottom")
+            _cont_t = carcass_panel(_whole, "top")
+            # Miter is not modelled in the render (see make_top_panel), so
+            # take the butt length here too rather than half-draw a corner.
+            cont_panel_width = (_whole.interior_width if _cont_b.bevel_ends
+                                else _cont_b.length)
             cont_panel_x = cfg0.side_thickness
-            cont_bottom_depth = back_capture_geometry(cfg0).bottom_depth
+            cont_bottom_depth = _cont_b.width
         else:
             # Dado/rabbet: spans from the inside-back of the left side
             # panel's bottom dado to the matching point on the right side —
@@ -1733,8 +1964,7 @@ def build_multi_bay_cabinet(
         # Continuous top — depth follows the construction (matches
         # make_top_panel): dado/rabbet always full depth; butt follows
         # back_capture, which folds in back_style's full-depth cap.
-        cont_top_depth = (back_capture_geometry(cfg0).top_depth if butt
-                          else cfg0.depth)
+        cont_top_depth = _cont_t.width if butt else cfg0.depth
         cont_top = (
             cq.Workplane("XY")
             .box(cont_panel_width, cont_top_depth, cfg0.top_thickness, centered=False)
@@ -1757,8 +1987,9 @@ def build_multi_bay_cabinet(
 
     # ── Interior vertical dividers ─────────────────────────────────────────────
     # One purpose-built divider per bay boundary, placed at x_offsets[1:].
-    # Depth = depth - back_rabbet_width so the back edge is flush with the
-    # front face of the continuous back panel (no protrusion behind the back).
+    # Depth comes from make_interior_divider, which reads interior_depth —
+    # the back edge lands on the back panel's front face, wherever the
+    # capture puts it.
     divider_colour = cq.Color(0.87, 0.72, 0.53, 1.0)
     for div_idx, (div_x, cfg) in enumerate(zip(x_offsets[1:], bay_configs)):
         div_shape = make_interior_divider(cfg, height_override=divider_top_z)
@@ -1837,10 +2068,9 @@ def build_multi_bay_cabinet(
         ts_cfg  = bay_configs[0]
         ts_w    = total_width - 2 * ts_cfg.side_thickness
         # Like every other interior panel, a transition shelf stops at the
-        # back's front face — which back_capture sets, not back_thickness.
-        ts_dep  = ts_cfg.depth - (back_capture_geometry(ts_cfg).clear_depth
-                                  if _is_butt(ts_cfg)
-                                  else ts_cfg.back_rabbet_width)
+        # back's front face. This conditional was interior_depth's exact
+        # body written out a second time, DADO_RABBET branch included.
+        ts_dep  = ts_cfg.interior_depth
         ts_thk  = ts_cfg.shelf_thickness
         for ts_idx, ts_z in enumerate(transition_shelf_zs):
             ts_panel = (

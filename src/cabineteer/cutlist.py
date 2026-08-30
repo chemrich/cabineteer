@@ -500,8 +500,14 @@ def to_csv(panels: list[CutlistPanel]) -> str:
         header = ["Project"] + header
     writer.writerow(header)
     for p in panels:
+        # Format the way the PDF and the HTML do. Raw floats put "800.0"
+        # beside "457.0" beside "18" in the same row — the CSV was the only
+        # one of the three shop documents that rendered a dimension by
+        # repr(), so whether a number showed a decimal depended on whether
+        # some upstream arithmetic had happened to it.
         row = [
-            p.part_id, p.name, p.length, p.width, p.thickness,
+            p.part_id, p.name, f"{p.length:g}", f"{p.width:g}",
+            f"{p.thickness:g}",
             p.quantity, p.grain_direction, p.material,
             ", ".join(p.edge_band), p.notes,
         ]

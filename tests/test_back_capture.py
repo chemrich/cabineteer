@@ -231,36 +231,112 @@ class TestCutlistPanels:
         assert "from behind" in _panel(six_mm, "back").notes
 
 
+#: design payload key -> the cutlist row name it describes.
+_PAYLOAD_ROW = {"side_panel": "side", "bottom_panel": "bottom",
+                "top_panel": "top", "back_panel": "back",
+                "column_divider": "column_divider"}
+
+_COLUMNS = [{"width_mm": 432, "openings": [[724, "drawer"]]},
+            {"width_mm": 432, "openings": [[724, "drawer"]]}]
+
+
 class TestToolsAgree:
     """design_multi_column_cabinet and generate_cutlist must never report
-    different cut sizes for one design."""
+    different cut sizes for one design.
+
+    This class used to be a tautology: it re-derived ``back_capture_geometry``
+    and asserted the payload matched THAT, never once building a cutlist. So
+    it certified agreement between the payload and the payload's own source,
+    and it covered 4 of the 12 numbers the payload reports. It stood green
+    while the divider was reported at 720 mm and cut at 684 — the defect its
+    docstring names.
+
+    It now compares the payload against ``_raw_panels_for_cabinet``, the rows
+    the saw gets: every panel the payload reports, every dimension, across
+    joinery and edge-band mode.
+
+    One conversion is applied, and it is the point of the test rather than a
+    loophole: the payload quotes FINISHED sizes and the cutlist cuts CORES,
+    because hardwood banding replaces stock on the front edge. So the row's
+    own ``edge_band`` markers say how much to add back. If that conversion
+    ever needs a second term, this test is where it shows up.
+    """
 
     @staticmethod
-    def _multi_column(**kw):
+    def _payload(**kw):
         import asyncio
         import json
 
         from cabineteer.server import _tool_design_multi_column_cabinet
         args = {"width": 900, "height": 760, "depth": 560,
-                "columns": [{"width_mm": 432, "openings": [[724, "drawer"]]},
-                            {"width_mm": 432, "openings": [[724, "drawer"]]}]}
+                "columns": [dict(c) for c in _COLUMNS]}
         args.update(kw)
         out = asyncio.get_event_loop().run_until_complete(
             _tool_design_multi_column_cabinet(args))
         return json.loads(out[0].text)
 
-    @pytest.mark.parametrize("capture", ["pocket", "rabbet", "dado"])
-    def test_panel_depths_match_the_cutlist(self, capture):
-        described = self._multi_column(back_capture=capture)["panels"]
-        cfg = CabinetConfig(
-            width=900, height=760, depth=560, back_capture=capture,
-            carcass_joinery=CarcassJoinery.FLOATING_TENON)
-        geo = back_capture_geometry(cfg)
-        assert described["top_panel"]["depth_mm"] == pytest.approx(geo.top_depth)
-        assert described["bottom_panel"]["depth_mm"] == pytest.approx(
-            geo.bottom_depth)
-        assert described["back_panel"]["width_mm"] == pytest.approx(geo.width)
-        assert described["back_panel"]["height_mm"] == pytest.approx(geo.height)
+    @staticmethod
+    def _rows(**kw):
+        args = dict(width=900, height=760, depth=560,
+                    carcass_joinery=CarcassJoinery.FLOATING_TENON,
+                    columns=[dict(c) for c in _COLUMNS])
+        args.update(kw)
+        cfg = build_cabinet_config(args)
+        carcass, six_mm, _, _ = _raw_panels_for_cabinet(
+            cfg, [dict(c) for c in _COLUMNS])
+        return cfg, {p.name: p for p in carcass + six_mm}
+
+    @pytest.mark.parametrize("capture", ["pocket", "rabbet", "half_lap", "dado"])
+    @pytest.mark.parametrize("joinery", ["floating_tenon", "pocket_screw",
+                                         "biscuit", "dowel"])
+    @pytest.mark.parametrize("band", ["none", "hot_melt", "hardwood"])
+    def test_every_reported_panel_matches_its_cutlist_row(
+            self, capture, joinery, band):
+        opts = {"back_capture": capture, "carcass_joinery": joinery,
+                "edge_band_mode": band, "edge_band_thickness_mm": 3.2,
+                "back_thickness": 12.0}
+        payload = self._payload(**opts)["panels"]
+        cfg, rows = self._rows(**opts)
+        band_t = 3.2 if band == "hardwood" else 0.0
+
+        compared = 0
+        for key, reported in payload.items():
+            name = _PAYLOAD_ROW.get(key)
+            if name is None:
+                continue
+            row = rows[name]
+            # The row as it measures once its bands are on and trimmed —
+            # which is what the payload describes.
+            finished = {round(row.length, 2),
+                        round(row.width + len(row.edge_band or ()) * band_t, 2)}
+            said = {round(v, 2) for k, v in reported.items()
+                    if k.endswith("_mm") and k != "thickness_mm"}
+            assert said == finished, (
+                f"{capture}/{joinery}/{band}: the payload reports {key} as "
+                f"{ {k: v for k, v in reported.items() if k.endswith('_mm')} } "
+                f"but the cutlist cuts {row.name} "
+                f"{row.length:g} × {row.width:g}, finishing {sorted(finished)}")
+            assert reported["thickness_mm"] == pytest.approx(row.thickness)
+            assert reported["qty"] == row.quantity
+            compared += 1
+
+        assert compared == len(_PAYLOAD_ROW), (
+            f"compared {compared} of {len(_PAYLOAD_ROW)} panels — a payload "
+            "key was renamed and this test stopped looking at it, which is "
+            "how it went vacuous the first time.")
+
+    def test_the_divider_is_reported_at_the_height_it_is_cut(self):
+        """D3, in its own test so a regression names itself.
+
+        A 760 mm cabinet on 18 mm stock has a 724 mm interior. The divider
+        seats between the bottom and the top, so it is 724 — the payload
+        reported 760, an exterior-height divider standing in its own
+        interior, in the first document anyone reads.
+        """
+        reported = self._payload()["panels"]["column_divider"]["height_mm"]
+        _cfg_, rows = self._rows()
+        assert reported == pytest.approx(724.0)
+        assert reported == pytest.approx(rows["column_divider"].length)
 
 
 class TestEvaluator:
