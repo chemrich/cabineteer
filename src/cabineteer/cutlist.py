@@ -146,6 +146,14 @@ _PART_ID_CODES = (
     ("drawer_box", "DB"),
     ("false_front", "FF"),
     ("door", "DR"),
+    # The compartment floor under a door. Named "floor" and not
+    # "door_floor" for a reason worth recording: this codebase matches panel
+    # names by SUBSTRING in ~45 places, and "door" is one of the tokens. A
+    # part called door_floor filed itself as a door LEAF here, and vanished
+    # entirely from the closure module's render comparison (its exclusion
+    # list also matches "door"), so that test passed by not looking. "floor"
+    # collides with nothing.
+    ("floor", "FL"),
     ("column_divider", "CD"),
     ("shelf", "SH"),
     ("worktop", "WT"),

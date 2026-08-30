@@ -133,8 +133,24 @@ def check_cumulative_heights(cab_cfg: CabinetConfig) -> list[Issue]:
 
     # Check opening stack heights
     if cab_cfg.openings:
+        from .cabinet import door_floor_count, openings_span
+
         total_opening_height = sum(op.height_mm for op in cab_cfg.openings)
-        available_height = cab_cfg.interior_height
+        # A door standing on anything gets a floor, and that floor's
+        # thickness is the stack's, not the door opening's — the same way a
+        # divider's thickness belongs to the cabinet and not to a column.
+        # So the height available TO THE OPENINGS is the interior less its
+        # floors.
+        n_floors = door_floor_count(cab_cfg)
+        available_height = openings_span(cab_cfg)
+        floor_txt = ""
+        if n_floors:
+            floor_txt = (
+                f" The interior is {cab_cfg.interior_height:.1f}mm, less "
+                f"{n_floors} door floor{'s' if n_floors > 1 else ''} at "
+                f"{cab_cfg.shelf_thickness:g}mm — a door standing on "
+                "something needs a floor under it, and its thickness comes "
+                "out of the stack.")
 
         if total_opening_height > available_height:
             overage = total_opening_height - available_height
@@ -143,8 +159,10 @@ def check_cumulative_heights(cab_cfg: CabinetConfig) -> list[Issue]:
                 severity=Severity.ERROR,
                 message=(
                     f"Drawer/shelf stack ({total_opening_height:.1f}mm) exceeds "
-                    f"cabinet interior height ({available_height:.1f}mm) by {overage:.1f}mm. "
+                    f"the height available for openings ({available_height:.1f}mm) "
+                    f"by {overage:.1f}mm. "
                     f"Reduce opening heights or increase cabinet height."
+                    + floor_txt
                 ),
                 value=total_opening_height,
                 limit=available_height,

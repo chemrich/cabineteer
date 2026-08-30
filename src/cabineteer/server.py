@@ -106,6 +106,7 @@ from .cabinet import (
     bays_from_config as _bays_from_config,
     carcass_panel_dims as _carcass_panel_dims,
     face_layout as _face_layout,
+    openings_span as _openings_span,
     face_placements as _face_placements,
     stack_from_column as _stack_from_column,
     to_opening as _to_opening,
@@ -3577,6 +3578,7 @@ _PANEL_AXES = {
     "divider": ("column_divider", "height_mm", "depth_mm"),
     "back":    ("back_panel",     "height_mm", "width_mm"),
     "shelf":   ("fixed_shelf",    "width_mm",  "depth_mm"),
+    "floor":   ("door_floor",     "width_mm",  "depth_mm"),
 }
 
 
@@ -3600,11 +3602,15 @@ def _payload_carcass_panels(
     """
     out: dict = {}
     shelf_n = 0
+    floor_n = 0
     for p in _carcass_panel_dims(cfg, columns_raw):
         key, long_axis, short_axis = _PANEL_AXES[p.kind]
         if p.kind == "shelf":
             shelf_n += 1
             key = f"fixed_shelf_{shelf_n}"
+        elif p.kind == "floor":
+            floor_n += 1
+            key = f"door_floor_{floor_n}"
         block = {"qty": p.quantity, long_axis: p.length,
                  short_axis: p.width, "thickness_mm": p.thickness}
         if p.z is not None:
@@ -3762,7 +3768,11 @@ async def _tool_design_multi_column_cabinet(args: dict) -> list[types.TextConten
             "interior_width_mm": col.width_mm,
             "divider_left_x_mm": col_x - cfg.side_thickness if i > 0 else 0.0,
             "stack_total_mm":    stack_total,
-            "stack_fills_interior": abs(stack_total - interior_height) < 0.5,
+            # Openings share the interior with their door floors, the same
+            # way columns share the interior width with their dividers.
+            "stack_fills_interior": abs(
+                stack_total - _openings_span(
+                    _bays_from_config(cfg, None)[i])) < 0.5,
             "opening_stack":     stack,
         })
         col_x += col.width_mm + cfg.side_thickness  # account for divider between columns
@@ -5162,7 +5172,6 @@ def _cabinet_assembly(
     ``visualize_project`` (one assembly per project cabinet, composed at
     run offsets). Returns ``(assembly, parts, info)``.
     """
-    transition_shelf_zs: list[float] = []
     divider_top_z: float | None = None
 
     if columns_raw:
@@ -5197,23 +5206,20 @@ def _cabinet_assembly(
                 "columns": len(bay_configs)}
 
         # Detect drawer-to-door transitions per column; use lowest transition z.
-        # A "transition" only exists when at least one drawer sits BELOW the
-        # door — a full-height door column has no internal transition.
-        per_bay_transitions = []
-        for bc in bay_configs:
-            z = bc.bottom_thickness
-            for op in bc.openings:
-                if op.opening_type in ("door", "door_pair"):
-                    if z > bc.bottom_thickness:
-                        per_bay_transitions.append(z)
-                    break
-                z += op.height_mm
-        if per_bay_transitions:
-            transition_shelf_zs.append(min(per_bay_transitions))
-
-        # Clip center divider to drawer zone unless caller wants full-height.
-        if not divider_full_height and transition_shelf_zs:
-            divider_top_z = transition_shelf_zs[0] + bay_configs[0].shelf_thickness
+        # Door floors are real carcass parts now, emitted by
+        # build_multi_bay_cabinet from cabinet.opening_stack — the same walk
+        # the cutlist reads. Nothing is derived here any more.
+        #
+        # divider_full_height=False still clips the divider to the top of the
+        # LOWEST door floor, which is the only height that ever meant
+        # anything for it.
+        if not divider_full_height:
+            from .cabinet import opening_stack as _ostack
+            tops = [sl.floor_z + bc.shelf_thickness
+                    for bc in bay_configs for sl in _ostack(bc)
+                    if sl.has_floor]
+            if tops:
+                divider_top_z = min(tops)
     else:
         bay_configs = [cfg] * num_bays
         info = {"width": cfg.width * num_bays, "height": cfg.height, "depth": cfg.depth}
@@ -5225,7 +5231,6 @@ def _cabinet_assembly(
         bay_configs,
         feet_at_dividers=(columns_raw is None),
         furniture_top=furniture_top,
-        transition_shelf_zs=transition_shelf_zs or None,
         divider_top_z=divider_top_z,
         include_manga=include_manga,
         include_feet=include_feet,
@@ -5382,7 +5387,9 @@ async def _tool_apply_preset(args: dict) -> list[types.TextContent]:
     except Exception as exc:
         return _err(f"Override produced an invalid config: {type(exc).__name__}: {exc}")
 
-    interior_h = cfg.height - cfg.bottom_thickness - cfg.top_thickness
+    # The openings share the interior with any door floors, exactly as the
+    # columns share the interior width with their dividers.
+    interior_h = _openings_span(cfg)
     stack_total = sum(op.height_mm for op in cfg.openings)
     stack_matches = abs(stack_total - interior_h) < 0.01
 
