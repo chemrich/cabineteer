@@ -121,7 +121,15 @@ class TestAssemblyPlan:
         assert plan.span <= bottom.width + 0.01, (
             f"joints span {plan.span:g} mm across a bottom panel only "
             f"{bottom.width:g} mm deep")
-        assert plan.span == pytest.approx(cfg.interior_depth)
+        # `plan.span == cfg.interior_depth` was the assertion here, and it
+        # cannot fail: plan.span is assigned from that property. Ask instead
+        # whether every mortise this doc places lands inside the panel the
+        # cutlist actually cuts — the question a wrong span would answer no.
+        assert plan.positions, "a plan with no mortise positions"
+        assert min(plan.positions) >= 0.0
+        assert max(plan.positions) <= bottom.width + 0.01, (
+            f"a mortise at {max(plan.positions):g} mm from the front edge "
+            f"of a bottom panel only {bottom.width:g} mm deep")
 
     def test_18mm_plan_uses_5x30(self):
         plan = build_assembly_plan(_box())
@@ -140,11 +148,23 @@ class TestAssemblyPlan:
             build_assembly_plan(
                 _box(carcass_joinery=CarcassJoinery.DADO_RABBET))
 
-    def test_divider_map_uses_interior_height(self):
+    def test_divider_map_draws_the_divider_the_cutlist_cuts(self):
+        """Both axes, against the paper — not against cfg.interior_height.
+
+        Comparing the drawing to the same property the drawing is built from
+        certifies nothing. The divider is the panel D3 was about, so this
+        one compares the map to the row the saw gets.
+        """
+        from cabineteer.server import _raw_panels_for_cabinet
         cfg = _two_col()
         plan = build_assembly_plan(cfg)
         div = next(p for p in plan.panels if "divider" in p.panel)
-        assert div.draw_height == pytest.approx(cfg.interior_height)
+        carcass, _, _, _ = _raw_panels_for_cabinet(
+            cfg, [{"width_mm": 373, "openings": []},
+                  {"width_mm": 373, "openings": []}])
+        row = next(p for p in carcass if p.name == "column_divider")
+        assert {round(div.draw_width, 1), round(div.draw_height, 1)} == \
+            {round(row.length, 1), round(row.width, 1)}
 
     def test_part_ids_flow_to_maps(self):
         plan = build_assembly_plan(_box(), id_map={"side": "A-S1"})

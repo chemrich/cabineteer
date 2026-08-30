@@ -104,6 +104,7 @@ from .cabinet import (
     back_capture_geometry,
     build_cabinet_config as _build_cabinet_config,
     bays_from_config as _bays_from_config,
+    carcass_panel_dims as _carcass_panel_dims,
     face_layout as _face_layout,
     stack_from_column as _stack_from_column,
     to_opening as _to_opening,
@@ -3561,6 +3562,58 @@ async def _tool_list_joinery(args: dict) -> list[types.TextContent]:
 
 # ── design_cabinet ────────────────────────────────────────────────────────────
 
+#: CarcassPanel.kind → (payload key, the two axis names it reports).
+#: A side and a divider stand up, so their long axis is a HEIGHT; a top,
+#: bottom or shelf lies down, so it is a WIDTH. The front-to-back dimension
+#: of anything standing is a DEPTH — the two design tools used to disagree
+#: about that (``design_cabinet`` called a side panel's 457 mm a "width",
+#: ``design_multi_column_cabinet`` called the same number a "depth"), which
+#: is the same class of drift this function exists to end.
+_PANEL_AXES = {
+    "side":    ("side_panel",     "height_mm", "depth_mm"),
+    "bottom":  ("bottom_panel",   "width_mm",  "depth_mm"),
+    "top":     ("top_panel",      "width_mm",  "depth_mm"),
+    "divider": ("column_divider", "height_mm", "depth_mm"),
+    "back":    ("back_panel",     "height_mm", "width_mm"),
+    "shelf":   ("fixed_shelf",    "width_mm",  "depth_mm"),
+}
+
+
+def _payload_carcass_panels(
+    cfg: CabinetConfig,
+    columns_raw: list | None = None,
+) -> dict:
+    """The design tools' ``panels`` block, read off ``carcass_panel_dims``.
+
+    The first document anyone reads is a design payload, at approval time,
+    and it used to re-derive its own numbers: it reported the column divider
+    at ``cfg.height`` while every other document cut it to the interior — a
+    720 mm divider standing in its own 684 mm interior.
+
+    Dimensions are FINISHED, as they are everywhere ``carcass_panel_dims``
+    is read. Under hardwood banding the cutlist cuts a core one band
+    thickness shorter on the front edge; that gap is a separate, still-open
+    defect (the payload does not yet say which face its number means), and
+    reporting the finished size here keeps this function honest about what
+    it is quoting rather than silently changing which one it means.
+    """
+    out: dict = {}
+    shelf_n = 0
+    for p in _carcass_panel_dims(cfg, columns_raw):
+        key, long_axis, short_axis = _PANEL_AXES[p.kind]
+        if p.kind == "shelf":
+            shelf_n += 1
+            key = f"fixed_shelf_{shelf_n}"
+        block = {"qty": p.quantity, long_axis: p.length,
+                 short_axis: p.width, "thickness_mm": p.thickness}
+        if p.z is not None:
+            block["height_from_bottom_mm"] = p.z
+        if p.column is not None:
+            block["column"] = p.column + 1
+        out[key] = block
+    return out
+
+
 async def _tool_design_cabinet(args: dict) -> list[types.TextContent]:
     num_drawers       = args.pop("num_drawers", None)
     drawer_proportion = args.pop("drawer_proportion", None)
@@ -3590,42 +3643,10 @@ async def _tool_design_cabinet(args: dict) -> list[types.TextContent]:
     interior_depth  = cfg.interior_depth
     _geo = back_capture_geometry(cfg)
 
-    # Panel sizes (parametric only, no CQ needed)
-    panels = {
-        "side_panel": {
-            "qty": 2,
-            "width_mm":  cfg.depth,
-            "height_mm": cfg.height,
-            "thickness_mm": cfg.side_thickness,
-        },
-        "bottom_panel": {
-            "qty": 1,
-            "width_mm":  interior_width,
-            "depth_mm":  _geo.bottom_depth,
-            "thickness_mm": cfg.bottom_thickness,
-        },
-        "top_panel": {
-            "qty": 1,
-            "width_mm":  interior_width,
-            "depth_mm":  _geo.top_depth,
-            "thickness_mm": cfg.top_thickness,
-        },
-        "back_panel": {
-            "qty": 1,
-            "width_mm":  _geo.width,
-            "height_mm": _geo.height,
-            "thickness_mm": cfg.back_thickness,
-        },
-    }
-
-    for i, pos in enumerate(cfg.fixed_shelf_positions):
-        panels[f"fixed_shelf_{i+1}"] = {
-            "qty": 1,
-            "width_mm":  interior_width,
-            "depth_mm":  interior_depth,
-            "thickness_mm": cfg.shelf_thickness,
-            "height_from_bottom_mm": pos,
-        }
+    # Panel sizes (parametric only, no CQ needed). Every number comes from
+    # cabinet.carcass_panel_dims — the same source the cutlist cuts from —
+    # so the first document anyone reads cannot contradict the paper.
+    panels = _payload_carcass_panels(cfg)
 
     opening_stack = [
         {"height_mm": op.height_mm, "type": op.opening_type} for op in cfg.openings
@@ -3739,13 +3760,10 @@ async def _tool_design_multi_column_cabinet(args: dict) -> list[types.TextConten
     col_sum = sum(c.width_mm for c in cfg.columns)
     n_dividers = max(len(cfg.columns) - 1, 0)
 
-    panels = {
-        "side_panel":    {"qty": 2, "height_mm": cfg.height, "depth_mm": cfg.depth, "thickness_mm": cfg.side_thickness},
-        "bottom_panel":  {"qty": 1, "width_mm": interior_width, "depth_mm": _geo.bottom_depth, "thickness_mm": cfg.bottom_thickness},
-        "top_panel":     {"qty": 1, "width_mm": interior_width, "depth_mm": _geo.top_depth, "thickness_mm": cfg.top_thickness},
-        "back_panel":    {"qty": 1, "width_mm": _geo.width, "height_mm": _geo.height,    "thickness_mm": cfg.back_thickness},
-        "column_divider": {"qty": n_dividers, "height_mm": cfg.height, "depth_mm": interior_depth, "thickness_mm": cfg.side_thickness},
-    }
+    # Every panel number comes from cabinet.carcass_panel_dims, the source
+    # the cutlist cuts from. Before this, the divider was reported at
+    # cfg.height here and cut to the interior height there.
+    panels = _payload_carcass_panels(cfg)   # cfg.columns carries the split
 
     result = {
         "exterior":   {"width_mm": cfg.width, "height_mm": cfg.height, "depth_mm": cfg.depth},
@@ -4011,9 +4029,6 @@ def _raw_panels_for_cabinet(
     band_t = (float(getattr(cfg, "edge_band_thickness_mm", 0.6))
               if getattr(cfg, "edge_band_mode", "none") == "hardwood" else 0.0)
     miter = getattr(cfg, "carcass_corner_style", "butt") == "miter"
-    # Mitered corners: top/bottom run to FULL exterior width (long-point),
-    # and all four exterior panels get 45° bevels on their ends.
-    tb_length = cfg.width if miter else interior_width
     # back_capture resolves every back dimension — where the top and bottom
     # stop, how big the back is cut, and how far interior panels are held
     # off the rear. "pocket" reproduces the legacy let-in geometry exactly,
@@ -4022,9 +4037,13 @@ def _raw_panels_for_cabinet(
     # Interior panels (shelves, dividers) stop at the back's front face.
     interior_depth = cfg.interior_depth    # the datum, not a second derivation
     under_top = getattr(cfg, "back_style", "full_height") == "under_top" and not miter
-    top_depth = geo.top_depth
-    bottom_depth = geo.bottom_depth
-    back_length, back_width = geo.height, geo.width
+    # Every carcass CUT SIZE comes from cabinet.carcass_panel_dims — the one
+    # source the design payloads, the 3D makers and the assembly-doc mortise
+    # maps also read. This layer owns only what is a cutlist concern: the
+    # material, the grain, the edge-band markers and the note prose. Panels
+    # arrive at FINISHED size; ``.core(band_t)`` is the size the saw cuts
+    # (hardwood banding replaces stock, hot-melt does not).
+    carcass_dims = _carcass_panel_dims(cfg, columns_raw)
 
     def _core_note(finished_l: float, finished_w: float, edges: str) -> str:
         if not band_t:
@@ -4064,52 +4083,47 @@ def _raw_panels_for_cabinet(
     side_bevel = "45° bevels top+bottom ends (long-point dims)" if miter else ""
     tb_bevel = "45° bevels both ends (long-point dims)" if miter else ""
 
-    raw_carcass: list[CutlistPanel] = [
-        CutlistPanel(name="side", length=cfg.height, width=cfg.depth - band_t,
-                     thickness=cfg.side_thickness, quantity=2,
-                     grain_direction="length", material=cfg.carcass_material,
-                     edge_band=["front"],
-                     notes=_notes(side_bevel, _capture_note("side"),
-                                  _core_note(cfg.height, cfg.depth,
-                                             "front edge"))),
-        CutlistPanel(name="bottom", length=tb_length,
-                     width=bottom_depth - band_t,
-                     thickness=cfg.bottom_thickness, quantity=1,
-                     grain_direction="length", material=cfg.carcass_material,
-                     edge_band=["front"],
-                     notes=_notes(tb_bevel, _capture_note("bottom"),
-                                  _core_note(tb_length, bottom_depth,
-                                             "front edge"))),
-        # A furniture-top cap strip is glued onto the top panel's front edge
-        # (see the top_front_cap row), so that edge is NEVER banded and the
-        # core is not shrunk for it — pre-fix the row demanded banding on the
-        # same edge the cap covers, two contradictory instructions at once.
-        CutlistPanel(name="top", length=tb_length,
-                     width=(top_depth if cfg.furniture_top
-                            else top_depth - band_t),
-                     thickness=cfg.top_thickness, quantity=1,
-                     grain_direction="length", material=cfg.carcass_material,
-                     edge_band=[] if cfg.furniture_top else ["front"],
-                     notes=_notes(tb_bevel,
-                                  "full depth — rear edge flush with sides, "
-                                  "caps the back" if under_top and not geo.machined
-                                  else "",
-                                  "front edge covered by the top_front_cap "
-                                  "strip — no banding" if cfg.furniture_top
-                                  else "",
-                                  _capture_note("top"),
-                                  "" if cfg.furniture_top else
-                                  _core_note(tb_length, top_depth,
-                                             "front edge"))),
-    ]
-    for i, _ in enumerate(cfg.fixed_shelf_positions):
+    def _carcass_note(p) -> str:
+        """The note prose for one carcass panel — a cutlist concern.
+
+        The dimensions come from ``carcass_panel_dims``; only the words are
+        built here, and every number in them is read off the panel that is
+        being described rather than recomputed from the config.
+        """
+        if p.kind == "side":
+            return _notes(side_bevel, _capture_note("side"),
+                          _core_note(p.length, p.width, "front edge"))
+        if p.kind == "bottom":
+            return _notes(tb_bevel, _capture_note("bottom"),
+                          _core_note(p.length, p.width, "front edge"))
+        if p.kind == "top":
+            return _notes(
+                tb_bevel,
+                "full depth — rear edge flush with sides, caps the back"
+                if under_top and not geo.machined else "",
+                # A furniture-top cap strip is glued onto this front edge
+                # (see the top_front_cap row), so it is NEVER banded and the
+                # core is not shrunk for it — pre-fix the row demanded
+                # banding on the same edge the cap covers, two contradictory
+                # instructions at once.
+                "front edge covered by the top_front_cap strip — no banding"
+                if cfg.furniture_top else "",
+                _capture_note("top"),
+                "" if cfg.furniture_top
+                else _core_note(p.length, p.width, "front edge"))
+        return _core_note(p.length, p.width, "front edge")
+
+    raw_carcass: list[CutlistPanel] = []
+    for p in carcass_dims:
+        if p.kind == "back":
+            continue          # 6 mm group, emitted with its own note below
+        cut_l, cut_w = p.core(band_t)
         raw_carcass.append(CutlistPanel(
-            name=f"shelf_{i + 1}", length=interior_width,
-            width=interior_depth - band_t,
-            thickness=cfg.shelf_thickness, quantity=1,
-            grain_direction="length", material=cfg.carcass_material,
-            edge_band=["front"],
-            notes=_core_note(interior_width, interior_depth, "front edge"),
+            name=p.name, length=cut_l, width=cut_w, thickness=p.thickness,
+            quantity=p.quantity, grain_direction="length",
+            material=cfg.carcass_material,
+            edge_band=list(p.banded_edges),
+            notes=_carcass_note(p),
         ))
 
     _stock_note = ("1/4 in plywood" if cfg.back_thickness <= 6.0
@@ -4133,9 +4147,10 @@ def _raw_panels_for_cabinet(
             "edges — cut size includes that engagement",
             "slides in during glue-up; it cannot go in afterwards"
             if geo.captive else "drops in from behind after glue-up")
+    _back = next(p for p in carcass_dims if p.kind == "back")
     raw_6mm: list[CutlistPanel] = [
-        CutlistPanel(name="back", length=back_length, width=back_width,
-                     thickness=cfg.back_thickness, quantity=1,
+        CutlistPanel(name="back", length=_back.length, width=_back.width,
+                     thickness=_back.thickness, quantity=_back.quantity,
                      grain_direction="", material="baltic_birch",
                      notes=_back_note),
     ]
@@ -4143,33 +4158,12 @@ def _raw_panels_for_cabinet(
     raw_box: list[CutlistPanel] = []
     raw_false_fronts: list[CutlistPanel] = []
 
+    # Dividers and per-column fixed shelves were emitted by the loop above —
+    # carcass_panel_dims orders them exactly where the hand-rolled rows used
+    # to sit. What is left here is the opening stack the drawer boxes and
+    # show faces are built from.
     if columns_raw:
         norm_cols: list[dict] = columns_raw
-        num_dividers = len(columns_raw) - 1
-        if num_dividers > 0:
-            raw_carcass.append(CutlistPanel(
-                name="column_divider",
-                # Butt-joint carcasses (floating tenon, pocket screw,
-                # biscuit, dowel) seat dividers BETWEEN the bottom and top
-                # panels, so they're cut to interior height (Charlie,
-                # 2026-07-26). Only dado/rabbet construction keeps the
-                # dado-era full-height divider.
-                length=(cfg.height
-                        if cfg.carcass_joinery == CarcassJoinery.DADO_RABBET
-                        else cfg.height - cfg.bottom_thickness
-                        - cfg.top_thickness),
-                width=interior_depth - band_t,
-                thickness=cfg.side_thickness,
-                quantity=num_dividers,
-                grain_direction="length",
-                material=cfg.carcass_material,
-                edge_band=["front"],
-                notes=_core_note(
-                    cfg.height - cfg.bottom_thickness - cfg.top_thickness
-                    if cfg.carcass_joinery != CarcassJoinery.DADO_RABBET
-                    else cfg.height,
-                    interior_depth, "front edge"),
-            ))
     elif cfg.openings:
         # Single-column cabinet: treat the opening stack as one full-width
         # column so drawer boxes and false fronts are generated for its
@@ -4183,18 +4177,6 @@ def _raw_panels_for_cabinet(
     if norm_cols:
         for col in norm_cols:
             col_width = float(col["width_mm"])
-            for i, _ in enumerate(col.get("fixed_shelf_positions", [])):
-                raw_carcass.append(CutlistPanel(
-                    name=f"shelf_{i + 1}",
-                    length=col_width,
-                    width=interior_depth - band_t,
-                    thickness=cfg.shelf_thickness,
-                    quantity=1,
-                    grain_direction="length",
-                    material=cfg.carcass_material,
-                    edge_band=["front"],
-                    notes=_core_note(col_width, interior_depth, "front edge"),
-                ))
             col_drawers = _stack_from_column(col)
             for row in col_drawers:
                 op = _to_opening(row)
@@ -5160,7 +5142,29 @@ async def _tool_visualize_cabinet(args: dict) -> list[types.TextContent]:
             "toggle, and a Generate-cutlist button that copies a request to "
             "paste back to the assistant."
         ),
+        **_render_caveats(cfg),
     })
+
+
+#: Things the 3D deliberately does not model. Stated in the tool result so a
+#: render is never read as a picture of the cut parts: the "furniture_top" cap
+#: once existed in approved renders and on no cutlist, and cost a batch of
+#: paper. A caveat is cheaper than a silent divergence.
+def _render_caveats(cfg: CabinetConfig) -> dict:
+    caveats: list[str] = []
+    if getattr(cfg, "carcass_corner_style", "butt") == "miter":
+        caveats.append(
+            "Mitered corners are NOT modelled: the render draws butt corners, "
+            "with the top and bottom between the sides. The cutlist is the "
+            "correct document — it cuts them to the full exterior width "
+            f"({cfg.width:g} mm long-point) with 45° bevels on both ends.")
+    if getattr(cfg, "edge_band_mode", "none") == "hardwood":
+        caveats.append(
+            "Hardwood edge banding is not drawn. The render shows finished "
+            "sizes; the cutlist cuts cores "
+            f"{float(getattr(cfg, 'edge_band_thickness_mm', 0.6)):g} mm "
+            "smaller per banded edge.")
+    return {"render_caveats": caveats} if caveats else {}
 
 
 # ── list_presets ──────────────────────────────────────────────────────────────
@@ -6419,6 +6423,15 @@ async def _tool_visualize_project(args: dict) -> list[types.TextContent]:
     if worktop is not None:
         from .project import _worktop_to_dict
         out["worktop"] = _worktop_to_dict(worktop)
+    # One caveat list for the run — a caveat that applies to any cabinet
+    # applies to the picture, and the picture is one file.
+    run_caveats: list[str] = []
+    for _cname, _ccfg in project.resolved():
+        for line in _render_caveats(_ccfg).get("render_caveats", []):
+            if line not in run_caveats:
+                run_caveats.append(line)
+    if run_caveats:
+        out["render_caveats"] = run_caveats
     return _ok(out)
 
 

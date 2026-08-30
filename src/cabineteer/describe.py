@@ -274,6 +274,11 @@ def describe_design(cfg: CabinetConfig) -> dict:
         "carcass_joinery":        cfg.carcass_joinery.value,
         "drawer_box_joinery":     drawer_joinery.value,
         "back_capture":           getattr(cfg, "back_capture", "pocket"),
+        # Two tokens that change what the saw does and were reported by no
+        # document a person reads: the corner style (which the 3D does not
+        # even draw) and the banding mode (which shrinks every carcass core).
+        "carcass_corner_style":   getattr(cfg, "carcass_corner_style", "butt"),
+        "edge_band_mode":         getattr(cfg, "edge_band_mode", "none"),
         "side_thickness_mm":      cfg.side_thickness,
         "back_thickness_mm":      cfg.back_thickness,
         "shelf_thickness_mm":     cfg.shelf_thickness,
@@ -295,6 +300,23 @@ def describe_design(cfg: CabinetConfig) -> dict:
     if cfg.fixed_shelf_positions:
         n = len(cfg.fixed_shelf_positions)
         material_phrase += f", {n} fixed shelf{'es' if n > 1 else ''}"
+    if getattr(cfg, "carcass_corner_style", "butt") == "miter":
+        # The render does not model this; say it in the document that gets
+        # read aloud, not only in the cutlist notes.
+        material_phrase += (
+            ", 45\u00b0 waterfall miters at the four exterior corners "
+            f"(top and bottom cut to the full {cfg.width:g} mm long-point, "
+            "beveled both ends)")
+    _band = getattr(cfg, "edge_band_mode", "none")
+    if _band != "none":
+        _bt = float(getattr(cfg, "edge_band_thickness_mm", 0.6))
+        material_phrase += (
+            f", {_bt:g} mm "
+            + ("hardwood edge banding on the front edges \u2014 carcass "
+               "panels are cut that much narrower so the finished depth "
+               "holds" if _band == "hardwood"
+               else "hot-melt edge banding, ironed on after cutting (it "
+                    "adds to the finished size, so no panel shrinks)"))
 
     # ── 5. Prose summary ─────────────────────────────────────────────────────
     lines = [
