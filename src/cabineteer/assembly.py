@@ -358,6 +358,23 @@ def build_assembly_plan(
             add(f"{shelf} ↔ {left_wall}", shelf, left_wall)
             add(f"{shelf} ↔ {right_wall}", shelf, right_wall)
 
+    # Door floors — two joints each, into the same pair of walls a fixed
+    # shelf in that column uses. The BOM counts them the same way; this
+    # census and cutlist.joinery_lines_for_cabinet_config are one count and
+    # a test holds them together.
+    from .cabinet import bays_from_config as _bays, opening_stack as _ostack
+    floor_labels: list[tuple[str, float]] = []
+    for ci, bay in enumerate(_bays(cab_cfg, None)):
+        for slot in _ostack(bay):
+            if not slot.has_floor:
+                continue
+            left_wall, right_wall = _column_shelf_walls(ci, n_cols)
+            label = ("door floor" if n_cols <= 1
+                     else f"col {ci + 1} door floor")
+            add(f"{label} ↔ {left_wall}", label, left_wall)
+            add(f"{label} ↔ {right_wall}", label, right_wall)
+            floor_labels.append((label, slot.floor_z))
+
     # ── Panel mortise maps ────────────────────────────────────────────────
     panels: list[PanelMortiseMap] = []
     depth = float(cab_cfg.depth)
@@ -446,6 +463,37 @@ def build_assembly_plan(
                 side_rows.append(MortiseRow(
                     f"col {n_cols} shelf {si} (right side only)", "h",
                     float(z) + _ref_offset(shelf_t), positions, "face"))
+    # A door floor mortises into whatever wall it meets, and on a
+    # single-column cabinet — or the outer column of a multi-column one —
+    # that wall is a SIDE. Without these rows the map shows a joint in the
+    # census that has no hole drawn for it.
+    for ci, bay in enumerate(_bays(cab_cfg, None)):
+        for slot in _ostack(bay):
+            if not slot.has_floor:
+                continue
+            lw, rw = _column_shelf_walls(ci, n_cols)
+            # n_cols is 0 for a single-stack cabinet (it has no ColumnConfig
+            # list at all), so "one column" is n_cols <= 1 — the same shape
+            # the fixed-shelf rows above use.
+            single = n_cols <= 1
+            lbl = "door floor" if single else f"col {ci + 1} door floor"
+            if single:
+                side_rows.append(MortiseRow(
+                    f"{lbl} (both sides)", "h",
+                    float(slot.floor_z) + _ref_offset(shelf_t),
+                    positions, "face"))
+            else:
+                if lw == "left side":
+                    side_rows.append(MortiseRow(
+                        f"{lbl} (left side only)", "h",
+                        float(slot.floor_z) + _ref_offset(shelf_t),
+                        positions, "face"))
+                if rw == "right side":
+                    side_rows.append(MortiseRow(
+                        f"{lbl} (right side only)", "h",
+                        float(slot.floor_z) + _ref_offset(shelf_t),
+                        positions, "face"))
+
     _side = _by_kind["side"][0]
     panels.append(PanelMortiseMap(
         panel="side (make 2, mirror-image)", part_id=pid("side"),
@@ -543,6 +591,16 @@ def build_assembly_plan(
                         f"col {ci + 1} shelf {si} ({side_label})", "h",
                         float(z) - bottom_t + _ref_offset(shelf_t),
                         positions, "face"))
+                # A door floor lands on the divider from whichever column
+                # it belongs to, exactly like that column's shelves.
+                for slot in _ostack(_bays(cab_cfg, None)[ci]):
+                    if not slot.has_floor:
+                        continue
+                    rows_d.append(MortiseRow(
+                        f"col {ci + 1} door floor ({side_label})", "h",
+                        float(slot.floor_z) - bottom_t
+                        + _ref_offset(shelf_t),
+                        positions, "face"))
             div_rows_by_d[d] = rows_d
 
         # Dividers with identical rows collapse into one "make N" map;
@@ -587,6 +645,18 @@ def build_assembly_plan(
         if ns:
             shelf_like.append(
                 (f"col {ci + 1} fixed shelf", ns, float(cols[ci].width_mm)))
+    # A door floor is drawn like a shelf — same panel, same two edge
+    # mortises — but it gets its own map so the part it names on the
+    # drawing is the part on the cutlist, not a shelf the cabinet has not
+    # got. Grouped by label so two columns' identical floors collapse.
+    _floor_widths: dict[str, list[float]] = {}
+    for _lbl, _z in floor_labels:
+        _floor_widths.setdefault(_lbl, []).append(_z)
+    for ci, bay in enumerate(_bays(cab_cfg, None)):
+        lbl = "door floor" if n_cols <= 1 else f"col {ci + 1} door floor"
+        if lbl in _floor_widths:
+            shelf_like.append((lbl, len(_floor_widths[lbl]),
+                               float(bay.interior_width)))
     for label, count, length in shelf_like:
         # A shelf's banding follows the shelf rows, which all band the front
         # edge; fall back to the side when a cfg somehow has no shelf panel.
@@ -596,17 +666,26 @@ def build_assembly_plan(
             # Length-qualified lookup first: global and column shelf
             # families share the "shelf_1" panel name but are distinct
             # cutlist rows (review 2026-07-29).
-            part_id=pid(f"shelf_1@{round(length, 1)}") or pid("shelf_1"),
+            part_id=(pid(f"floor@{round(length, 1)}") or pid("floor")
+                     if "door floor" in label else
+                     pid(f"shelf_1@{round(length, 1)}") or pid("shelf_1")),
             draw_width=length, draw_height=interior_panel_depth,
-            canonical="shelf",
+            # The row name this drawing is OF. A floor is not a shelf on
+            # the paper, so it must not join to one here either — that is
+            # exactly the mis-join `canonical` was added to prevent.
+            canonical="floor" if "door floor" in label else "shelf",
             width_label="length",
             height_label="depth — front edge at bottom",
             rows=(
                 MortiseRow("", "v", 0.0, positions, "edge"),
                 MortiseRow("", "v", length, positions, "edge"),
             ),
-            note="Edge mortises in both ends — ride the fence/plate on "
-                 "the UNDERSIDE." + _band_note(_shelf_panel),
+            note=("Edge mortises in both ends — ride the fence/plate on "
+                  "the UNDERSIDE."
+                  + (" This is the floor the door closes on, not an "
+                     "adjustable shelf — it is glued in with the case."
+                     if "door floor" in label else "")
+                  ) + _band_note(_shelf_panel),
         ))
 
     thicknesses = {side_t, bottom_t, top_t}

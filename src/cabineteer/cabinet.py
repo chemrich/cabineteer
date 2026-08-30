@@ -2333,6 +2333,7 @@ def build_multi_bay_cabinet(
     # depth). Registered as D8; closed by making it a real part instead of
     # by deleting it, because a door over a drawer really does need a floor.
     floor_colour = cq.Color(0.87, 0.72, 0.53, 1.0)
+    floor_nodes: list[str] = []
     for bay_idx, (bcfg, bx) in enumerate(zip(bay_configs, x_offsets)):
         for slot in opening_stack(bcfg):
             if not slot.has_floor:
@@ -2342,7 +2343,12 @@ def build_multi_bay_cabinet(
                 .box(bcfg.interior_width, bcfg.interior_depth,
                      bcfg.shelf_thickness, centered=False)
             )
-            nm = f"bay{bay_idx}_floor{slot.index}"
+            # Numbered globally like divider_0, NOT bay{i}_floor{j}: the
+            # viewer's diagnostic-colour lookup strips a trailing _N and
+            # matches the remainder against a name table, so "bay0_floor1"
+            # would reduce to "bay0_floor" and never match anything.
+            nm = f"floor_{len(floor_nodes)}"
+            floor_nodes.append(nm)
             assy.add(fl_panel, name=nm,
                      loc=cq.Location((bx + bcfg.side_thickness, 0.0,
                                       slot.floor_z)),

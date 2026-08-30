@@ -1721,6 +1721,11 @@ const DRAWER_DIAG_COLS = {{
 const CARCASS_DIAG_COLS = {{
   left_side: BLUE, right_side: BLUE,
   top: ORANGE, bottom: ORANGE,
+  // The floor under a door — an interior member like a divider, and named
+  // globally (floor_0) for exactly this lookup: it strips a trailing _N,
+  // so a per-bay name like bay0_floor1 would reduce to "bay0_floor" and
+  // match nothing here.
+  floor: ORANGE,
 }};
 
 let diagOn = false;
