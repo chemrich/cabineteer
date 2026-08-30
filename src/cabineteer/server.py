@@ -4021,6 +4021,20 @@ def _raw_panels_for_cabinet(
     so identical-panel consolidation across a multi-cabinet project works
     against the same panel-shape definitions used in single-cabinet output.
     """
+    # ONE column source for all three axes of this function — the carcass
+    # panels, the drawer boxes and the show faces. carcass_panel_dims and
+    # bays_from_config both read `columns=None` as "use cfg.columns"; the box
+    # loop below used to read it as "there are no columns", so a config
+    # carrying columns but called without them produced dividers and faces
+    # for bays whose drawer boxes were silently absent — a cutlist that LOOKS
+    # finished and cannot build the cabinet, which is worse than the bare box
+    # it printed before. No shipping caller reaches it either way
+    # (generate_cutlist pops `columns` out of args before building the config,
+    # and both project paths pass _columns_dict_from_cfg), but one contract is
+    # the whole point of this change.
+    if not columns_raw and cfg.columns:
+        columns_raw = _columns_dict_from_cfg(cfg)
+
     interior_width = cfg.width - 2 * cfg.side_thickness
 
     # Hardwood edge banding shrinks the CORE cut size by the band thickness

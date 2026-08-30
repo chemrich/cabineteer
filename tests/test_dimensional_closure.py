@@ -158,6 +158,14 @@ def _matrix() -> list[Case]:
                                                 door_hinge="blum_clip_top_blumotion_110_full")))
     cases.append(Case("shelf", _base(openings=[(684.0, "open")],
                                      fixed_shelf_positions=[350.0])))
+    # A shelf under a GROOVED back. The shelf cases above are all pocket, so
+    # a mutation regrowing `depth - back_thickness` for shelf depth passed
+    # this whole module: pocket is the one capture where that expression is
+    # accidentally right. Under dado the back's front face sits a further
+    # back_groove_setback forward, and an interior panel must stop there.
+    cases.append(Case("dado+shelf", _base(openings=[(684.0, "open")],
+                                          back_capture="dado",
+                                          fixed_shelf_positions=[350.0])))
 
     cols = [{"width_mm": 300.0, "openings": [[133, "drawer"], [110, "drawer"]]},
             {"width_mm": 446.0, "openings": [[243, "open"]]}]

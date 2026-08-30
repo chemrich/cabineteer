@@ -27,6 +27,8 @@ plus the FINISHED/CORE conversion, which is the one place a consumer can
 still take the wrong view of a correct number.
 """
 
+import dataclasses
+
 import pytest
 
 from cabineteer.cabinet import (
@@ -234,10 +236,20 @@ class TestFinishedVersusCore:
         assert back.banded_edges == ()
 
     def test_every_carcass_band_is_the_front_edge(self):
-        """The ``core`` arithmetic assumes it. Assert it rather than trust it."""
-        for p in carcass_panel_dims(_cfg(fixed_shelf_positions=[400]),
-                                    TestColumns.COLS):
+        """The ``core`` arithmetic assumes it. Assert it rather than trust it.
+
+        Both halves matter: nothing may band an edge other than the front
+        (the shrink would go on the wrong axis), and the panels that DO band
+        must still be banding — a subset check alone is satisfied by a panel
+        that has quietly lost its banding altogether.
+        """
+        panels = carcass_panel_dims(_cfg(fixed_shelf_positions=[400]),
+                                    TestColumns.COLS)
+        for p in panels:
             assert set(p.banded_edges) <= {"front"}
+        banded = {p.kind for p in panels if p.banded_edges}
+        assert banded == {"side", "bottom", "top", "divider", "shelf"}, (
+            "the back is unbanded and everything else bands its front edge")
 
 
 # ─── Style 2 — the cutlist cuts exactly these dims ────────────────────────
@@ -248,10 +260,15 @@ BANDS = [("none", 0.0), ("hot_melt", 0.6), ("hardwood", 3.2)]
 
 
 class TestCutlistMatchesDims:
-    """Every carcass row on the paper is a ``CarcassPanel`` in core view.
+    """WIRING: the cutlist emits carcass_panel_dims and does not re-derive.
 
-    This is the pin that keeps the cutlist from re-growing its own copy of
-    the arithmetic, which is how all three of D2/D3/D12 started.
+    Deliberately not a dimension check — the cutlist computes its rows by
+    calling ``p.core(band_t)``, so recomputing that here cannot discriminate
+    a wrong dimension, and a reader should not mistake it for a test that
+    can. Its job is the one thing it does discriminate: the day someone
+    grows a private ``depth - something`` back into ``_raw_panels_for_cabinet``,
+    this fails. The numbers themselves are pinned by ``TestTheNumbers`` and
+    by the closure module's physical predicates.
     """
 
     COLS = [{"width_mm": 300, "openings": [[764, "open"]],
@@ -346,7 +363,17 @@ requires_cq = pytest.mark.skipif(cq is None, reason="cadquery not installed")
 
 @requires_cq
 class TestRenderMatchesDims:
-    """Bounding boxes, through the panel makers the assembly builder uses."""
+    """Bounding boxes of the solids the picture is actually made of.
+
+    Note which function draws what, because it is not obvious and it hid a
+    gap: ``make_top_panel`` / ``make_bottom_panel`` run only on STACKED
+    layouts. Every ordinary cabinet's top and bottom are the "continuous"
+    pair built inside ``build_multi_bay_cabinet``, which carried its own
+    ``back_capture_geometry`` derivation until P3 — a private copy of the
+    two numbers D2 was about. So the makers are tested here AND the assembled
+    solids are tested through ``_cabinet_assembly`` below; testing only the
+    makers would have measured a code path the render does not take.
+    """
 
     @staticmethod
     def _bbox(shape):
@@ -443,7 +470,11 @@ def test_the_dataclass_stays_a_value_object():
     """Frozen, like FacePanel — a consumer must not mutate the source."""
     p = carcass_panel_dims(_cfg())[0]
     assert isinstance(p, CarcassPanel)
-    with pytest.raises(Exception):
+    # FrozenInstanceError specifically — a bare `Exception` here also passes
+    # on the AttributeError you get from a typo'd field name, so it would
+    # keep passing if the dataclass stopped being frozen and the test's own
+    # attribute name went stale at the same time.
+    with pytest.raises(dataclasses.FrozenInstanceError):
         p.length = 1.0          # type: ignore[misc]
 
 
@@ -459,3 +490,187 @@ def test_dado_rabbet_is_not_this_functions_business():
     p = {x.kind: x for x in carcass_panel_dims(cfg)}
     assert p["bottom"].length == pytest.approx(cfg.interior_width)
     assert cfg.carcass_joinery is CarcassJoinery.DADO_RABBET
+
+
+# ─── The disclosures, tested where they are DELIVERED ─────────────────────
+#
+# Every one of these was found by an adversarial review of this change:
+# each mitigation below could be deleted outright and the whole suite stayed
+# green. A disclosure is the entire justification for leaving D12 open, so
+# an untested disclosure is a review item closed on a promise.
+
+
+class TestTheCaveatReachesTheToolResult:
+    """`_render_caveats` is load-bearing: it is why D12 may stay unfixed.
+
+    Testing the helper directly is not enough — deleting the splat from
+    `_tool_visualize_cabinet` left the suite byte-identical to baseline. So
+    these go through the tool. The heavy `_visualize_assembly` (which writes
+    files) is stubbed: nothing in this suite may write to ~/.cabineteer.
+    """
+
+    @staticmethod
+    def _call(tool, args, monkeypatch):
+        import asyncio
+        import json
+
+        from cabineteer import server
+
+        def _stub(*_a, **_kw):
+            return {"html": "x.html", "glb": "x.glb", "parts": [],
+                    "glb_size_kb": 1.0}
+
+        monkeypatch.setattr(server, "_visualize_assembly", _stub)
+        loop = asyncio.new_event_loop()
+        try:
+            out = loop.run_until_complete(server.TOOL_DISPATCH[tool](args))
+        finally:
+            loop.close()
+        return json.loads(out[0].text)
+
+    def _base_args(self, **kw):
+        args = dict(width=800, height=800, depth=457, side_thickness=18,
+                    bottom_thickness=18, top_thickness=18, back_thickness=6,
+                    drawer_config=[[764, "open"]], open_browser=False)
+        args.update(kw)
+        return args
+
+    def test_a_mitered_render_says_it_is_not_mitered(self, monkeypatch):
+        res = self._call("visualize_cabinet",
+                         self._base_args(carcass_corner_style="miter"),
+                         monkeypatch)
+        caveats = res.get("render_caveats") or []
+        assert any("miter" in c.lower() and "not modelled" in c.lower()
+                   for c in caveats), caveats
+        # It must also say which document to believe.
+        assert any("cutlist" in c for c in caveats), caveats
+
+    def test_a_hardwood_render_says_it_draws_finished(self, monkeypatch):
+        res = self._call("visualize_cabinet",
+                         self._base_args(edge_band_mode="hardwood",
+                                         edge_band_thickness_mm=3.2),
+                         monkeypatch)
+        assert any("banding" in c for c in res.get("render_caveats") or [])
+
+    def test_a_plain_butt_render_carries_no_caveat(self, monkeypatch):
+        res = self._call("visualize_cabinet", self._base_args(), monkeypatch)
+        assert "render_caveats" not in res
+
+    def test_the_number_in_the_caveat_is_the_real_one(self):
+        """"the full 800 mm long-point" has to be what the paper cuts."""
+        from cabineteer.server import _render_caveats
+        cfg = _cfg(carcass_corner_style="miter")
+        paper = {p.kind: p for p in carcass_panel_dims(cfg)}["top"]
+        text = " ".join(_render_caveats(cfg)["render_caveats"])
+        assert f"{paper.length:g} mm long-point" in text
+
+
+class TestThePayloadAxisNames:
+    """`_PANEL_AXES` exists only to name axes, and nothing looked at names.
+
+    The closure module compares the payload's numbers as an unordered SET
+    ("so a transposed panel still matches"), which is deliberate there — but
+    it means the one thing this table decides was unchecked, in the very
+    change whose docstring says the two tools used to disagree about it.
+    """
+
+    @staticmethod
+    def _payload(tool, args):
+        import asyncio
+        import json
+
+        from cabineteer.server import TOOL_DISPATCH
+        loop = asyncio.new_event_loop()
+        try:
+            out = loop.run_until_complete(TOOL_DISPATCH[tool](args))
+        finally:
+            loop.close()
+        return json.loads(out[0].text)["panels"]
+
+    ARGS = dict(width=900, height=720, depth=550, side_thickness=18,
+                bottom_thickness=18, top_thickness=18, back_thickness=6)
+
+    def test_both_tools_name_a_side_panels_axes_identically(self):
+        single = self._payload("design_cabinet",
+                               dict(self.ARGS, drawer_config=[[684, "open"]]))
+        multi = self._payload("design_multi_column_cabinet", dict(
+            self.ARGS,
+            columns=[{"width_mm": 423, "openings": [[684, "open"]]},
+                     {"width_mm": 423, "openings": [[684, "open"]]}]))
+        assert set(single["side_panel"]) == set(multi["side_panel"])
+
+    def test_a_side_panels_front_to_back_dimension_is_called_depth(self):
+        p = self._payload("design_cabinet",
+                          dict(self.ARGS, drawer_config=[[684, "open"]]))
+        assert p["side_panel"]["depth_mm"] == pytest.approx(550.0)
+        assert p["side_panel"]["height_mm"] == pytest.approx(720.0)
+        assert "width_mm" not in p["side_panel"]
+
+    def test_a_panel_that_lies_down_reports_a_width_not_a_height(self):
+        p = self._payload("design_cabinet",
+                          dict(self.ARGS, drawer_config=[[684, "open"]]))
+        for key in ("bottom_panel", "top_panel"):
+            assert p[key]["width_mm"] == pytest.approx(864.0)
+            assert p[key]["depth_mm"] == pytest.approx(544.0)
+            assert "height_mm" not in p[key]
+
+    def test_a_divider_stands_up_so_its_long_axis_is_a_height(self):
+        p = self._payload("design_multi_column_cabinet", dict(
+            self.ARGS,
+            columns=[{"width_mm": 423, "openings": [[684, "open"]]},
+                     {"width_mm": 423, "openings": [[684, "open"]]}]))
+        assert p["column_divider"]["height_mm"] == pytest.approx(684.0)
+        assert p["column_divider"]["depth_mm"] == pytest.approx(544.0)
+
+
+class TestDescribeNamesWhatTheSawWillDo:
+    """`describe_design` is the document read aloud, and it said neither.
+
+    The corner style changes what the saw does and the render does not draw
+    it; the banding mode shrinks every carcass core. Both were absent from
+    the prose AND the materials block, so the whole miter half of the D12
+    disclosure could be deleted with the suite green.
+    """
+
+    @staticmethod
+    def _describe(**kw):
+        import asyncio
+        import json
+
+        from cabineteer.server import TOOL_DISPATCH
+        args = dict(width=1219, height=663.6, depth=457,
+                    drawer_config=[[627.6, "open"]])
+        args.update(kw)
+        loop = asyncio.new_event_loop()
+        try:
+            out = loop.run_until_complete(TOOL_DISPATCH["describe_design"](args))
+        finally:
+            loop.close()
+        return json.loads(out[0].text)
+
+    def test_materials_carries_both_tokens(self):
+        m = self._describe()["materials"]
+        assert m["carcass_corner_style"] == "butt"
+        assert m["edge_band_mode"] == "none"
+
+    def test_miters_are_described_with_the_long_point_number(self):
+        d = self._describe(carcass_corner_style="miter")
+        assert d["materials"]["carcass_corner_style"] == "miter"
+        assert "miter" in d["prose"]
+        assert "1219 mm long-point" in d["prose"]
+
+    def test_hardwood_banding_says_the_panels_are_cut_narrower(self):
+        prose = self._describe(edge_band_mode="hardwood",
+                               edge_band_thickness_mm=3.2)["prose"]
+        assert "3.2 mm hardwood edge banding" in prose
+        assert "narrower" in prose
+
+    def test_hot_melt_says_the_opposite_because_it_is(self):
+        """It is ironed on after cutting, so no panel shrinks for it."""
+        prose = self._describe(edge_band_mode="hot_melt")["prose"]
+        assert "hot-melt" in prose
+        assert "no panel shrinks" in prose
+
+    def test_a_plain_build_gains_no_prose(self):
+        prose = self._describe()["prose"]
+        assert "miter" not in prose and "banding" not in prose

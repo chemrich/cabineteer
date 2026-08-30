@@ -373,9 +373,19 @@ def build_assembly_plan(
     # flush-trimmed BEFORE any mortising (see the banding step), so the panel
     # in hand when this map is used measures the finished number. The note
     # says so rather than leaving the reader to guess which face is meant.
-    band_note = (f" Dims are FINISHED — the front edge already carries its "
-                 f"{band_t:g} mm band (the cutlist cut the core that much "
-                 f"shorter)." if band_mode == "hardwood" else "")
+    #
+    # Per PANEL, not per cabinet: a furniture_top top is never banded (the
+    # cap strip covers that edge, and carcass_panel_dims says so with
+    # banded_edges=()), so a cabinet-wide note would tell the builder to band
+    # the one edge the cutlist row forbids banding — the same pair of
+    # contradictory instructions the cutlist comment says it exists to remove,
+    # re-created in the document taped to the other machine.
+    def _band_note(panel) -> str:
+        if band_mode != "hardwood" or not panel.banded_edges:
+            return ""
+        return (f" Dims are FINISHED — the front edge already carries its "
+                f"{band_t:g} mm band (the cutlist cut the core that much "
+                f"shorter).")
     # back_style "under_top": the top runs full depth and caps the back —
     # its map must draw the panel at the dims in hand (butt corners only).
     # Nothing caps the back under a machined capture: a rabbet or a dado
@@ -436,7 +446,7 @@ def build_assembly_plan(
         note=(("Ends beveled 45° — mortise the MITER FACES top and bottom. "
                if miter else "Mortise the INNER face. ")
               + "The two sides are a mirrored pair — mark them L and R "
-              "before machining." + band_note),
+              "before machining." + _band_note(_side)),
     ))
 
     # Divider centrelines from the left END of the top/bottom panel.
@@ -496,8 +506,8 @@ def build_assembly_plan(
                   f"({'top face' if pname == 'bottom' else 'underside'}) "
                   f"{_ref_offset(side_t):g} mm past each divider's "
                   "LEFT-face line — mark left-face lines, not centrelines."
-                  f"{cap_txt}{band_note}"
-                  if div_centres else f"{end_txt}.{cap_txt}{band_note}"),
+                  f"{cap_txt}{_band_note(_tb)}"
+                  if div_centres else f"{end_txt}.{cap_txt}{_band_note(_tb)}"),
         ))
 
     if n_dividers:
@@ -538,6 +548,7 @@ def build_assembly_plan(
                          f"{', '.join(str(d) for d in ds)} (make {len(ds)})")
             else:
                 label = f"column divider {ds[0]}"
+            _div_panel = (_by_kind.get("divider") or [_by_kind["side"][0]])[0]
             panels.append(PanelMortiseMap(
                 panel=label,
                 part_id=pid("column_divider"),
@@ -554,7 +565,7 @@ def build_assembly_plan(
                       if has_faces else
                       "Both faces show; mortise the two ENDS only — ride "
                       "the fence/plate on the LEFT face (mark it).")
-                     + band_note,
+                     + _band_note(_div_panel),
             ))
 
     shelf_like = []
@@ -566,6 +577,9 @@ def build_assembly_plan(
             shelf_like.append(
                 (f"col {ci + 1} fixed shelf", ns, float(cols[ci].width_mm)))
     for label, count, length in shelf_like:
+        # A shelf's banding follows the shelf rows, which all band the front
+        # edge; fall back to the side when a cfg somehow has no shelf panel.
+        _shelf_panel = (_by_kind.get("shelf") or [_by_kind["side"][0]])[0]
         panels.append(PanelMortiseMap(
             panel=f"{label} (make {count})" if count > 1 else label,
             # Length-qualified lookup first: global and column shelf
@@ -581,7 +595,7 @@ def build_assembly_plan(
                 MortiseRow("", "v", length, positions, "edge"),
             ),
             note="Edge mortises in both ends — ride the fence/plate on "
-                 "the UNDERSIDE." + band_note,
+                 "the UNDERSIDE." + _band_note(_shelf_panel),
         ))
 
     thicknesses = {side_t, bottom_t, top_t}

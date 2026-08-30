@@ -15,6 +15,7 @@ All dimensions in millimeters. The cabinet is oriented with:
 - Origin at front-bottom-left exterior corner
 """
 
+import dataclasses
 import math
 from dataclasses import dataclass, field
 from typing import Optional
@@ -1907,11 +1908,23 @@ def build_multi_bay_cabinet(
         butt = _is_butt(cfg0)
         if butt:
             # Butt: panels seat BETWEEN the outer sides at interior width —
-            # the cutlist dims. Rear setback = back thickness (the back's
-            # seat).
-            cont_panel_width = total_width - 2 * cfg0.side_thickness
+            # the cutlist dims, read from the SAME source the cutlist cuts
+            # from. These two panels are the ones the picture actually
+            # shows (make_top/bottom_panel run only on stacked layouts), so
+            # a private derivation here is a private derivation of the
+            # numbers that matter most: `depth − back_thickness` sat here
+            # until 2026-08 and is exactly the expression D2 was about.
+            # The whole-run config is the object the cutlist sizes from —
+            # one cabinet, its full exterior width, no columns.
+            _whole = dataclasses.replace(cfg0, width=total_width, columns=[])
+            _cont_b = carcass_panel(_whole, "bottom")
+            _cont_t = carcass_panel(_whole, "top")
+            # Miter is not modelled in the render (see make_top_panel), so
+            # take the butt length here too rather than half-draw a corner.
+            cont_panel_width = (_whole.interior_width if _cont_b.bevel_ends
+                                else _cont_b.length)
             cont_panel_x = cfg0.side_thickness
-            cont_bottom_depth = back_capture_geometry(cfg0).bottom_depth
+            cont_bottom_depth = _cont_b.width
         else:
             # Dado/rabbet: spans from the inside-back of the left side
             # panel's bottom dado to the matching point on the right side —
@@ -1946,8 +1959,7 @@ def build_multi_bay_cabinet(
         # Continuous top — depth follows the construction (matches
         # make_top_panel): dado/rabbet always full depth; butt follows
         # back_capture, which folds in back_style's full-depth cap.
-        cont_top_depth = (back_capture_geometry(cfg0).top_depth if butt
-                          else cfg0.depth)
+        cont_top_depth = _cont_t.width if butt else cfg0.depth
         cont_top = (
             cq.Workplane("XY")
             .box(cont_panel_width, cont_top_depth, cfg0.top_thickness, centered=False)
