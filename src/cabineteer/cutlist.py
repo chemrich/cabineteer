@@ -2077,6 +2077,15 @@ def edge_band_lines_for_panels(
     stock = getattr(cfg, "edge_band_stock", None) if mode == "hardwood" else None
 
     MM_PER_FT = 304.8
+    HOT_MELT_ROLL_MM = 22.2      # 7/8" pre-glued roll
+    DEFAULT_RIP_WIDTH_MM = 20.0  # when no stock spec names one
+    # The thickest edge any of these panels actually bands. Both notes below
+    # used to assert 18 mm and ~20 mm outright, so a 25 mm carcass was told
+    # a 7/8" roll covers its edges — it does not, and that note is where the
+    # roll gets ordered from.
+    banded_t = sorted({float(p.thickness) for p in panels if p.edge_band})
+    max_edge = banded_t[-1] if banded_t else 0.0
+    rip_w = float((stock or {}).get("strip_width_mm", DEFAULT_RIP_WIDTH_MM))
     lines: list[HardwareLine] = []
     for mat, segs in sorted(band_segments_for_panels(panels, cfg).items()):
         mm = sum(segs)
@@ -2092,7 +2101,12 @@ def edge_band_lines_for_panels(
                 pieces_needed=ft,
                 pack_quantity=50,
                 notes=(f"{mm / 1000:.1f} m of edges (+15% waste); "
-                       f'7/8" width covers 18 mm edges (trim flush)'),
+                       + (f'7/8" ({HOT_MELT_ROLL_MM:g} mm) width covers the '
+                          f'{max_edge:g} mm edges here (trim flush)'
+                          if max_edge <= HOT_MELT_ROLL_MM else
+                          f'WARNING: a 7/8" ({HOT_MELT_ROLL_MM:g} mm) roll '
+                          f'does NOT cover the {max_edge:g} mm edges here '
+                          '— order a wider roll')),
             ))
         elif stock is None:
             lines.append(HardwareLine(
@@ -2104,8 +2118,10 @@ def edge_band_lines_for_panels(
                 pieces_needed=ft,
                 pack_quantity=1,
                 notes=(f"{mm / 1000:.1f} m of edges (+15% waste); rip "
-                       f"{thk:g} mm × ~20 mm strips from solid stock/offcuts "
-                       "(proud, flush-trim after glue-up)"),
+                       f"{thk:g} mm × {rip_w:g} mm strips from solid "
+                       f"stock/offcuts — {rip_w - max_edge:g} mm proud of "
+                       f"the {max_edge:g} mm edges, flush-trim after "
+                       "glue-up"),
             ))
         else:
             pack = pack_band_strips(segs, stock)

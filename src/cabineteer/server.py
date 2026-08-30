@@ -4378,12 +4378,15 @@ def _raw_panels_for_cabinet(
         for p in layout:
             if p.kind == "drawer_face":
                 _guard("false front", p)
-                ff_note = _face_note(
-                    cfg.face_material,
-                    f"{_overlay_note(p)}; {_position_note(p)}")
+                # Position LAST. A consolidated row covers several physical
+                # faces, so its position clauses multiply while the others
+                # collapse; keeping them at the end clusters them instead of
+                # interleaving them with the banding note.
+                ff_note = _face_note(cfg.face_material, _overlay_note(p))
                 if band_t:
                     ff_note += "; " + _core_note(
                         round(p.width, 1), round(p.height, 1), "4 edges")
+                ff_note += "; " + _position_note(p)
                 raw_false_fronts.append(CutlistPanel(
                     name="false_front",
                     length=round(p.width - 2 * band_t, 1),

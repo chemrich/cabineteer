@@ -194,6 +194,12 @@ class AssemblyPlan:
     corner_style: str = "butt"          # butt | miter
     miter_placement: Optional[object] = None   # MiterMortisePlacement
     edge_band_mode: str = "none"        # none | hot_melt | hardwood
+    #: Rip width of a hardwood band strip, from ``edge_band_stock``. The
+    #: banding step said "ripped ~20 mm wide" as a literal while the cutlist
+    #: BOM printed the config's real ``strip_width_mm`` — two numbers for
+    #: one setting, on two documents at the same bench. The step had no
+    #: object to read, which is why it invented one.
+    edge_band_strip_width_mm: float = 0.0
     edge_band_thickness_mm: float = 0.0
     #: Distinct carcass panel thicknesses (sorted). Panels below
     #: BASE_REF_MIN_THICKNESS_MM take the centred t/2 fallback; everything
@@ -610,12 +616,42 @@ def build_assembly_plan(
         corner_style=corner_style, miter_placement=miter_placement,
         edge_band_mode=band_mode,
         edge_band_thickness_mm=band_t if band_mode != "none" else 0.0,
+        edge_band_strip_width_mm=float(
+            (getattr(cab_cfg, "edge_band_stock", None) or {})
+            .get("strip_width_mm", 20.0)),
         panel_thicknesses=tuple(sorted(thicknesses)),
     )
     plan.steps = _build_steps(plan, cab_cfg)
     plan.drawer_boxes = build_drawer_box_plans(cab_cfg, id_map)
     plan.box_steps = _build_box_steps(plan.drawer_boxes, cab_cfg)
     return plan
+
+
+def _wall_text(plan: AssemblyPlan, spec) -> str:
+    """What the plunge leaves behind a FACE mortise, on the thinnest panel.
+
+    This read ``plan.stock_thickness`` — which is the SIDE thickness — and
+    asserted it of every panel. The top and bottom carry face mortises too
+    (their divider rows), so on a case with 18 mm sides and a 12 mm top a
+    15 mm plunge does not leave a 3 mm wall: it comes out the far face by
+    3 mm. The correct pattern was already two sentences away in the same
+    paragraph — ``_fence_text`` reads ``plan.panel_thicknesses``.
+    """
+    depth = spec.mortise_depth_per_side
+    ts = sorted(plan.panel_thicknesses or (plan.stock_thickness,))
+    thinnest = ts[0]
+    wall = thinnest - depth
+    if wall <= 0:
+        return (f"this BREAKS THROUGH {abs(wall):g} mm on the "
+                f"{thinnest:g} mm panels — reduce the plunge or use a "
+                "shorter tenon before cutting any face mortise")
+    if len(ts) == 1:
+        return f"this leaves a {wall:g} mm wall behind face mortises in " \
+               f"{thinnest:g} mm stock"
+    return (f"this leaves {wall:g} mm behind a face mortise in the thinnest "
+            f"stock here ({thinnest:g} mm); "
+            + ", ".join(f"{t:g} mm → {t - depth:g} mm" for t in ts[1:])
+            + " elsewhere")
 
 
 def _fence_text(plan: AssemblyPlan) -> str:
@@ -1248,7 +1284,7 @@ def _build_steps(plan: AssemblyPlan, cab_cfg) -> list[AssemblyStep]:
         bt = plan.edge_band_thickness_mm
         steps.append(AssemblyStep(
             "Band the front edges (hardwood strips)",
-            f"Glue {bt:g} mm hardwood strips (ripped ~20 mm wide, proud "
+            f"Glue {bt:g} mm hardwood strips (ripped {plan.edge_band_strip_width_mm:g} mm wide, proud "
             "both faces) to the FRONT edges of every carcass panel — "
             "sides, top, bottom, dividers, fixed shelves. Clamp, cure, "
             "then flush-trim both faces. Do this BEFORE any mortising: "
@@ -1260,9 +1296,8 @@ def _build_steps(plan: AssemblyPlan, cab_cfg) -> list[AssemblyStep]:
     steps.append(AssemblyStep(
         "Set up the Domino machine",
         f"DF 500 with the {s.tenon_thickness:g} mm cutter. Plunge depth "
-        f"{s.mortise_depth_per_side:g} mm (this leaves a "
-        f"{t - s.mortise_depth_per_side:g} mm wall behind face "
-        f"mortises in {t:g} mm stock). Fence 90°, {_fence_text(plan)}. "
+        f"{s.mortise_depth_per_side:g} mm ({_wall_text(plan, s)}). "
+        f"Fence 90°, {_fence_text(plan)}. "
         "Width setting: TIGHT for the front mortise of every joint, "
         "middle (slotted) for all others — the front pair registers the "
         "joint flush; slotted mates absorb tolerance."))
@@ -1487,8 +1522,7 @@ def _machine_rows(plan: AssemblyPlan) -> list[tuple[str, str]]:
                   f"Festool {s.part_number} "
                   f"(pack of {DOMINO_PACK_QUANTITIES[plan.size_key]})"),
         ("Plunge depth", f"{s.mortise_depth_per_side:.0f} mm each part "
-                         f"({t - s.mortise_depth_per_side:.0f} mm wall left "
-                         f"in {t:.0f} mm stock)"),
+                         f"({_wall_text(plan, s)})"),
         ("Fence", f"90° · {_fence_text(plan)}"),
         ("Width setting", "TIGHT for the front mortise of each joint; "
                           "middle (slotted) for all others"),

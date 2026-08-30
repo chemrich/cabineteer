@@ -382,3 +382,102 @@ def test_the_extractor_actually_finds_numbers():
     assert numbers_in("+15% waste") == set()
     # Unitless dimensions in parentheses are real.
     assert 415.2 in numbers_in("(415.2 inside the box + 12 of groove)")
+
+
+# ─── The same class, found by the lens that mapped the surface ────────────
+
+
+class TestClaimsAboutStockAndMachines:
+    """Three more notes that asserted a number they never read.
+
+    Each was found by an inventory sweep of every prose template in the
+    package, not by a failing build — which is the point: none of them broke
+    a single test when it was corrected, because nothing was looking.
+    """
+
+    def test_the_hot_melt_roll_note_measures_the_edges_it_covers(self):
+        """N1 — the note said "covers 18 mm edges" whatever the stock.
+
+        It is the line the roll gets ORDERED from, and a 7/8" roll is
+        22.2 mm: on a 25 mm carcass it cannot cover the edge, and
+        check_edge_banding validates the roll for nobody — its strip-width
+        guard runs only on the hardwood stock spec.
+        """
+        from cabineteer.cutlist import edge_band_lines_for_panels
+
+        for thk, covered in ((18, True), (25, False)):
+            cfg = _cfg(side_thickness=thk, top_thickness=thk,
+                       bottom_thickness=thk, edge_band_mode="hot_melt",
+                       drawer_config=[[724, "drawer"]])
+            carcass, _t, _b, faces = _raw_panels_for_cabinet(cfg, None)
+            notes = " ".join(ln.notes for ln in
+                             edge_band_lines_for_panels(carcass + faces, cfg))
+            assert f"{thk:g} mm edges" in notes
+            assert ("does NOT cover" in notes) is not covered
+
+    def test_the_rip_width_note_states_the_configured_width(self):
+        """N2a — "~20 mm strips" was a literal beside a configurable key."""
+        from cabineteer.cutlist import edge_band_lines_for_panels
+
+        cfg = _cfg(edge_band_mode="hardwood", edge_band_thickness_mm=3.2,
+                   drawer_config=[[724, "drawer"]])
+        carcass, _t, _b, faces = _raw_panels_for_cabinet(cfg, None)
+        notes = " ".join(ln.notes for ln in
+                         edge_band_lines_for_panels(carcass + faces, cfg))
+        # 20 mm rip on an 18 mm edge leaves 2 mm proud — stated, not implied.
+        assert "20 mm strips" in notes
+        assert "2 mm proud of the 18 mm edges" in notes
+
+    def test_the_assembly_doc_rips_the_same_width_the_bom_orders(self):
+        """N2b — the doc said ~20 mm while the BOM said 32 mm strips.
+
+        The step had no object to read from: AssemblyPlan carried the band
+        mode and thickness but not the width, so the sentence invented one.
+        """
+        from cabineteer.cutlist import edge_band_lines_for_panels
+
+        for width in (20.0, 32.0):
+            cfg = _cfg(
+                edge_band_mode="hardwood", edge_band_thickness_mm=3.2,
+                edge_band_stock={"width_mm": 139.7, "length_mm": 1219.2,
+                                 "price_usd": 52.0, "strip_width_mm": width},
+                drawer_config=[[724, "drawer"]])
+            plan = build_assembly_plan(cfg)
+            step = next(s for s in plan.steps if "Band the front" in s.title)
+            assert f"ripped {width:g} mm wide" in step.body
+            carcass, _t, _b, faces = _raw_panels_for_cabinet(cfg, None)
+            bom = " ".join(ln.notes for ln in
+                           edge_band_lines_for_panels(carcass + faces, cfg))
+            assert f"strips of {width:g} mm" in bom
+
+    def test_the_domino_wall_claim_uses_the_thinnest_panel(self):
+        """N3 — it read the SIDE thickness and asserted it of every panel.
+
+        The top and bottom carry face mortises too (their divider rows), so
+        18 mm sides with a 12 mm top and a 15 mm plunge do not leave a 3 mm
+        wall: the cutter exits the far face by 3 mm. The correct pattern was
+        already two sentences later in the same paragraph.
+        """
+        cols = [{"width_mm": 423.0, "openings": [[724, "drawer"]]},
+                {"width_mm": 423.0, "openings": [[724, "drawer"]]}]
+        uniform = build_assembly_plan(_cfg(side_thickness=18, columns=cols))
+        step = next(s for s in uniform.steps if "Domino" in s.title)
+        assert "leaves a 3 mm wall" in step.body
+        assert "BREAKS THROUGH" not in step.body
+
+        thin = build_assembly_plan(_cfg(side_thickness=18, top_thickness=12,
+                                        bottom_thickness=12, columns=cols))
+        step = next(s for s in thin.steps if "Domino" in s.title)
+        assert "BREAKS THROUGH 3 mm on the 12 mm panels" in step.body
+
+    def test_the_machine_table_says_what_the_step_says(self):
+        """Two renderings of one setting had two copies of the arithmetic."""
+        cols = [{"width_mm": 423.0, "openings": [[724, "drawer"]]},
+                {"width_mm": 423.0, "openings": [[724, "drawer"]]}]
+        plan = build_assembly_plan(_cfg(side_thickness=18, top_thickness=12,
+                                        bottom_thickness=12, columns=cols))
+        step = next(s for s in plan.steps if "Domino" in s.title)
+        from cabineteer.assembly import _wall_text
+        from cabineteer.joinery import get_domino_size
+        wall = _wall_text(plan, get_domino_size(plan.size_key))
+        assert wall in step.body
