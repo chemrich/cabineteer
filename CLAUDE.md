@@ -96,7 +96,7 @@ server.py       ← MCP server (30 tools, stdio or HTTP/SSE)
 
 Scenarios live in `evals/scenarios.py`. Each `Scenario` has a natural-language `prompt`, a list of `ToolCall`s with `Assertion`s, and tags/difficulty for filtering. Available assertion operators: `EQ`, `APPROX`, `GT`, `GTE`, `LT`, `LTE`, `IN`, `CONTAINS`, `HAS_KEY`, `LEN_EQ`, `LEN_GTE`, `IS_TRUE`, `IS_FALSE`, `NO_ERRORS`, `HAS_ERROR`, `HAS_WARNING`.
 
-Baseline: 313 scenarios / 1217 assertions / 100% pass rate; the pytest suite is 2461 passed / 80 skipped / **9 xfailed** (2026-08-29, post carcass-panel-dims). Run the eval suite after any non-trivial change.
+Baseline: 313 scenarios / 1217 assertions / 100% pass rate; the pytest suite is 2536 passed / 80 skipped / **9 xfailed** (2026-08-30, post notes-from-their-objects). Run the eval suite after any non-trivial change.
 
 ### The dimensional-closure net (2026-08-29) — READ BEFORE ADDING A DIMENSION TEST
 
