@@ -217,6 +217,31 @@ def check_drawer_hardware_clearances(
             message=msg,
         ))
 
+    # The runner decides where the drawer bottom sits, so a groove cut to a
+    # different recess is a fit error, not a preference. Non-circular: the
+    # inset is an independent input (a config field, overridable) and the
+    # requirement comes from the slide catalogue, so this can genuinely fail
+    # — unlike the side-clearance branch that was deleted as dead code in
+    # 2026-08 because it compared a value against the constant it came from.
+    required = slide.bottom_recess
+    if required is not None and abs(drawer_cfg.bottom_dado_inset - required) > 0.01:
+        issues.append(Issue(
+            check="drawer_bottom_recess",
+            severity=Severity.ERROR,
+            message=(
+                f"Bottom groove set {drawer_cfg.bottom_dado_inset:.1f} mm up from "
+                f"the box side's bottom edge, but {slide.name} requires "
+                f"{required:.1f} mm — the runner carries the box under its bottom "
+                f"panel and the front locking devices engage that panel, so the "
+                f"recess is the runner's dimension, not a choice. No tolerance is "
+                f"published and none of the runner's adjustments moves it. Note a "
+                f"groove floor can be lowered but never raised: check this before "
+                f"cutting, not after."
+            ),
+            value=drawer_cfg.bottom_dado_inset,
+            limit=required,
+        ))
+
     # Check bottom panel dado doesn't weaken the side too much
     remaining_below_dado = drawer_cfg.bottom_dado_inset
     if remaining_below_dado < 8:

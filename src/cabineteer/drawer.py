@@ -87,6 +87,14 @@ def snap_to_standard_box_height(raw_mm: float) -> float:
 # deeper than 5" and 16"+ wide will carry real weight over a wide span, so
 # it defaults to a 1/2" bottom (still dado-captured).  Thresholds compare
 # against *box* dimensions (what physically spans), not the opening.
+#: Drawer-bottom recess used when the slide does not state one, in mm.
+#: 13 is Blum's figure for the whole TANDEM and MOVENTO wood-drawer range,
+#: and Charlie confirmed it at the bench on 2026-08-29 — dadoed at 13, boxes
+#: run. It is a sensible default rather than a universal truth: a slide that
+#: really does impose a different recess should carry it on its own spec as
+#: ``DrawerSlideSpec.bottom_recess``, which is what this falls back FROM.
+DEFAULT_BOTTOM_DADO_INSET = 13.0
+
 DEFAULT_BOTTOM_THICKNESS: float = 6.0     # 1/4" plywood
 HEAVY_BOTTOM_THICKNESS: float = 12.0      # 1/2" plywood
 HEAVY_BOTTOM_MIN_BOX_HEIGHT: float = 127.0  # > 5" deep (box height)
@@ -116,7 +124,16 @@ class DrawerConfig:
 
     # Joinery for bottom panel
     bottom_dado_depth: float = 6.0  # how deep the dado is cut
-    bottom_dado_inset: float = 12.0  # distance from bottom edge to dado bottom
+    # Distance from the box side's bottom edge up to the UNDERSIDE of the
+    # bottom panel — the lower shoulder of the groove. ``None`` (the default)
+    # resolves from the slide: an undermount runner carries the box under its
+    # bottom and its locking devices engage that panel, so the RUNNER decides
+    # where the bottom sits. It is an interface dimension, not a preference,
+    # and it was a bare 12.0 here until 2026-08-29 — unreachable from every
+    # tool argument, checked by nothing, and 1 mm off what Blum specifies.
+    # Pass a number to override, e.g. for a slide whose recess this repo does
+    # not carry.
+    bottom_dado_inset: Optional[float] = None
 
     # Gaps / reveals
     front_gap: float = 2.0  # gap between drawer box front and cabinet face
@@ -168,6 +185,14 @@ class DrawerConfig:
         on first property access — rather than turning construction into the
         failure point.
         """
+        if self.bottom_dado_inset is None:
+            try:
+                recess = self.slide.bottom_recess
+            except KeyError:
+                recess = None      # bad slide key surfaces on property access
+            self.bottom_dado_inset = (
+                recess if recess is not None else DEFAULT_BOTTOM_DADO_INSET)
+
         if self.bottom_thickness is None:
             try:
                 heavy = (
