@@ -556,6 +556,38 @@ class TestTheCaveatReachesTheToolResult:
         res = self._call("visualize_cabinet", self._base_args(), monkeypatch)
         assert "render_caveats" not in res
 
+    def test_the_caveat_is_on_the_page_a_person_approves(self):
+        """The tool JSON is not what gets looked at.
+
+        `render_caveats` justifies leaving D12 open, and the failure it
+        guards against is approval-from-the-viewer — the furniture_top cap
+        "existed in approved renders and never on any cutlist". A caveat
+        that reaches only the tool result does not reach the approver.
+        """
+        from cabineteer.visualize import _build_html
+        html = _build_html(
+            "t", "AAAA",
+            {"width": 800.0, "height": 800.0, "depth": 457.0,
+             "render_caveats": ["Mitered corners are NOT modelled."]})
+        assert "Mitered corners are NOT modelled." in html
+        assert "does not show everything the cutlist cuts" in html
+
+    def test_a_run_collapses_by_kind_and_names_its_cabinets(self):
+        """The sentence interpolates each cabinet's own width.
+
+        So deduping the finished sentences leaves two near-identical lines
+        for a 600 and a 1000 cabinet, neither saying which is which.
+        """
+        from cabineteer.server import _render_caveats
+        a = _cfg(width=600, carcass_corner_style="miter")
+        b = _cfg(width=1000, carcass_corner_style="miter")
+        kinds_a = [k for k, _s in _render_caveats(a, keyed=True)]
+        kinds_b = [k for k, _s in _render_caveats(b, keyed=True)]
+        assert kinds_a == kinds_b == ["miter"]
+        sent_a = _render_caveats(a)["render_caveats"][0]
+        sent_b = _render_caveats(b)["render_caveats"][0]
+        assert sent_a != sent_b, "the sentences differ, which is the point"
+
     def test_the_number_in_the_caveat_is_the_real_one(self):
         """"the full 800 mm long-point" has to be what the paper cuts."""
         from cabineteer.server import _render_caveats

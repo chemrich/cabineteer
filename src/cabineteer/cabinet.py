@@ -814,15 +814,16 @@ def make_side_panel(cfg: CabinetConfig, mirror: bool = False) -> "cq.Workplane":
 
     if _is_butt(cfg):
         # Plain slab; only the shelf-pin holes apply. The rear pin row
-        # references the back's seat plane (depth − back_thickness).
+        # references the back's seat plane, which back_capture sets.
         if cfg.adj_shelf_holes:
             x_start = (cfg.side_thickness - cfg.shelf_pin_depth) if not mirror else 0
             z = cfg.shelf_pin_start_z
             # The rear pin row references the shelf's rear edge, which sits
             # at the back's front face — a deep groove setback moves it
             # forward, and a row measured off back_thickness alone would
-            # land behind the shelf (or bore into the groove).
-            rear_ref = cfg.depth - back_capture_geometry(cfg).clear_depth
+            # land behind the shelf (or bore into the groove). That plane is
+            # interior_depth, THE datum; read it rather than spell it again.
+            rear_ref = cfg.interior_depth
             while z <= cfg.shelf_pin_end_z:
                 for y_inset in [cfg.shelf_pin_row_inset,
                                 rear_ref - cfg.shelf_pin_row_inset]:
@@ -1235,8 +1236,12 @@ class CarcassPanel:
     ``furniture_top`` cap covers the top's front edge, so that one is never
     banded and its core must not be shrunk for a band it will not carry).
 
-    ``name`` is the cutlist row name, so a consumer can join a panel to its
-    row and its part ID without a second lookup table.
+    ``name`` is the cutlist row name. For the five single-family members
+    that is a join key on its own; for shelves it is not — three different
+    panels can all be called ``shelf_1`` (one per column, plus a cabinet-wide
+    one), so a shelf is identified by ``name`` WITH ``length`` and
+    ``column``. That is the same length-qualified key the assembly doc's
+    part-ID lookup already uses.
 
     Scope: this is the BUTT-carcass convention, which is also the convention
     every cutlist has used since 2026-08. ``DADO_RABBET`` panels are housed —
@@ -1982,8 +1987,9 @@ def build_multi_bay_cabinet(
 
     # ── Interior vertical dividers ─────────────────────────────────────────────
     # One purpose-built divider per bay boundary, placed at x_offsets[1:].
-    # Depth = depth - back_rabbet_width so the back edge is flush with the
-    # front face of the continuous back panel (no protrusion behind the back).
+    # Depth comes from make_interior_divider, which reads interior_depth —
+    # the back edge lands on the back panel's front face, wherever the
+    # capture puts it.
     divider_colour = cq.Color(0.87, 0.72, 0.53, 1.0)
     for div_idx, (div_x, cfg) in enumerate(zip(x_offsets[1:], bay_configs)):
         div_shape = make_interior_divider(cfg, height_override=divider_top_z)
@@ -2062,10 +2068,9 @@ def build_multi_bay_cabinet(
         ts_cfg  = bay_configs[0]
         ts_w    = total_width - 2 * ts_cfg.side_thickness
         # Like every other interior panel, a transition shelf stops at the
-        # back's front face — which back_capture sets, not back_thickness.
-        ts_dep  = ts_cfg.depth - (back_capture_geometry(ts_cfg).clear_depth
-                                  if _is_butt(ts_cfg)
-                                  else ts_cfg.back_rabbet_width)
+        # back's front face. This conditional was interior_depth's exact
+        # body written out a second time, DADO_RABBET branch included.
+        ts_dep  = ts_cfg.interior_depth
         ts_thk  = ts_cfg.shelf_thickness
         for ts_idx, ts_z in enumerate(transition_shelf_zs):
             ts_panel = (

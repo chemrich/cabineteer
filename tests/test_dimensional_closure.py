@@ -149,6 +149,31 @@ def _matrix() -> list[Case]:
     # the full exterior long point and the render draws neither the length
     # nor the bevels.
     cases.append(Case("corner=miter", _base(carcass_corner_style="miter")))
+
+    # ── Crossed axes ─────────────────────────────────────────────────────
+    # Every case above varies ONE thing. That is how the band note came to
+    # claim a hardwood band on a furniture_top's capped edge: the note was
+    # per-cabinet, the banding is per-panel, and no case combined the two,
+    # so the contradiction was invisible while the assertion it justified
+    # was being edited. Each of these is a pair that has actually hidden a
+    # defect or plausibly can.
+    cases.append(Case("hardwood+furniture_top",
+                      _base(edge_band_mode="hardwood",
+                            edge_band_thickness_mm=3.2,
+                            furniture_top=True)))
+    cases.append(Case("miter+hardwood",
+                      _base(carcass_corner_style="miter",
+                            edge_band_mode="hardwood",
+                            edge_band_thickness_mm=3.2)))
+    # A shelf family with two DIFFERENT widths, which is what makes a
+    # per-family set comparison unable to fail.
+    cases.append(Case(
+        "shelf+columns",
+        _base(width=800.0, openings=[]),
+        [{"width_mm": 300.0, "openings": [[243, "open"]],
+          "fixed_shelf_positions": [120.0]},
+         {"width_mm": 446.0, "openings": [[243, "open"]],
+          "fixed_shelf_positions": [120.0]}]))
     cases.append(Case("face_gap=2.5", _base(face_gap_mm=2.5)))
     cases.append(Case("banding=hardwood",
                       _base(edge_band_mode="hardwood", edge_band_thickness_mm=3.2)))
@@ -244,6 +269,15 @@ KNOWN_DEFECTS: dict[tuple[str, str | None], str] = {
     ("test_the_design_payload_quotes_the_cutlist_dimensions", "banding=hardwood"):
         "D19 — payload 457 (finished) vs cutlist 453.8 (core), with no "
         "statement of which the number is.",
+    # The same defect on the crossed cases added in P3. They are listed
+    # separately rather than folded into a "*" because each names a real
+    # combination a person can build, and a fix has to make all three pass.
+    ("test_the_design_payload_quotes_the_cutlist_dimensions",
+     "hardwood+furniture_top"):
+        "D19 — same: side_panel 457 finished, 453.8 cut.",
+    ("test_the_design_payload_quotes_the_cutlist_dimensions",
+     "miter+hardwood"):
+        "D19 — same: side_panel 457 finished, 453.8 cut.",
 
     # ── D8 · the render-only transition shelf ────────────────────────────
     # server.py:5087 derives transition_shelf_zs, which emits a panel the
@@ -285,6 +319,10 @@ KNOWN_DEFECTS: dict[tuple[str, str | None], str] = {
      "corner=miter"):
         "D12 — the render draws the top and bottom 764 wide; the cutlist "
         "cuts 800 long-point with 45 degree bevels on both ends.",
+    ("test_the_render_draws_the_carcass_at_the_size_the_cutlist_cuts",
+     "miter+hardwood"):
+        "D12 — same, with banding on. Listed separately so a corner-style "
+        "fix has to satisfy both and cannot pass by special-casing one.",
 
     # ── D14 · five Domino rows have tenons longer than their mortises ────
     # Fix the five depths in DOMINO_SIZES, and derive
@@ -545,13 +583,21 @@ def test_carcass_parts_close_into_the_stated_box(case: Case):
         # so the top alone IS the width. Asserting the butt sum here would
         # have demanded a 764 top on a cabinet whose every other document
         # cuts 800 — a test enforcing the wrong construction.
-        assert top_len == pytest.approx(case.cfg.width, abs=0.05), (
-            f"{case.id}: a mitered top is cut long-point to the full "
-            f"exterior; {top_len:g} is not {case.cfg.width:g}")
+        # Dimension the BOTTOM too. The butt branch never did either, and a
+        # mitered bottom cut 36 mm short — the exact D12 error, on the paper
+        # instead of in the picture — passed an assertion that only looked
+        # at the top.
+        for label, dims in (("top", tops[0]), ("bottom", bottoms[0])):
+            assert dims[1] == pytest.approx(case.cfg.width, abs=0.05), (
+                f"{case.id}: a mitered {label} is cut long-point to the "
+                f"full exterior; {dims[1]:g} is not {case.cfg.width:g}")
     else:
-        assert top_len + 2 * side_t == pytest.approx(case.cfg.width, abs=0.05), (
-            f"{case.id}: top {top_len:g} + two {side_t:g} sides = "
-            f"{top_len + 2 * side_t:g}, not the stated width {case.cfg.width:g}")
+        for label, dims in (("top", tops[0]), ("bottom", bottoms[0])):
+            assert dims[1] + 2 * side_t == pytest.approx(
+                case.cfg.width, abs=0.05), (
+                f"{case.id}: {label} {dims[1]:g} + two {side_t:g} sides = "
+                f"{dims[1] + 2 * side_t:g}, not the stated width "
+                f"{case.cfg.width:g}")
     # Height: the sides run the full exterior on a butt carcass.
     assert sides[0][1] == pytest.approx(case.cfg.height, abs=0.05), (
         f"{case.id}: side length {sides[0][1]:g} is not the stated height "
@@ -671,35 +717,41 @@ def test_the_render_draws_the_carcass_at_the_size_the_cutlist_cuts(case: Case):
     band_t = (float(case.cfg.edge_band_thickness_mm)
               if case.cfg.edge_band_mode == "hardwood" else 0.0)
 
-    cut: dict[str, set] = {}
+    # MULTISETS, not sets. A family with two differently-sized members —
+    # two shelves at different column widths — would otherwise let the
+    # render draw BOTH at the first one's size and still pass, because the
+    # wrong size is a member of the family's set. Demonstrated at 146 mm:
+    # cutlist shelf_1 300x451 + shelf_1 446x451, render both at 300, all
+    # three closure tests green. Counting how many of each size exist is
+    # what makes "the picture contains the parts" mean something.
+    cut: Counter = Counter()
+    families = set()
     for p in cutlist_panels(case):
         name = "shelf" if p.name.startswith("shelf_") else p.name
         if name not in ("side", "bottom", "top", "column_divider", "shelf"):
             continue
-        cut.setdefault(name, set()).add((
+        families.add(name)
+        cut[(name, tuple(sorted((
             round(p.length, 1),
             round(p.width + len(p.edge_band or ()) * band_t, 1),
-            round(p.thickness, 1)))
+            round(p.thickness, 1)))))] += p.quantity
 
-    compared = 0
+    drawn: Counter = Counter()
     for part in render_parts(case):
         name = render_carcass_name(part.name)
-        if name is None or name not in cut:
+        if name is None or name not in families:
             continue
         bb = part.shape.val().BoundingBox()
-        drawn = tuple(sorted(
-            (round(bb.xlen, 1), round(bb.ylen, 1), round(bb.zlen, 1))))
-        expect = {tuple(sorted(dims)) for dims in cut[name]}
-        assert drawn in expect, (
-            f"{case.id}: the render draws {part.name!r} at "
-            f"{bb.xlen:g} × {bb.ylen:g} × {bb.zlen:g}; the cutlist's "
-            f"{name} rows finish at "
-            f"{sorted(tuple(sorted(d)) for d in cut[name])}")
-        compared += 1
+        drawn[(name, tuple(sorted((round(bb.xlen, 1), round(bb.ylen, 1),
+                                   round(bb.zlen, 1)))))] += 1
 
-    assert compared >= 4, (
-        f"{case.id}: only compared {compared} solids — check "
+    assert sum(drawn.values()) >= 4, (
+        f"{case.id}: only compared {sum(drawn.values())} solids — check "
         "render_carcass_name against the render's node names.")
+    assert drawn == cut, (
+        f"{case.id}: the render and the cutlist disagree about carcass "
+        f"sizes.\n  render:  {dict(sorted(drawn.items()))}\n"
+        f"  cutlist: {dict(sorted(cut.items()))}")
 
 
 def design_tool_call(case: Case) -> tuple[str, dict]:

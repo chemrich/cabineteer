@@ -3609,7 +3609,16 @@ def _payload_carcass_panels(
         if p.z is not None:
             block["height_from_bottom_mm"] = p.z
         if p.column is not None:
-            block["column"] = p.column + 1
+            # 0-based, matching the `index` this same payload reports in its
+            # `columns` list forty lines below. They disagreed on the first
+            # draft (column 1 beside index 0, same object, same JSON).
+            block["column_index"] = p.column
+        if p.bevel_ends:
+            # The number is the LONG POINT of a 45° end, not a face
+            # dimension: a reader who measures the finished panel across its
+            # show face gets 2 x thickness less. Saying which face a number
+            # means is the whole of D19; this is the same on another axis.
+            block["ends"] = "45° bevel — dimension is the long point"
         out[key] = block
     return out
 
@@ -5127,6 +5136,9 @@ async def _tool_visualize_cabinet(args: dict) -> list[types.TextContent]:
         divider_full_height=divider_full_height,
         include_manga=include_manga,
     )
+    caveats = _render_caveats(cfg).get("render_caveats") or []
+    if caveats:
+        info = {**info, "render_caveats": caveats}
     result = _visualize_assembly(
         assy,
         parts,
@@ -5164,21 +5176,30 @@ async def _tool_visualize_cabinet(args: dict) -> list[types.TextContent]:
 #: render is never read as a picture of the cut parts: the "furniture_top" cap
 #: once existed in approved renders and on no cutlist, and cost a batch of
 #: paper. A caveat is cheaper than a silent divergence.
-def _render_caveats(cfg: CabinetConfig) -> dict:
-    caveats: list[str] = []
+def _render_caveats(cfg: CabinetConfig, keyed: bool = False):
+    """What the 3D deliberately does not model, in the tool result AND on the
+    page (``visualize`` puts them in the viewer's info panel).
+
+    ``keyed`` returns ``[(kind, sentence)]`` so a multi-cabinet run can
+    collapse by kind — the sentences interpolate per-cabinet numbers, so
+    deduping the sentences themselves does not work.
+    """
+    out: list[tuple[str, str]] = []
     if getattr(cfg, "carcass_corner_style", "butt") == "miter":
-        caveats.append(
+        out.append(("miter",
             "Mitered corners are NOT modelled: the render draws butt corners, "
             "with the top and bottom between the sides. The cutlist is the "
             "correct document — it cuts them to the full exterior width "
-            f"({cfg.width:g} mm long-point) with 45° bevels on both ends.")
+            f"({cfg.width:g} mm long-point) with 45° bevels on both ends."))
     if getattr(cfg, "edge_band_mode", "none") == "hardwood":
-        caveats.append(
+        out.append(("hardwood_band",
             "Hardwood edge banding is not drawn. The render shows finished "
             "sizes; the cutlist cuts cores "
             f"{float(getattr(cfg, 'edge_band_thickness_mm', 0.6)):g} mm "
-            "smaller per banded edge.")
-    return {"render_caveats": caveats} if caveats else {}
+            "smaller per banded edge."))
+    if keyed:
+        return out
+    return {"render_caveats": [s for _k, s in out]} if out else {}
 
 
 # ── list_presets ──────────────────────────────────────────────────────────────
@@ -6399,6 +6420,24 @@ async def _tool_visualize_project(args: dict) -> list[types.TextContent]:
     if project.wall_width_mm:
         info["wall_width"] = project.wall_width_mm
 
+    # One caveat list for the run — the picture is one file. Grouped by the
+    # caveat's KIND, not its finished sentence: the miter text interpolates
+    # each cabinet's own width, so exact-string dedup emitted two nearly
+    # identical lines for a 600 and a 1000 cabinet, and neither said which
+    # cabinet it was about. One line per kind, naming the cabinets it covers.
+    _cabs = project.resolved()
+    _seen: dict[str, tuple[str, list[str]]] = {}
+    for _cname, _ccfg in _cabs:
+        for kind, line in _render_caveats(_ccfg, keyed=True):
+            _seen.setdefault(kind, (line, []))[1].append(_cname)
+    run_caveats = [
+        line + (" (applies to every cabinet in the run)"
+                if len(names) == len(_cabs)
+                else f" (applies to: {', '.join(names)})")
+        for kind, (line, names) in _seen.items()
+    ]
+    if run_caveats:
+        info = {**info, "render_caveats": run_caveats}
     result = _visualize_assembly(
         run_assy,
         all_parts,
@@ -6437,13 +6476,6 @@ async def _tool_visualize_project(args: dict) -> list[types.TextContent]:
     if worktop is not None:
         from .project import _worktop_to_dict
         out["worktop"] = _worktop_to_dict(worktop)
-    # One caveat list for the run — a caveat that applies to any cabinet
-    # applies to the picture, and the picture is one file.
-    run_caveats: list[str] = []
-    for _cname, _ccfg in project.resolved():
-        for line in _render_caveats(_ccfg).get("render_caveats", []):
-            if line not in run_caveats:
-                run_caveats.append(line)
     if run_caveats:
         out["render_caveats"] = run_caveats
     return _ok(out)
