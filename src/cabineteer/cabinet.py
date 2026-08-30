@@ -381,18 +381,47 @@ class CabinetConfig:
 
     @property
     def interior_depth(self) -> float:
-        """Depth from front edge to back panel face.
+        """Front edge to the front face of the back panel — where an interior
+        panel stops.
 
-        A machined capture can sit the back further forward than the legacy
-        allowance does — a dado holds it ``back_groove_setback`` in from the
-        rear — so the usable depth follows the capture. Never returns MORE
-        than the legacy allowance: drawer boxes and slides size off this,
-        and a capture must not silently deepen boxes already in the shop.
+        THE depth datum. Every interior panel's depth, every mortise span and
+        every rear-clearance check reads this one property; nothing derives
+        it a second way. Until 2026-08-29 five expressions competed for the
+        name — ``depth − back_rabbet_width`` (448 at depth 457),
+        ``depth − clear_depth`` (451) and ``depth − back_thickness`` (451,
+        457 on a dado) — and the cutlist, the hardware BOM, the design
+        payload, the 3D and the evaluator each picked a different one. The
+        visible harm: a ``dado`` carcass at depth 470 printed a 381 mm box
+        while the BOM on the same sheet ordered a 457 mm runner that cannot
+        be mounted, and ``design_cabinet`` stated an interior 3 mm shallower
+        than the bottom panel it cut in the same JSON.
+
+        ``back_rabbet_width`` is a DADO_RABBET-era side-rabbet width and now
+        applies only to that construction; every other carcass reads the
+        capture geometry, which is the thing that actually holds the back.
+
+        The old ``min(legacy, …)`` clamp is gone. Its docstring claimed
+        "drawer boxes and slides size off this", which was never true —
+        :attr:`drawer_opening_depth` is that number, and it is a separate
+        property precisely so the two questions stop sharing one name.
         """
-        legacy = self.depth - self.back_rabbet_width
-        if getattr(self, "back_capture", "pocket") == "pocket":
-            return legacy
-        return min(legacy, self.depth - back_capture_geometry(self).clear_depth)
+        if self.carcass_joinery == CarcassJoinery.DADO_RABBET:
+            return self.depth - self.back_rabbet_width
+        return self.depth - back_capture_geometry(self).clear_depth
+
+    @property
+    def drawer_opening_depth(self) -> float:
+        """Clear front-to-back space a drawer box and its runner must live in.
+
+        Equal to :attr:`interior_depth` today, and deliberately a separate
+        name. "How deep is the inside" answered two different physical
+        questions — where an interior panel stops, and how much room a
+        runner has — and collapsing them into one property is what let the
+        hardware BOM and the cutlist disagree for months while both looked
+        correct. If a future capture ever puts a panel and a runner at
+        different planes, this is where that divergence goes, once.
+        """
+        return self.interior_depth
 
     @property
     def interior_height(self) -> float:

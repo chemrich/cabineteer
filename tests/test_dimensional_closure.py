@@ -198,18 +198,12 @@ IDS = [c.id for c in MATRIX]
 # Burn-down: len(KNOWN_DEFECTS) -> 0.
 
 KNOWN_DEFECTS: dict[tuple[str, str | None], str] = {
-    # ── D1 · "interior depth" has five spellings (448 / 451 / 457) ───────
-    # The hardware BOM sizes the runner from `depth − back_thickness` while
-    # the cutlist sizes the box from `depth − geo.clear_depth` and the
-    # evaluator reads a third number. Fix: one accessor, in cabinet.py;
-    # delete the hand-rolled copies at cutlist.py:1446/1553,
-    # server.py:3721/4023 and assembly.py:636.
-    ("test_the_slide_ordered_fits_the_cabinet_it_is_ordered_for", "depth=391"):
-        "D1 — BOM orders a 381 mm runner for a 305 mm box, on the DEFAULT "
-        "back capture. He would buy the wrong runners.",
-    ("test_the_slide_ordered_fits_the_cabinet_it_is_ordered_for", "dado/depth=470"):
-        "D1 — BOM orders a 457 mm runner into 452 mm of clear depth. It "
-        "cannot be mounted, and evaluate_cabinet reports zero errors.",
+    # ── D1 · CLOSED 2026-08-29 (plan step P2) ───────────────────────────
+    # "interior depth" had five spellings. cabinet.interior_depth is now THE
+    # datum, drawer_opening_depth names the other question, and the four
+    # hand-rolled copies are gone. These three entries were removed when the
+    # assertions above started passing, which is what closing a defect looks
+    # like here: delete the line, never edit the assertion.
 
     # ── D2 · assembly map draws the bottom 6 mm short ────────────────────
     # assembly.py:350 hardcodes `depth − back_thickness` under a comment
@@ -230,16 +224,6 @@ KNOWN_DEFECTS: dict[tuple[str, str | None], str] = {
      "banding=hardwood"): "D2 — the map draws the finished panel where the "
                           "cutlist cuts a core, or the reverse. Under hardwood "
                           "banding the two differ by the band thickness.",
-
-    ("test_the_design_payload_does_not_contradict_itself", "*"):
-        "D1 — design_cabinet states interior.depth_mm 448 and, in the same "
-        "JSON, cuts bottom_panel 451. Every case, every capture: this is the "
-        "root of the five spellings.",
-    # ...but design_multi_column_cabinet is already self-consistent here, so
-    # these two are exempt and must STAY passing when D1 is fixed.
-    ("test_the_design_payload_does_not_contradict_itself", "2col"): None,
-    ("test_the_design_payload_does_not_contradict_itself",
-     "2col_uneven_door_over_drawer"): None,
 
     # ── D3 · the design payload reports a full-height divider ────────────
     # server.py:3747 hardcodes cfg.height; server.py:4151 correctly cuts to
@@ -729,17 +713,33 @@ def test_the_design_payload_does_not_contradict_itself(case: Case):
                                  for o in case.cfg.openings]
     payload = json.loads(_run(TOOL_DISPATCH[tool](args))[0].text)
 
+    from cabineteer.cabinet import back_capture_geometry
+
     interior = payload.get("interior") or {}
     stated = interior.get("depth_mm")
     if stated is None:
         pytest.skip("payload states no interior depth")
-    bottom = (payload.get("panels") or {}).get("bottom_panel") or {}
-    drawn = bottom.get("depth_mm")
-    if drawn is None:
-        pytest.skip("payload states no bottom depth")
-    assert round(stated, 1) == round(drawn, 1), (
+    panels = payload.get("panels") or {}
+    geo = back_capture_geometry(case.cfg)
+
+    # The bottom is NOT an interior panel under a machined capture: rabbet
+    # and dado seat the back inside the perimeter, so the top and bottom run
+    # full depth on purpose. Compare it against the capture's own number.
+    bottom = (panels.get("bottom_panel") or {}).get("depth_mm")
+    if bottom is not None:
+        assert round(bottom, 1) == round(geo.bottom_depth, 1), (
+            f"{case.id}: {tool} cuts the bottom {bottom:g} mm deep; a "
+            f"{case.cfg.back_capture} capture wants {geo.bottom_depth:g}")
+
+    # A divider stops at the back, so it IS the interior depth. This is the
+    # pair that contradicted itself before P2 — 448 stated, 451 cut.
+    divider = (panels.get("column_divider") or {}).get("depth_mm")
+    if divider is None:
+        pytest.skip("no interior panel in this payload to compare against")
+    assert round(stated, 1) == round(divider, 1), (
         f"{case.id}: {tool} says the interior is {stated:g} mm deep and in "
-        f"the same payload cuts the bottom panel {drawn:g} mm deep")
+        f"the same payload cuts the divider — an interior panel, which stops "
+        f"at the back — {divider:g} mm deep")
 
 
 @pytest.mark.parametrize("case", MATRIX, ids=IDS)

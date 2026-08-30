@@ -1483,6 +1483,30 @@ def pull_line_from_door(door_cfg) -> Optional[HardwareLine]:
     return _pull_line(door_cfg.pull_key, n)
 
 
+def _interior_depth(cab_cfg) -> float:
+    """The depth datum: front edge to the back panel's front face.
+
+    A one-line indirection with a purpose. Callers here take duck-typed
+    config objects (tests pass stand-ins), so a bare attribute access would
+    raise on those while a hand-rolled fallback would reintroduce the second
+    derivation this exists to remove. Fall back to the same arithmetic
+    ``CabinetConfig`` uses, never to a different one.
+    """
+    depth = getattr(cab_cfg, "interior_depth", None)
+    if depth is not None:
+        return float(depth)
+    from .cabinet import back_capture_geometry
+    return float(cab_cfg.depth - back_capture_geometry(cab_cfg).clear_depth)
+
+
+def _drawer_opening_depth(cab_cfg) -> float:
+    """The space a drawer box and its runner must fit into."""
+    depth = getattr(cab_cfg, "drawer_opening_depth", None)
+    if depth is not None:
+        return float(depth)
+    return _interior_depth(cab_cfg)
+
+
 def pull_lines_for_cabinet_config(
     cab_cfg, columns_raw: list | None = None
 ) -> list[HardwareLine]:
@@ -1503,7 +1527,10 @@ def pull_lines_for_cabinet_config(
     from .cabinet import bays_from_config, face_layout
 
     lines: list[HardwareLine] = []
-    interior_depth = cab_cfg.depth - getattr(cab_cfg, "back_thickness", 6.0)
+    # The depth datum, not a hand-rolled `depth − back_thickness`: that
+    # expression ignores back_groove_setback entirely, so on a dado carcass
+    # it reported a deeper interior than the back leaves.
+    interior_depth = _interior_depth(cab_cfg)
 
     # Pull counts depend on face width (dual-pull threshold, fit checks) —
     # bill against the REAL face from face_layout, not DrawerConfig's
@@ -1610,7 +1637,10 @@ def slide_lines_for_cabinet_config(cab_cfg, columns_raw: list | None = None) -> 
     from .hardware import get_slide
     from .drawer import DrawerConfig
 
-    interior_depth = cab_cfg.depth - getattr(cab_cfg, "back_thickness", 6.0)
+    # A runner's length is chosen from the space it must live in, so this
+    # asks drawer_opening_depth by name. Reading `depth − back_thickness`
+    # here is what ordered a 457 mm runner into 452 mm of clear depth.
+    interior_depth = _drawer_opening_depth(cab_cfg)
 
     def _slides_from_stack(stack, interior_width: float) -> list[HardwareLine]:
         lines: list[HardwareLine] = []
@@ -2505,13 +2535,10 @@ def joinery_lines_for_cabinet_config(
     if joinery == CarcassJoinery.DADO_RABBET:
         return []
 
-    # Span must match build_assembly_plan exactly (the plan's per-joint
-    # mortise count and this BOM's tenon count are the same census) — both
-    # use the interior_depth property (depth − back_rabbet_width), which
-    # also keeps mortises clear of the back rabbet.
-    interior_depth = float(getattr(
-        cab_cfg, "interior_depth",
-        cab_cfg.depth - getattr(cab_cfg, "back_rabbet_width", 9.0)))
+    # Span must match build_assembly_plan exactly — the plan's per-joint
+    # mortise count and this BOM's tenon count are the same census, so both
+    # read the depth datum rather than restating it.
+    interior_depth = _interior_depth(cab_cfg)
     side_t = getattr(cab_cfg, "side_thickness", 18.0)
 
     # Count joints: top+bottom = 4, each divider adds 2, each shelf adds 2.

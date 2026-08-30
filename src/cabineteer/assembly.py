@@ -633,7 +633,7 @@ def build_drawer_box_plans(cab_cfg, id_map=None) -> list[DrawerBoxPlan]:
     from .drawer import box_config_for_opening
 
     id_map = id_map or {}
-    interior_depth = cab_cfg.depth - back_capture_geometry(cab_cfg).clear_depth
+    interior_depth = cab_cfg.interior_depth  # the datum, not a second derivation
     interior_width = cab_cfg.interior_width
 
     # A single-column cabinet carries its stack on the config itself; a

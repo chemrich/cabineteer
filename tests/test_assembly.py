@@ -103,9 +103,24 @@ class TestAssemblyPlan:
         assert plan.positions[-1] == pytest.approx(plan.span - first, abs=0.1)
         assert list(plan.positions) == sorted(plan.positions)
 
-    def test_span_is_interior_depth(self):
+    def test_span_is_the_depth_of_the_panel_the_mortises_go_into(self):
+        """Closure, not a restatement.
+
+        ``assembly.py`` sets ``plan.span = cab_cfg.interior_depth``, so
+        asserting those two are equal cannot fail — it re-types the
+        implementation. There were two copies of that assertion. This one
+        checks the span against the panel the joint is actually cut into,
+        which is a fact about the furniture: mortises spaced across a span
+        longer than the panel would run off its end.
+        """
+        from cabineteer.server import _raw_panels_for_cabinet
         cfg = _box()
         plan = build_assembly_plan(cfg)
+        carcass, _thin, _box_p, _faces = _raw_panels_for_cabinet(cfg, None)
+        bottom = next(p for p in carcass if p.name == "bottom")
+        assert plan.span <= bottom.width + 0.01, (
+            f"joints span {plan.span:g} mm across a bottom panel only "
+            f"{bottom.width:g} mm deep")
         assert plan.span == pytest.approx(cfg.interior_depth)
 
     def test_18mm_plan_uses_5x30(self):
@@ -226,10 +241,10 @@ class TestPlanBomSpanParity:
         plan = build_assembly_plan(cfg)
         assert plan.tenons_per_cabinet == self._bom_pieces(cfg)
 
-    def test_span_is_interior_depth(self):
-        cfg = _box()
-        plan = build_assembly_plan(cfg)
-        assert plan.span == pytest.approx(cfg.interior_depth)
+    # (The span/interior_depth assertion lives once, in TestAssemblyPlan,
+    # where it is checked against the panel the mortises go into. A second
+    # copy of `plan.span == cfg.interior_depth` restated assembly.py:286 and
+    # could not fail.)
 
 
 class TestDividerShelfMaps:
