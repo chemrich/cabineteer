@@ -146,13 +146,50 @@ class TestBandSegments:
         assert sorted(lengths) == [200.0, 200.0, 500.0]
 
     def test_all_marker_is_perimeter_and_quantity_multiplies(self):
-        cfg = _cfg()
+        """The perimeter is not 2L + 2W — the long pair laps the short pair.
+
+        This asserted the bare rectangle, which is the footage you would buy
+        if the four pieces butted at the corners. They do not: the short pair
+        goes on first and the long pair covers it, so each long piece is
+        2 x band thickness longer than the panel. The BOM was under-ordering
+        by exactly that, and it read as correct because the geometry it
+        described was the geometry nobody builds.
+        """
+        cfg = _cfg(edge_band_thickness_mm=3.2)
         p = CutlistPanel(name="door", length=600.0, width=300.0, thickness=18,
                          quantity=2, material="baltic_birch",
                          edge_band=["all"])
         (_, lengths), = band_segments_for_panels([p], cfg).items()
         assert len(lengths) == 8
-        assert sum(lengths) == 2 * 2 * (600.0 + 300.0)
+        assert sorted(lengths) == [300.0, 300.0, 300.0, 300.0,
+                                   606.4, 606.4, 606.4, 606.4]
+        assert sum(lengths) == 2 * 2 * (600.0 + 2 * 3.2 + 300.0)
+
+    def test_the_ordering_bom_and_the_banding_doc_quote_one_length(self):
+        """Two producers, one quantity — so one of them is a projection.
+
+        They were separate implementations with separate copies of which
+        edge runs along which axis. Correcting the perimeter in one would
+        have left the sheet he orders from and the sheet he cuts from
+        disagreeing about the same strip.
+        """
+        from cabineteer.cutlist import band_pieces_for_panels
+        cfg = _cfg(edge_band_thickness_mm=3.2)
+        panels = [
+            CutlistPanel(name="door", length=600.0, width=300.0, thickness=18,
+                         quantity=2, material="baltic_birch",
+                         edge_band=["all"]),
+            CutlistPanel(name="side", length=720.0, width=457.0, thickness=18,
+                         material="baltic_birch", edge_band=["front"]),
+        ]
+        from collections import Counter
+        segs = band_segments_for_panels(panels, cfg)
+        pieces = band_pieces_for_panels(panels, cfg)
+        by_mat: dict = {}
+        for pc in pieces:
+            by_mat.setdefault(pc["material"], []).append(pc["length"])
+        assert {m: Counter(v) for m, v in segs.items()} == \
+            {m: Counter(v) for m, v in by_mat.items()}
 
 
 class TestBandLine:
@@ -554,3 +591,95 @@ class TestProjectIntegration:
         assert band2[0]["unit_price_usd"] == 0.0
         # no stock spec → no banding cutlist files
         assert "banding_cutlist_html" not in cut2["files"]
+
+
+class TestBandPiecesCloseIntoTheFinishedPanel:
+    """A band piece has to reach both ends of the edge it is glued to.
+
+    The banding surface had no closure coverage at all — the review found it
+    alongside sheet packing and the 3D — and the defect it was hiding is the
+    kind you only see at the bench: long-edge pieces were emitted at the
+    panel's CORE length under a "Finished length" header, while the doc's own
+    corner note said short edges go on FIRST and the long bands overlap them.
+    A long piece therefore has to span the core PLUS the two short bands
+    already stuck to its ends.
+
+    The corner note claimed the 10 mm proud allowance absorbed that. It does
+    not: at 1/8" it leaves 3.6 mm to flush-trim both ends, and at 1/4" the
+    piece comes out 2.7 mm SHORTER than its own edge. 56 strips on the
+    sideboards, and `check_edge_banding` says nothing at either thickness.
+    """
+
+    @staticmethod
+    def _perimeter(core_l, core_w, thk):
+        from cabineteer.cutlist import band_pieces_for_panels
+        cfg = _cfg(edge_band_thickness_mm=thk, edge_band_stock=STOCK_55)
+        panel = CutlistPanel(name="door", length=core_l, width=core_w,
+                             thickness=18, material="baltic_birch",
+                             edge_band=["all"])
+        pieces = band_pieces_for_panels([panel], cfg)
+        return ({round(p["length"], 3)
+                 for p in pieces if p["edge"] == "long edge"},
+                {round(p["length"], 3)
+                 for p in pieces if p["edge"] == "short edge"})
+
+    @pytest.mark.parametrize("thk", [3.2, 3.175, 6.35, 0.6])
+    def test_the_four_pieces_close_into_the_finished_panel(self, thk):
+        """Short pair on the core, long pair over the top of them."""
+        core_l, core_w = 500.0, 280.0
+        long_p, short_p = self._perimeter(core_l, core_w, thk)
+        assert short_p == {round(core_w, 3)}, (
+            "the short pair goes on FIRST, onto the bare core")
+        assert long_p == {round(core_l + 2 * thk, 3)}, (
+            "the long pair goes on SECOND, over the two short bands")
+        # Closure: the panel the four pieces produce is the finished panel.
+        assert max(long_p) == pytest.approx(core_l + 2 * thk)
+        assert max(short_p) + 2 * thk == pytest.approx(core_w + 2 * thk)
+
+    @pytest.mark.parametrize("thk", [3.2, 6.35])
+    def test_a_long_piece_reaches_both_ends_of_its_own_edge(self, thk):
+        """The predicate that fails at 1/4" without the fix.
+
+        Referencing no document: the edge a long band covers is as wide as
+        the panel once the short bands are on it. A piece shorter than that
+        cannot be trimmed to fit — there is nothing to trim.
+        """
+        core_l, core_w = 500.0, 280.0
+        long_p, _short = self._perimeter(core_l, core_w, thk)
+        edge_span = core_l + 2 * thk
+        assert min(long_p) >= edge_span - 1e-6, (
+            f"a {min(long_p):g} mm piece cannot cover a {edge_span:g} mm edge")
+
+    def test_short_and_long_are_geometry_not_field_names(self):
+        """A wide, low door has width > length; the labels must follow.
+
+        They were assigned from which dataclass field the number lived in,
+        so a panel wider than it is tall got them backwards — and the
+        builder is told to band the short edges first.
+        """
+        # Taller than wide: length is the long axis.
+        long_p, short_p = self._perimeter(600.0, 300.0, 3.2)
+        assert max(long_p) > max(short_p)
+        # Wider than tall: width is the long axis, and the labels swap.
+        long_p, short_p = self._perimeter(300.0, 900.0, 3.2)
+        assert short_p == {300.0}
+        assert long_p == {900.0 + 6.4}
+
+    def test_a_single_banded_edge_laps_nothing(self):
+        """A carcass front band runs its edge and stops — no overlap term."""
+        from cabineteer.cutlist import band_pieces_for_panels
+        cfg = _cfg(edge_band_thickness_mm=3.2, edge_band_stock=STOCK_55)
+        panel = CutlistPanel(name="side", length=720.0, width=457.0,
+                             thickness=18, material="baltic_birch",
+                             edge_band=["front"])
+        pieces = band_pieces_for_panels([panel], cfg)
+        assert [p["length"] for p in pieces] == [720.0]
+
+    def test_the_corner_note_states_the_overlap_it_costs(self):
+        """The note used to say the proud allowance absorbed it. It does not."""
+        from cabineteer.cutlist import _band_corner_notes
+        cfg = _cfg(edge_band_thickness_mm=3.2, edge_band_stock=STOCK_55)
+        schedule = [{"edges": "long edge, short edge"}]
+        text = " ".join(_band_corner_notes(cfg, schedule))
+        assert "6.4 mm longer than the panel" in text
+        assert "proud allowance covers" not in text

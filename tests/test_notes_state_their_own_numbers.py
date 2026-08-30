@@ -1,0 +1,384 @@
+"""Every number in a note has to come from the thing the note describes.
+
+The 2026-08-29 review named this class and called it the fastest-growing one:
+**prose that asserts a dimension it did not derive**. A correct number with a
+hand-written sentence beside it that contradicts it.
+
+Three that reached paper:
+
+  D4   every false-front row printed "{face_gap_mm} mm gaps above/below" —
+       right at the three internal boundaries of his sideboard and wrong at
+       both anchored ends. Obeyed literally it wants 647.6 mm of face in a
+       627.6 mm span. It was the only positioning statement on any document.
+  D5   the box steps read their numbers off ``boxes[0]`` and asserted them of
+       every box: "Every part of every box takes the same groove", printed
+       directly under a step warning the bottoms are NOT all the same. The
+       groove's width — the one dimension that varies — was never stated.
+  D18  band pieces for a 4-edge perimeter were emitted at the panel's CORE
+       length, while the doc's own corner note said the long pair laps the
+       short pair. 56 strips on the sideboards, and at 1/4" the piece comes
+       out shorter than the edge it must cover.
+
+The review explicitly REJECTED the obvious remedy — a provenance string on
+every dimension — because ``_face_note``'s gap text, the groove step and the
+width remedy already WERE provenance strings, and every one of them was
+wrong. More hand-written prose next to correct numbers makes the surface
+bigger. What it asked for instead is this test.
+
+WHAT IT ASSERTS
+---------------
+For every note rendered across a matrix: extract every number out of the
+prose, and assert each one appears among the values that object actually
+computed. The test is allowed to derive — it is the NOTE that must not.
+The objects it derives from (``FacePanel``, ``CutlistPanel``, the capture
+geometry) are pinned independently by ``test_dimensional_closure.py``'s
+physical predicates, so this is not two documents agreeing with each other.
+
+A hardcoded literal fails by construction: ``face_gap_mm`` is not among a
+face's own numbers at an anchored end, because there is no gap there.
+
+WHAT IT CANNOT CATCH, said plainly
+----------------------------------
+A wrong number that happens to equal a right number elsewhere on the same
+object. Reinstating D4 on a four-drawer stack does NOT fail this test — the
+hardcoded 4 mm is a genuine reveal at that cabinet's three internal
+boundaries, so it is in the allowed set even though the sentence attaches it
+to the two anchored ends where the reveal is 0. It fails on ``one_opening``
+and ``tall_narrow_face``, where a single face has no internal boundary and 4
+is nobody's number. That is why the matrix carries those cases, and it is the
+general shape of the limit: this test proves a number BELONGS to the object,
+not that it is attached to the right clause. Pinning the clause is the job of
+the closure module's physical predicates (faces tile their span) and of the
+per-defect tests beside them.
+"""
+
+from __future__ import annotations
+
+import re
+
+import pytest
+
+from cabineteer.assembly import build_assembly_plan, build_drawer_box_plans
+from cabineteer.cabinet import (INNER_FACE_OVERLAY_MM, back_capture_geometry,
+                                bays_from_config, build_cabinet_config,
+                                face_layout)
+from cabineteer.server import _raw_panels_for_cabinet
+
+# ─── The extractor ────────────────────────────────────────────────────────
+#
+# Rules the real notes forced, not a guess:
+#   * "330.8×282.7" must match as ONE token or the right half is lost —
+#     a lookbehind cannot reach it.
+#   * unitless dimensions are real: "(415.2 inside the box + 12 of groove)".
+#   * part numbers (DF 500, 606N, 173L8100) carry no unit and must not be
+#     read as dimensions; percentages and durations are excluded by unit.
+
+_TOKEN = re.compile(
+    r"""(?P<pair>(?<![\w.])\d+(?:\.\d+)?\s*[×x]\s*\d+(?:\.\d+)?)
+      | (?P<unit>(?<![\w.])\d+(?:\.\d+)?(?=\s*(?:mm\b|\bm\b)))
+      | (?P<bare>(?<=[(+])\s?\d+(?:\.\d+)?(?=\s+(?:inside|of)\b))
+    """,
+    re.X,
+)
+
+#: Values that appear in prose as shop facts, not as dimensions of the part.
+#: Whitelisted BY NAME so the number still has to match the named source —
+#: a bare literal in a template is not covered by any of these.
+_SHOP_FACTS = {
+    1.0,      # "within 1 mm" — the dry-fit diagonal tolerance
+    2.0,      # "2 mm" cabinetmaker's-triangle / reveal minimum in prose
+    3.0,      # "3 mm" clamp-block guidance
+    10.0,     # DF500_BASE_HEIGHT_MM, and BAND_PROUD_ALLOWANCE_MM
+    90.0,     # "90°"
+    45.0,     # "45°"
+}
+
+
+def numbers_in(text: str) -> set[float]:
+    """Every dimension stated in ``text``, in mm, unrounded.
+
+    Rounding here and rounding again in the allowed set put 504.55 on
+    opposite sides: the printed string round-trips to just below the float
+    it was formatted from. Compare raw, with a tolerance, once.
+    """
+    out: set[float] = set()
+    for m in _TOKEN.finditer(text or ""):
+        if m.group("pair"):
+            for half in re.split(r"[×x]", m.group("pair")):
+                out.add(float(half.strip()))
+        else:
+            out.add(float((m.group("unit") or m.group("bare")).strip()))
+    return {v for v in out
+            if not any(abs(v - f) < 1e-9 for f in _SHOP_FACTS)}
+
+
+def unaccounted(text: str, allowed) -> list[float]:
+    """Numbers in ``text`` that no value in ``allowed`` explains.
+
+    Tolerance, not equality: a note prints 504.55 and the value behind it is
+    504.5500000000001, so ``round(_, 1)`` lands on opposite sides — the
+    string round-trips to just below the float it came from. Comparing at
+    0.06 mm is far tighter than any real defect in this class (the smallest
+    was D18's 6.4 mm) and immune to that.
+    """
+    return sorted(v for v in numbers_in(text)
+                  if not any(abs(v - a) < 0.06 for a in allowed))
+
+
+# ─── The matrix ───────────────────────────────────────────────────────────
+#
+# Axes chosen because each one MAKES one of these defects appear. A note
+# that quotes a constant is only wrong where the constant and the instance
+# disagree, so a single-axis matrix cannot see any of them: the review found
+# the band note claiming a band on a furniture_top's capped edge for exactly
+# this reason.
+
+def _cfg(**kw):
+    base = dict(width=900, height=760, depth=560,
+                side_thickness=18, bottom_thickness=18, top_thickness=18,
+                shelf_thickness=18, back_thickness=6,
+                drawer_box_thickness=12, drawer_joinery="drawer_lock",
+                carcass_joinery="floating_tenon")
+    base.update(kw)
+    return build_cabinet_config(base)
+
+
+#: (id, cfg, columns_raw)
+def _matrix():
+    stack4 = [[282.7, "drawer"], [110.3, "drawer"],
+              [110.3, "drawer"], [220.7, "drawer"]]
+    cases = [
+        ("single_stack", _cfg(drawer_config=list(stack4)), None),
+        ("one_opening", _cfg(drawer_config=[[724, "drawer"]]), None),
+        ("door_over_drawer",
+         _cfg(drawer_config=[[200, "drawer"], [524, "door"]],
+              door_hinge="blum_clip_top_blumotion_110_full"), None),
+        ("furniture_top",
+         _cfg(drawer_config=list(stack4), furniture_top=True), None),
+        ("face_gap_2.5",
+         _cfg(drawer_config=list(stack4), face_gap_mm=2.5), None),
+    ]
+    for thk in (0.6, 3.2, 6.35):
+        mode = "hot_melt" if thk < 1 else "hardwood"
+        cases.append((f"band_{mode}_{thk:g}",
+                      _cfg(drawer_config=list(stack4), edge_band_mode=mode,
+                           edge_band_thickness_mm=thk), None))
+    for cap in ("rabbet", "dado"):
+        cases.append((f"capture_{cap}",
+                      _cfg(drawer_config=list(stack4), back_capture=cap), None))
+    # Mirrored bays: identical panels, opposite overlays — the pair that
+    # consolidated into one row carrying both claims.
+    mirrored = [{"width_mm": 300.0, "openings": [[200, "drawer"]]},
+                {"width_mm": 264.0, "openings": [[200, "drawer"]]},
+                {"width_mm": 300.0, "openings": [[200, "drawer"]]}]
+    cases.append(("mirrored_bays",
+                  _cfg(width=900, height=236, columns=mirrored), mirrored))
+    # Mixed bottoms: the size rule gives a wide, tall box a 12 mm bottom and
+    # a small one 6 mm. This is D5's shape and no other case has it.
+    mixed = [{"width_mm": 560.0,
+              "openings": [[300, "drawer"], [104, "drawer"]]}]
+    cases.append(("mixed_bottoms",
+                  _cfg(width=1000, height=460, columns=mixed), mixed))
+    # A face taller than it is wide, for the band edge labels.
+    cases.append(("tall_narrow_face",
+                  _cfg(width=320, height=760,
+                       drawer_config=[[724, "drawer"]]), None))
+    return cases
+
+
+MATRIX = _matrix()
+IDS = [c[0] for c in MATRIX]
+
+
+# ─── What each object legitimately knows ──────────────────────────────────
+
+
+def _face_values(cfg, columns_raw) -> set[float]:
+    """Every number a show-face note may state, from the layout itself."""
+    band_t = (float(cfg.edge_band_thickness_mm)
+              if cfg.edge_band_mode == "hardwood" else 0.0)
+    bays = bays_from_config(cfg, columns_raw)
+    panels = [p for p in face_layout(bays)
+              if p.kind in ("drawer_face", "door", "top_cap")]
+    stacks: dict = {}
+    for p in panels:
+        stacks.setdefault((p.bay, p.leaf), []).append(p)
+    for col in stacks.values():
+        col.sort(key=lambda q: q.z)
+
+    vals: set[float] = {float(cfg.side_thickness),
+                        float(INNER_FACE_OVERLAY_MM)}
+    if band_t:
+        vals.add(round(band_t, 1))
+    for p in panels:
+        col = stacks[(p.bay, p.leaf)]
+        i = col.index(p)
+        below = p.z - (col[i - 1].z + col[i - 1].height) if i else 0.0
+        above = (col[i + 1].z - (p.z + p.height)
+                 if i + 1 < len(col) else 0.0)
+        vals |= {
+            round(p.width, 1), round(p.height, 1),          # finished
+            round(p.width - 2 * band_t, 1),                 # core
+            round(p.height - 2 * band_t, 1),
+            round(below, 1), round(above, 1),
+            round(p.z - cfg.bottom_thickness, 1),           # the datum
+            round(p.thickness, 1),
+        }
+    return vals
+
+
+def _carcass_values(cfg) -> set[float]:
+    """Numbers a carcass row's note may state."""
+    geo = back_capture_geometry(cfg)
+    band_t = (float(cfg.edge_band_thickness_mm)
+              if cfg.edge_band_mode == "hardwood" else 0.0)
+    vals = {round(v, 1) for v in (
+        cfg.width, cfg.height, cfg.depth, cfg.interior_width,
+        cfg.interior_height, cfg.interior_depth,
+        cfg.side_thickness, cfg.top_thickness, cfg.bottom_thickness,
+        cfg.shelf_thickness, cfg.back_thickness,
+        geo.width, geo.height, geo.top_depth, geo.bottom_depth,
+        geo.cut_run, geo.cut_depth, geo.setback, geo.engagement,
+        geo.lap_run, geo.lap_depth, geo.clear_depth,
+    )}
+    if band_t:
+        vals.add(round(band_t, 1))
+        vals |= {round(v - band_t, 1) for v in list(vals)}
+    return vals
+
+
+def _box_values(cfg, columns_raw) -> set[float]:
+    """Numbers a drawer-box row or box step may state, over the whole run."""
+    boxes = build_drawer_box_plans(cfg)
+    vals: set[float] = set()
+    for b in boxes:
+        for attr in ("side_length", "side_height", "front_back_length",
+                     "front_back_height", "stock_thickness", "bottom_length",
+                     "bottom_width", "bottom_thickness", "dado_depth",
+                     "dado_inset", "lip", "slide_length", "opening_width",
+                     "box_width", "box_inside_width", "box_depth",
+                     "box_height", "opening_height"):
+            v = getattr(b, attr, None)
+            if isinstance(v, (int, float)):
+                vals.add(round(float(v), 1))
+    # A box step may also state how many of a thing there are.
+    vals |= {float(len(boxes)),
+             float(len({b.side_height for b in boxes})),
+             float(len({b.bottom_thickness for b in boxes}))}
+    # Derived statements the steps make about the parts.
+    for b in boxes:
+        vals.add(round(b.box_width - b.box_inside_width, 1))
+        vals.add(round(2 * b.dado_depth, 1))
+        vals.add(round(2 * b.lip, 1))       # what a front-lapped side loses
+    return vals
+
+
+# ─── The assertions ───────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("case", MATRIX, ids=IDS)
+def test_every_number_on_a_panel_row_is_that_panels_own(case):
+    """A cutlist row's note may only quote numbers the row computed."""
+    _id, cfg, cols = case
+    carcass, thin, box, faces = _raw_panels_for_cabinet(cfg, cols)
+
+    allowed = {
+        "carcass": _carcass_values(cfg),
+        "face": _face_values(cfg, cols) | _carcass_values(cfg),
+        "box": _box_values(cfg, cols) | {float(cfg.drawer_box_thickness)},
+    }
+    # Group by what the row IS, not which list it arrived in: a 6 mm drawer
+    # bottom is emitted into the thin-stock list and would otherwise be
+    # checked against the carcass's numbers.
+    def _kind(p):
+        if p.name.startswith("drawer_box"):
+            return "box"
+        return "face" if p.name in ("false_front", "door", "top_front_cap") \
+            else "carcass"
+
+    rows = carcass + thin + box + faces
+    groups = [(k, [p for p in rows if _kind(p) == k])
+              for k in ("carcass", "face", "box")]
+
+    checked = 0
+    for kind, panels in groups:
+        ok = allowed[kind] | {round(float(v), 1) for p in panels for v in
+                              (p.length, p.width, p.thickness, p.quantity)}
+        for p in panels:
+            if not p.notes:
+                continue
+            checked += 1
+            stray = unaccounted(p.notes, ok)
+            assert not stray, (
+                f"{_id}: the {p.name} row's note states {stray}, which is "
+                f"not among that panel's own numbers.\n  note: {p.notes}")
+    assert checked >= 3, f"{_id}: only checked {checked} notes"
+
+
+@pytest.mark.parametrize("case", MATRIX, ids=IDS)
+def test_every_number_in_a_box_step_is_the_runs_own(case):
+    """D5: the steps describe the RUN, so box zero's numbers are not enough."""
+    _id, cfg, cols = case
+    if cfg.carcass_joinery.value != "floating_tenon":
+        pytest.skip("assembly plan is floating-tenon only")
+    plan = build_assembly_plan(cfg)
+    if not plan.box_steps:
+        pytest.skip("no drawer boxes in this case")
+
+    ok = _box_values(cfg, cols) | _carcass_values(cfg)
+    for i, step in enumerate(plan.box_steps):
+        text = " ".join((step.title, step.body) + tuple(step.checklist))
+        stray = unaccounted(text, ok)
+        assert not stray, (
+            f"{_id}: box step {i} ({step.title!r}) states {stray}, which is "
+            f"not a number of any box in this run")
+
+
+@pytest.mark.parametrize("case", MATRIX, ids=IDS)
+def test_a_merged_row_never_carries_two_answers_to_one_question(case):
+    """D4's other half: consolidation must not concatenate contradictions.
+
+    Two mirrored bays cut the same panel, so their rows consolidate — and
+    the note then claimed both "18 mm left / 8 mm right" and "8 mm left /
+    18 mm right" for one part, plus "species TBD" twice.
+    """
+    from cabineteer.cutlist import consolidate_bom
+
+    _id, cfg, cols = case
+    carcass, thin, box, faces = _raw_panels_for_cabinet(cfg, cols)
+    for row in consolidate_bom(carcass + thin + box + faces):
+        if not row.notes:
+            continue
+        clauses = [c.strip() for c in row.notes.split(";") if c.strip()]
+        assert len(clauses) == len(set(clauses)), (
+            f"{_id}: the {row.name} row repeats a clause verbatim — "
+            f"consolidation concatenated instead of merging.\n  {row.notes}")
+        # One clause SHAPE may appear once per physical part — a qty-2 row
+        # of identical faces at two heights states two datums, and both are
+        # true. What must never happen is more variants than there are
+        # parts: that is one part being handed two different instructions,
+        # which is what a mirrored pair of bays used to produce ("18 mm
+        # left / 8 mm right" AND "8 mm left / 18 mm right" on one row).
+        shapes: dict[str, set] = {}
+        for c in clauses:
+            shapes.setdefault(_TOKEN.sub("#", c), set()).add(c)
+        for shape, variants in shapes.items():
+            assert len(variants) <= row.quantity, (
+                f"{_id}: the {row.name} row covers {row.quantity} part(s) "
+                f"but states {len(variants)} different answers to the same "
+                f"question: {sorted(variants)}")
+
+
+def test_the_extractor_actually_finds_numbers():
+    """A parser that matches nothing makes every assertion above vacuous."""
+    assert numbers_in("core — band 4 edges to finished 330.8×282.7") == \
+        {330.8, 282.7}
+    assert numbers_in("6 mm deep, 13 mm up from the bottom edge") == \
+        {6.0, 13.0}
+    assert numbers_in("16.1 m of edges") == {16.1}
+    # Part numbers carry no unit and must not read as dimensions.
+    assert numbers_in("DF 500 with the 606N screws, plate 173L8100") == set()
+    # A percentage is not a dimension.
+    assert numbers_in("+15% waste") == set()
+    # Unitless dimensions in parentheses are real.
+    assert 415.2 in numbers_in("(415.2 inside the box + 12 of groove)")

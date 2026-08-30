@@ -800,6 +800,87 @@ def _box_table_caption(boxes: list) -> str:
             f"assembled box must measure its Box column.")
 
 
+def _groove_step(bottoms: list, depths: list, insets: list) -> AssemblyStep:
+    """The bottom-groove step, told by the run rather than by box zero.
+
+    A groove has three dimensions and this step used to print two of them.
+    The missing one is the WIDTH — which IS the bottom panel's thickness
+    (``drawer.make_drawer_side`` cuts the dado ``bottom_thickness`` across)
+    and the only one of the three that varies from box to box. So on a run
+    mixing 6 mm and 12 mm bottoms the page said "Every part of every box
+    takes the same groove", directly under a step warning that the bottoms
+    are NOT all the same, and never named the setting that differs. Cutting
+    the run at one width puts a 12 mm panel at a 6 mm groove.
+    """
+    uniform = len(bottoms) == 1 and len(depths) == 1 and len(insets) == 1
+
+    def _mm(vals):
+        return " and ".join(f"{v:g} mm" for v in vals)
+
+    if uniform:
+        return AssemblyStep(
+            "Groove for the bottoms — one saw setup, every part",
+            f"Every part of every box takes the same groove: "
+            f"{bottoms[0]:g} mm wide (the bottom panel's own thickness) × "
+            f"{depths[0]:g} mm deep, {insets[0]:g} mm up from the bottom "
+            "edge, on the inside face, running the full length. Cut them "
+            "all in one session — the setup is the work, the cutting is "
+            "nothing.",
+            checklist=(
+                f"Set the fence so the groove sits {insets[0]:g} mm from the "
+                "BOTTOM edge, and confirm which edge that is on each part "
+                "before it goes through.",
+                f"Set the cutter to {bottoms[0]:g} mm wide — the groove has "
+                "to match the bottom it holds, and that is the dimension "
+                "this run has only one value of.",
+                "Cut a test groove in offcut and fit an actual bottom "
+                "panel: snug enough to hold, loose enough to slide in dry. "
+                "A bottom forced into a tight groove will bow the box and "
+                "you will not get it square.",
+                "Run all four parts of every box. A box missing one groove "
+                "does not show up until glue-up, when it is too late.",
+            ))
+
+    varies = []
+    if len(bottoms) > 1:
+        varies.append(f"width ({_mm(bottoms)})")
+    if len(depths) > 1:
+        varies.append(f"depth ({_mm(depths)})")
+    if len(insets) > 1:
+        varies.append(f"height off the bottom edge ({_mm(insets)})")
+    same = []
+    if len(depths) == 1:
+        same.append(f"{depths[0]:g} mm deep")
+    if len(insets) == 1:
+        same.append(f"{insets[0]:g} mm up from the bottom edge")
+    same_txt = (" " + " and ".join(same) + " on every part."
+                if same else "")
+    n_setups = len(bottoms) if len(bottoms) > 1 else max(
+        len(depths), len(insets))
+    return AssemblyStep(
+        f"Groove for the bottoms — {n_setups} setups, NOT one",
+        "This run does not take a single groove setting: the "
+        + ", ".join(varies) + " changes from box to box."
+        + same_txt
+        + " The groove's width is the thickness of the bottom it holds, so "
+        "sort the boxes by bottom thickness and cut each group in its own "
+        "pass. A 12 mm bottom will not enter a 6 mm groove, and a 6 mm "
+        "bottom rattles in a 12 mm one.",
+        checklist=(
+            "Sort every part into groups by its box's bottom thickness "
+            "BEFORE any of them goes near the saw — the parts do not say "
+            "which group they belong to once they are mixed.",
+            "For each group: set the cutter to that group's width ("
+            + _mm(bottoms) + "), cut a test groove in offcut, and fit an "
+            "actual bottom from that group before running the rest.",
+            "Re-check the fence height after every cutter change. It is the "
+            "setting that does NOT vary here, which is exactly the one that "
+            "gets knocked without being noticed.",
+            "Run all four parts of every box. A box missing one groove does "
+            "not show up until glue-up, when it is too late.",
+        ))
+
+
 def _build_box_steps(boxes: list, cab_cfg) -> list[AssemblyStep]:
     """Bench sequence for the drawer boxes.
 
@@ -809,28 +890,57 @@ def _build_box_steps(boxes: list, cab_cfg) -> list[AssemblyStep]:
     """
     if not boxes:
         return []
-    t = boxes[0].stock_thickness
-    dado_d = boxes[0].dado_depth
-    dado_i = boxes[0].dado_inset
-    joint = boxes[0].joinery.replace("_", "-")
-    laps_front = boxes[0].laps_front
-    lip = boxes[0].lip
-    bottoms = sorted({b.bottom_thickness for b in boxes})
-    heights = sorted({b.side_height for b in boxes})
+
+    def _set(attr):
+        """Every distinct value of ``attr`` across the run, sorted.
+
+        Box steps used to read their numbers off ``boxes[0]`` and assert
+        them of every box — "Every part of every box takes the same
+        groove" — while the very same function was already computing
+        ``bottoms`` as a set in order to warn that they are NOT all the
+        same. Two adjacent steps on one printed page said opposite things.
+        Nothing here reads box zero any more.
+        """
+        return sorted({getattr(b, attr) for b in boxes})
+
+    def _mm(vals) -> str:
+        return " and ".join(f"{v:g} mm" for v in vals)
+
+    stocks = _set("stock_thickness")
+    depths = _set("dado_depth")
+    insets = _set("dado_inset")
+    joints = sorted({b.joinery.replace("_", "-") for b in boxes})
+    lips = _set("lip")
+    bottoms = _set("bottom_thickness")
+    heights = _set("side_height")
     n = len(boxes)
+    laps_front = any(b.laps_front for b in boxes)
+    all_lap_front = all(b.laps_front for b in boxes)
     inside_ref = any(b.clearance_reference == "inside" for b in boxes)
     widths = sorted({(b.opening_width, b.box_width, b.box_inside_width)
                      for b in boxes})
 
+    # The cutlist cuts pre-finished stock for a workshop build; this step
+    # said "Baltic birch" whatever the config, so the doc named a different
+    # material from the parts list it is printed next to.
+    stock_txt = ("pre-finished Baltic birch"
+                 if getattr(cab_cfg, "drawer_box_prefinished", False)
+                 else "Baltic birch")
+    t_txt = _mm(stocks)
+    joint = " and ".join(joints)
+    lip = lips[0]
+    all_txt = "all " if len(stocks) == 1 and len(joints) == 1 else ""
+
     bottom_txt = (f"{bottoms[0]:g} mm" if len(bottoms) == 1 else
-                  " and ".join(f"{b:g} mm" for b in bottoms) +
+                  _mm(bottoms) +
                   " — check each box's row, they are NOT all the same")
 
     steps = [
         AssemblyStep(
             "Drawer boxes — read before cutting",
-            f"{n} boxes, all {t:g} mm Baltic birch with {joint} corners and a "
-            f"captured bottom in {bottom_txt}. Box parts have no show face to "
+            f"{n} boxes, {all_txt}{t_txt} {stock_txt} with {joint} corners "
+            f"and a captured bottom in {bottom_txt}. Box parts have no show "
+            "face to "
             "choose — birch ply is the same both sides — but they DO have an "
             "inside and an outside, and every joint and groove below is cut "
             "on the INSIDE face. Mark the inside of all four parts of a box "
@@ -860,23 +970,7 @@ def _build_box_steps(boxes: list, cab_cfg) -> list[AssemblyStep]:
                 ". Measure a finished box across the inside and check it "
                 "against that number before you cut a batch.",
             ) if inside_ref else ())),
-        AssemblyStep(
-            "Groove for the bottoms — one saw setup, every part",
-            f"Every part of every box takes the same groove: {dado_d:g} mm "
-            f"deep, {dado_i:g} mm up from the bottom edge, on the inside "
-            "face, running the full length. Cut them all in one session — "
-            "the setup is the work, the cutting is nothing.",
-            checklist=(
-                f"Set the fence so the groove sits {dado_i:g} mm from the "
-                "BOTTOM edge, and confirm which edge that is on each part "
-                "before it goes through.",
-                "Cut a test groove in offcut and fit an actual bottom "
-                "panel: snug enough to hold, loose enough to slide in dry. "
-                "A bottom forced into a tight groove will bow the box and "
-                "you will not get it square.",
-                "Run all four parts of every box. A box missing one groove "
-                "does not show up until glue-up, when it is too late.",
-            )),
+        _groove_step(bottoms, depths, insets),
         AssemblyStep(
             f"Cut the {joint} corners",
             (f"All four corners of each box are {joint}. Set the cut once and "

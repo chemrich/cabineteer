@@ -47,7 +47,14 @@ def _step(plan, fragment):
 
 
 def _text(step):
-    return " ".join((step.body,) + tuple(step.checklist))
+    """Everything the step PRINTS, title included.
+
+    The title was excluded, so every text assertion in this file was blind
+    to headings — and the sentence that contradicted the mixed-bottom
+    warning was a heading ("Groove for the bottoms — one saw setup, every
+    part"). A guard that cannot see half the page is half a guard.
+    """
+    return " ".join((step.title, step.body) + tuple(step.checklist))
 
 
 class TestShowFaces:
@@ -226,6 +233,57 @@ class TestDrawerBoxSteps:
                                                         columns=[col]))}
         assert len(bottoms) == 2, f"test config did not mix bottoms: {bottoms}"
         assert "NOT all the same" in _text(plan.box_steps[0])
+
+        # Scan the WHOLE run of steps, not step 0. This assertion used to
+        # stop at step 0 and pass while step 1 — the next thing on the same
+        # printed page — was titled "one saw setup, every part" and said
+        # "Every part of every box takes the same groove". The docstring
+        # above forbids exactly that, and the test could not see it.
+        text = " ".join(_text(st) for st in plan.box_steps)
+        assert "one saw setup" not in text
+        assert "the same groove" not in text
+        # And the dimension that actually differs has to be named. A groove
+        # has three; this step printed two, and the missing one was the
+        # width — which IS the bottom's thickness, and the only one that
+        # varies. Cutting the run at one width scraps every box on the
+        # other setting.
+        for b in sorted(bottoms):
+            assert f"{b:g} mm" in text, (
+                f"the doc never names the {b:g} mm groove width")
+        assert "width" in text
+
+    def test_uniform_bottoms_still_get_one_setup(self):
+        """The other half: do not cry wolf on a run that IS uniform."""
+        plan = build_assembly_plan(_drawer_cfg())
+        bottoms = {b.bottom_thickness for b in plan.drawer_boxes}
+        assert len(bottoms) == 1, "test config is not uniform"
+        text = " ".join(_text(st) for st in plan.box_steps)
+        assert "one saw setup" in text
+        assert "NOT all the same" not in text
+        # Uniform or not, the width is stated.
+        assert f"{sorted(bottoms)[0]:g} mm wide" in text
+
+    def test_no_box_step_number_comes_from_box_zero(self):
+        """A run's steps must describe the run, not its first box.
+
+        Every number in these steps used to be read off ``boxes[0]`` and
+        asserted of all of them. Reversing the box order must not change a
+        single sentence — if it does, some step is quoting one box.
+        """
+        import dataclasses
+
+        col = ColumnConfig(
+            width_mm=560.0,
+            openings=(OpeningConfig(height_mm=300.0, opening_type="drawer"),
+                      OpeningConfig(height_mm=104.0, opening_type="drawer")))
+        cfg = _cfg(width=1000.0, columns=[col])
+        boxes = build_drawer_box_plans(cfg)
+        assert len({b.bottom_thickness for b in boxes}) > 1
+        from cabineteer.assembly import _build_box_steps
+        forward = [_text(st) for st in _build_box_steps(boxes, cfg)]
+        reversed_ = [_text(st) for st in
+                     _build_box_steps(list(reversed(boxes)), cfg)]
+        assert forward == reversed_
 
 
 class TestRendering:
