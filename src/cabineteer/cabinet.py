@@ -1455,10 +1455,13 @@ class FacePlacement:
     #: Bottom edge relative to the bottom panel's TOP face. Negative when
     #: the face hangs below it.
     datum: float
-    #: How much of the carcass member each vertical edge covers.
+    #: How much of the named member each vertical edge covers. Against a
+    #: "meeting leaf" the sign reads the same way as a reveal: negative is
+    #: the gap between the two leaves of a pair, which is the number a
+    #: person setting them actually needs.
     left_lap: float
     right_lap: float
-    left_member: str        # "cabinet side" | "divider"
+    left_member: str        # "cabinet side" | "divider" | "meeting leaf"
     right_member: str
     #: What the face actually meets below / above — the neighbouring face,
     #: the carcass panel, or a furniture-top cap. Named here because only
@@ -1483,31 +1486,45 @@ def face_placements(
     x_offsets, _total = bay_x_offsets(bay_configs)
     n_bays = len(bay_configs)
 
-    cols: dict[tuple[int, int], list[FacePanel]] = {}
-    cap: Optional[FacePanel] = None
-    for p in panels:
-        if p.kind in ("drawer_face", "door"):
-            cols.setdefault((p.bay, p.leaf), []).append(p)
-        elif p.kind == "top_cap":
-            cap = p
-    for col in cols.values():
-        col.sort(key=lambda q: q.z)
+    faces = [p for p in panels if p.kind in ("drawer_face", "door")]
+    cap = next((p for p in panels if p.kind == "top_cap"), None)
+
+    # VERTICAL neighbours come from the slot stack, not from ``leaf``.
+    # ``leaf`` is a HORIZONTAL index — the two leaves of a door pair share a
+    # slot and sit side by side — so keying a column by it made the right
+    # leaf a stack of one, and both its reveals got measured to the carcass
+    # instead of to the faces 4 mm away. Both leaves of a pair occupy the
+    # same z band, so group by z.
+    rows_by_bay: dict[int, list[tuple[float, float]]] = {}
+    for p in faces:
+        band = (round(p.z, 3), round(p.z + p.height, 3))
+        rows_by_bay.setdefault(p.bay, [])
+        if band not in rows_by_bay[p.bay]:
+            rows_by_bay[p.bay].append(band)
+    for bands in rows_by_bay.values():
+        bands.sort()
+
+    # HORIZONTAL neighbours: the leaves that share this face's slot, left to
+    # right. A pair's inner edges meet EACH OTHER, not the carcass.
+    slots: dict[tuple[int, int], list[FacePanel]] = {}
+    for p in faces:
+        slots.setdefault((p.bay, p.slot), []).append(p)
+    for row in slots.values():
+        row.sort(key=lambda q: q.x)
 
     out: list[FacePlacement] = []
-    for p in panels:
-        if p.kind not in ("drawer_face", "door"):
-            continue
+    for p in faces:
         cfg = bay_configs[p.bay]
-        col = cols[(p.bay, p.leaf)]
-        i = col.index(p)
+        bands = rows_by_bay[p.bay]
+        i = bands.index((round(p.z, 3), round(p.z + p.height, 3)))
         if i:
-            below = p.z - (col[i - 1].z + col[i - 1].height)
+            below = p.z - bands[i - 1][1]
             below_member = "face below"
         else:
             below = p.z - cfg.bottom_thickness
             below_member = "bottom panel"
-        if i + 1 < len(col):
-            above = col[i + 1].z - (p.z + p.height)
+        if i + 1 < len(bands):
+            above = bands[i + 1][0] - (p.z + p.height)
             above_member = "face above"
         elif cap is not None:
             above = cap.z - (p.z + p.height)
@@ -1515,20 +1532,33 @@ def face_placements(
         else:
             above = (cfg.height - cfg.top_thickness) - (p.z + p.height)
             above_member = "top panel"
+
+        row = slots[(p.bay, p.slot)]
+        j = row.index(p)
         bx = x_offsets[p.bay]
+        if j:
+            left_lap = round(row[j - 1].x + row[j - 1].width - p.x, 3)
+            left_member = "meeting leaf"
+        else:
+            left_lap = round((bx + cfg.side_thickness) - p.x, 3)
+            left_member = "cabinet side" if p.bay == 0 else "divider"
+        if j + 1 < len(row):
+            right_lap = round((p.x + p.width) - row[j + 1].x, 3)
+            right_member = "meeting leaf"
+        else:
+            right_lap = round((p.x + p.width)
+                              - (bx + cfg.side_thickness + cfg.interior_width), 3)
+            right_member = ("cabinet side" if p.bay == n_bays - 1
+                            else "divider")
+
         out.append(FacePlacement(
             panel=p,
             reveal_below=round(below, 3),
             reveal_above=round(above, 3),
             datum=round(p.z - cfg.bottom_thickness, 3),
-            left_lap=round((bx + cfg.side_thickness) - p.x, 3),
-            right_lap=round((p.x + p.width)
-                            - (bx + cfg.side_thickness + cfg.interior_width), 3),
-            left_member="cabinet side" if p.bay == 0 else "divider",
-            right_member=("cabinet side" if p.bay == n_bays - 1
-                          else "divider"),
-            below_member=below_member,
-            above_member=above_member,
+            left_lap=left_lap, right_lap=right_lap,
+            left_member=left_member, right_member=right_member,
+            below_member=below_member, above_member=above_member,
         ))
     return out
 

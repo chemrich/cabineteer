@@ -200,6 +200,11 @@ class AssemblyPlan:
     #: one setting, on two documents at the same bench. The step had no
     #: object to read, which is why it invented one.
     edge_band_strip_width_mm: float = 0.0
+    #: Thicknesses of the panels that actually take a FACE mortise. Computed
+    #: once here so the step and the machine table cannot disagree — the
+    #: table renderer has no config to derive from, which is how it ended up
+    #: with its own copy of the wall arithmetic.
+    face_mortised_thicknesses: tuple = ()
     edge_band_thickness_mm: float = 0.0
     #: Distinct carcass panel thicknesses (sorted). Panels below
     #: BASE_REF_MIN_THICKNESS_MM take the centred t/2 fallback; everything
@@ -619,12 +624,45 @@ def build_assembly_plan(
         edge_band_strip_width_mm=float(
             (getattr(cab_cfg, "edge_band_stock", None) or {})
             .get("strip_width_mm", 20.0)),
+        face_mortised_thicknesses=(),
         panel_thicknesses=tuple(sorted(thicknesses)),
     )
+    plan.face_mortised_thicknesses = tuple(
+        _face_mortised_thicknesses(plan, cab_cfg))
     plan.steps = _build_steps(plan, cab_cfg)
     plan.drawer_boxes = build_drawer_box_plans(cab_cfg, id_map)
     plan.box_steps = _build_box_steps(plan.drawer_boxes, cab_cfg)
     return plan
+
+
+def _face_mortised_thicknesses(plan: AssemblyPlan, cab_cfg) -> list[float]:
+    """Thicknesses of the panels that actually take a FACE mortise.
+
+    Not every panel does, and a wall claim is only about the ones that do:
+    an edge mortise goes into the panel's END and has the whole panel behind
+    it. Mirrors how the maps are built — the top and bottom get face rows
+    only where there are dividers, the sides only where there are shelves,
+    and a divider only where its columns carry shelves.
+
+    Reducing over every thickness instead put a stop-work warning on a case
+    whose 12 mm panels are edge-mortised only, and told the builder to
+    shorten a plunge that was correct.
+    """
+    cols = list(getattr(cab_cfg, "columns", []) or [])
+    n_div = max(0, len(cols) - 1)
+    global_shelves = list(getattr(cab_cfg, "fixed_shelf_positions", []) or [])
+    col_shelves = any(getattr(c, "fixed_shelf_positions", ()) or ()
+                      for c in cols)
+    side_t = float(getattr(cab_cfg, "side_thickness", plan.stock_thickness))
+    out: list[float] = []
+    if global_shelves or col_shelves:
+        out.append(side_t)                       # side faces take shelf rows
+    if n_div:
+        out.append(float(getattr(cab_cfg, "bottom_thickness", side_t)))
+        out.append(float(getattr(cab_cfg, "top_thickness", side_t)))
+    if col_shelves and n_div:
+        out.append(side_t)                       # divider faces take them too
+    return sorted(set(out))
 
 
 def _wall_text(plan: AssemblyPlan, spec) -> str:
@@ -636,9 +674,15 @@ def _wall_text(plan: AssemblyPlan, spec) -> str:
     15 mm plunge does not leave a 3 mm wall: it comes out the far face by
     3 mm. The correct pattern was already two sentences away in the same
     paragraph — ``_fence_text`` reads ``plan.panel_thicknesses``.
+
+    But it must reduce over the FACE-mortised panels only. Reducing over all
+    of them cried wolf on a case whose thin panels are edge-mortised.
     """
     depth = spec.mortise_depth_per_side
-    ts = sorted(plan.panel_thicknesses or (plan.stock_thickness,))
+    ts = sorted(plan.face_mortised_thicknesses)
+    if not ts:
+        return ("no face mortises in this carcass — every joint is cut into "
+                "a panel END, which has the full panel behind it")
     thinnest = ts[0]
     wall = thinnest - depth
     if wall <= 0:

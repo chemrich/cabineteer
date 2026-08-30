@@ -4366,34 +4366,44 @@ def _raw_panels_for_cabinet(
             if abs(v) < 0.005:
                 return f"flush with the {member}"
             if v > 0:
-                return f"{v:g} mm reveal to the {member}"
+                return f"{v:g} mm to the {member}"
             return f"laps the {member} by {-v:g} mm"
 
         def _position_note(fp) -> str:
             pl = placements[_key(fp)]
-            datum = (f"bottom edge {pl.datum:g} mm above the bottom panel's "
-                     "top face" if pl.datum >= 0 else
-                     f"bottom edge {-pl.datum:g} mm BELOW the bottom panel's "
-                     "top face")
-            return (f"below: {_edge_txt(pl.reveal_below, pl.below_member)}; "
-                    f"above: {_edge_txt(pl.reveal_above, pl.above_member)}; "
-                    f"{datum}")
+            datum = (f"{pl.datum:g} mm above the bottom panel's top face"
+                     if pl.datum >= 0 else
+                     f"{-pl.datum:g} mm BELOW the bottom panel's top face")
+            # ONE clause, deliberately. Consolidation dedups clause by
+            # clause, so splitting this into three let a qty-2 row keep two
+            # "below" answers and a single "above" (the second face's
+            # matched the first's and was deduped) — a part with two answers
+            # to one question and no way to re-pair them.
+            return (f"hangs {datum} — below: "
+                    f"{_edge_txt(pl.reveal_below, pl.below_member)}, above: "
+                    f"{_edge_txt(pl.reveal_above, pl.above_member)}")
 
         def _overlay_note(fp) -> str:
-            """Which carcass member each edge laps, and by how much.
+            """What each edge meets, and by how much.
 
-            Stated by MEMBER rather than by hand ("18 left / 8 right"), so a
-            mirrored pair of bays reads identically. It did not before, and
-            because the two bays cut the same panel they consolidate into one
-            row — which then carried both "18 mm left / 8 mm right" and
-            "8 mm left / 18 mm right" on the same line of shop paper.
+            Stated by the MEMBER each edge meets and ordered by that member's
+            ROLE, not left-then-right. A mirrored pair of bays cuts the same
+            panel and consolidates into one row, so a left-then-right
+            sentence handed that row two orderings of one fact — which is
+            what this note was rewritten to stop, and an earlier version of
+            this docstring claimed it had while the code still emitted
+            left-then-right.
             """
             pl = placements[_key(fp)]
 
             def _lap(v: float, member: str) -> str:
                 # An INSET leaf laps nothing — it sits inside the opening,
                 # and its lap is negative. "full overlay — -2 mm over the
-                # cabinet side" is not a sentence anyone can act on.
+                # cabinet side" is not a sentence anyone can act on. Against
+                # the partner leaf of a pair the same negative is a GAP, and
+                # that is the number a person setting the pair needs.
+                if member == "meeting leaf":
+                    return f"{-v:g} mm gap to the meeting leaf"
                 if v < -0.005:
                     return f"{-v:g} mm inside the {member}"
                 if abs(v) < 0.005:
@@ -4409,11 +4419,15 @@ def _raw_panels_for_cabinet(
                             _door_overlay_style(cfg), "overlay")
             else:
                 lead = "inset" if pl.left_lap < -0.005 else "full overlay"
-            if (pl.left_member == pl.right_member
-                    and abs(pl.left_lap - pl.right_lap) < 0.005):
-                return f"{lead} — {_lap(pl.left_lap, pl.left_member)} at each edge"
-            return (f"{lead} — {_lap(pl.left_lap, pl.left_member)}, "
-                    f"{_lap(pl.right_lap, pl.right_member)}")
+
+            rank = {"cabinet side": 0, "meeting leaf": 1, "divider": 2}
+            edges = sorted(((pl.left_lap, pl.left_member),
+                            (pl.right_lap, pl.right_member)),
+                           key=lambda e: (rank.get(e[1], 3), e[0]))
+            if (edges[0][1] == edges[1][1]
+                    and abs(edges[0][0] - edges[1][0]) < 0.005):
+                return f"{lead} — {_lap(*edges[0])} at each edge"
+            return f"{lead} — {_lap(*edges[0])}, {_lap(*edges[1])}"
 
         door_groups: dict[tuple[int, int], list] = {}
         for p in layout:

@@ -540,10 +540,11 @@ class TestAnchoredEndsAreDerivedToo:
         assert pl[-1].reveal_above > 0
 
     @pytest.mark.parametrize("style,expect", [
-        ("plain", ["flush with the bottom panel", "flush with the top panel"]),
+        ("plain", ["below: flush with the bottom panel",
+                   "above: flush with the top panel"]),
         ("furniture_top", ["laps the bottom panel by 18 mm",
                            "BELOW the bottom panel's top face"]),
-        ("inset", ["2 mm reveal to the bottom panel", "inset —",
+        ("inset", ["below: 2 mm to the bottom panel", "inset —",
                    "2 mm inside the cabinet side"]),
     ])
     def test_the_row_says_it_in_words_a_person_can_act_on(self, style, expect):
@@ -614,3 +615,122 @@ class TestDoorRowsNameTheirOwnHinge:
         assert "sized to the opening less its gaps" in note
         assert "inset — 2 mm inside the cabinet side" in note
         assert "full overlay" not in note
+
+
+class TestPairsAndScopeFromTheReview:
+    """Four defects an adversarial review found in the P4 work itself.
+
+    Every one is the class P4 exists to remove — a number stated against
+    something it was never measured from — which is the useful reminder that
+    writing the rule down does not exempt the person applying it.
+    """
+
+    PAIR = dict(width=900, height=760, depth=560,
+                door_hinge="blum_clip_top_blumotion_110_half")
+
+    def _pair_cfg(self, **kw):
+        base = dict(self.PAIR)
+        base.update(kw)
+        return _cfg(**base)
+
+    def test_a_pairs_inner_edge_meets_its_partner_not_the_carcass(self):
+        """It read "269.7 mm inside the divider" on ten real rows.
+
+        The lap was measured to the BAY's interior edge, which is right for a
+        face that spans the bay and fabricated for one leaf of a pair: that
+        edge meets the other leaf, 2 mm away.
+        """
+        from cabineteer.cabinet import face_placements
+        from cabineteer.door import DoorConfig
+
+        cfg = self._pair_cfg(drawer_config=[[724, "door_pair"]])
+        pls = [p for p in face_placements(bays_from_config(cfg, None))
+               if p.panel.kind == "door"]
+        assert len(pls) == 2
+        inner = [(p.left_lap, p.left_member) if p.panel.leaf else
+                 (p.right_lap, p.right_member) for p in pls]
+        for lap, member in inner:
+            assert member == "meeting leaf"
+            assert lap == pytest.approx(-DoorConfig.gap_between)
+
+    def test_the_row_says_the_gap_a_person_setting_the_pair_needs(self):
+        cfg = self._pair_cfg(drawer_config=[[724, "door_pair"]])
+        _c, _t, _b, faces = _raw_panels_for_cabinet(cfg, None)
+        note = next(p.notes for p in faces if p.name == "door")
+        assert "2 mm gap to the meeting leaf" in note
+        assert "inside the divider" not in note
+
+    def test_both_leaves_see_the_face_above_not_the_carcass(self):
+        """``leaf`` is a HORIZONTAL index; keying the vertical stack by it
+        made the right leaf a stack of one, so both its reveals were
+        measured to the carcass."""
+        from cabineteer.cabinet import face_placements
+
+        cfg = self._pair_cfg(drawer_config=[[400, "door_pair"],
+                                            [324, "drawer"]])
+        pls = [p for p in face_placements(bays_from_config(cfg, None))
+               if p.panel.kind == "door"]
+        assert len(pls) == 2
+        assert {p.above_member for p in pls} == {"face above"}
+        assert len({p.reveal_above for p in pls}) == 1
+
+    def test_mirrored_bays_really_do_read_identically(self):
+        """The docstring claimed this before the code did it.
+
+        The overlay was emitted left-then-right, so the two bays produced
+        two orderings of one fact and their shared row carried both.
+        """
+        from cabineteer.cutlist import consolidate_bom
+
+        cols = [{"width_mm": 300.0, "openings": [[200, "drawer"]]},
+                {"width_mm": 228.0, "openings": [[200, "drawer"]]},
+                {"width_mm": 300.0, "openings": [[200, "drawer"]]}]
+        cfg = _cfg(width=900, height=236, columns=cols)
+        _c, _t, _b, faces = _raw_panels_for_cabinet(cfg, cols)
+        for row in consolidate_bom(faces):
+            overlay = [c for c in row.notes.split(";") if "overlay" in c]
+            assert len(set(overlay)) <= 1, (
+                f"one row, {len(set(overlay))} orderings of its overlay: "
+                f"{overlay}")
+
+    def test_a_faces_position_survives_consolidation_as_one_clause(self):
+        """Split into three, dedup could keep two "below"s and one "above"."""
+        from cabineteer.cutlist import consolidate_bom
+
+        cfg = _cfg(width=400, height=700,
+                   drawer_config=[[200, "drawer"], [150, "drawer"],
+                                  [202, "drawer"], [112, "drawer"]])
+        _c, _t, _b, faces = _raw_panels_for_cabinet(cfg, None)
+        for row in consolidate_bom(faces):
+            hangs = [c for c in row.notes.split(";") if "hangs" in c]
+            assert len(hangs) == row.quantity or len(hangs) == 1
+            for clause in hangs:
+                assert "below:" in clause and "above:" in clause
+
+    @pytest.mark.parametrize("kw,expect", [
+        (dict(top_thickness=12, bottom_thickness=12,
+              drawer_config=[[724, "drawer"]]), "no face mortises"),
+        (dict(shelf_thickness=12, fixed_shelf_positions=[350.0],
+              drawer_config=[[724, "open"]]), "3 mm wall"),
+    ])
+    def test_the_wall_claim_only_counts_face_mortised_panels(self, kw, expect):
+        """It cried wolf on panels that are EDGE-mortised.
+
+        An edge mortise goes into the panel's end and has the whole panel
+        behind it, so a thin edge-mortised panel is not a blow-through risk —
+        and the doc was telling him to shorten a plunge that was correct.
+        """
+        cfg = _cfg(width=900, height=760, depth=560, side_thickness=18, **kw)
+        step = next(s for s in build_assembly_plan(cfg).steps
+                    if "Domino" in s.title)
+        assert expect in step.body
+        assert "BREAKS THROUGH" not in step.body
+
+    def test_a_real_blow_through_still_stops_the_work(self):
+        cols = [{"width_mm": 423.0, "openings": [[724, "drawer"]]},
+                {"width_mm": 423.0, "openings": [[724, "drawer"]]}]
+        cfg = _cfg(width=900, height=760, depth=560, side_thickness=18,
+                   top_thickness=12, bottom_thickness=12, columns=cols)
+        step = next(s for s in build_assembly_plan(cfg).steps
+                    if "Domino" in s.title)
+        assert "BREAKS THROUGH 3 mm on the 12 mm panels" in step.body
