@@ -168,11 +168,15 @@ def main():
                     opening_depth=cfg.interior_depth,
                     slide_key=cfg.drawer_slide,
                 )
+                # Part lengths come from the JOINT, never from the box's
+                # outside dimensions — see joinery.part_lengths. Re-deriving
+                # them here is exactly the drift that put double-counted
+                # corners on the paper for four months.
                 all_panels.extend([
-                    CutlistPanel(name=f"drawer_{i}_side_L", length=dcfg.box_depth, width=dcfg.box_height, thickness=dcfg.side_thickness, grain_direction="length"),
-                    CutlistPanel(name=f"drawer_{i}_side_R", length=dcfg.box_depth, width=dcfg.box_height, thickness=dcfg.side_thickness, grain_direction="length"),
-                    CutlistPanel(name=f"drawer_{i}_front", length=dcfg.box_width - dcfg.side_thickness * 2, width=dcfg.box_height, thickness=dcfg.front_back_thickness, grain_direction="width"),
-                    CutlistPanel(name=f"drawer_{i}_back", length=dcfg.box_width - dcfg.side_thickness * 2, width=dcfg.box_height, thickness=dcfg.front_back_thickness, grain_direction="width"),
+                    CutlistPanel(name=f"drawer_{i}_side_L", length=dcfg.side_panel_length, width=dcfg.box_height, thickness=dcfg.side_thickness, grain_direction="length"),
+                    CutlistPanel(name=f"drawer_{i}_side_R", length=dcfg.side_panel_length, width=dcfg.box_height, thickness=dcfg.side_thickness, grain_direction="length"),
+                    CutlistPanel(name=f"drawer_{i}_front", length=dcfg.front_back_panel_length, width=dcfg.box_height, thickness=dcfg.front_back_thickness, grain_direction="width"),
+                    CutlistPanel(name=f"drawer_{i}_back", length=dcfg.front_back_panel_length, width=dcfg.box_height, thickness=dcfg.front_back_thickness, grain_direction="width"),
                     CutlistPanel(name=f"drawer_{i}_bottom", length=dcfg.bottom_panel_width, width=dcfg.bottom_panel_depth, thickness=dcfg.bottom_thickness, grain_direction="width"),
                 ])
                 if dcfg.applied_face:

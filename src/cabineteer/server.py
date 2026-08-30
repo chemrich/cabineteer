@@ -111,7 +111,8 @@ from .cabinet import (
 from .door import DoorConfig
 from .drawer import DrawerConfig, box_config_for_opening as _box_config_for_opening
 from .evaluation import Issue, Severity, evaluate_cabinet
-from .hardware import HINGES, SLIDES, LEGS, PULLS, OverlayType, LegPattern, get_leg, get_pull, price_for
+from .hardware import (HINGES, SLIDES, LEGS, PULLS, ClearanceReference, OverlayType,
+                       LegPattern, get_leg, get_pull, price_for)
 from .joinery import (
     CarcassJoinery,
     DrawerJoineryStyle,
@@ -3444,6 +3445,7 @@ async def _tool_list_hardware(args: dict) -> list[types.TextContent]:
                 "available_lengths_mm": list(s.available_lengths),
                 "extension": s.extension,
                 "nominal_side_clearance_mm": s.nominal_side_clearance,
+                "clearance_reference": s.clearance_reference.value,
                 "min_bottom_clearance_mm": s.min_bottom_clearance,
                 "max_load_kg": s.max_load_kg,
                 "min_drawer_height_mm": s.min_drawer_height,
@@ -3878,7 +3880,21 @@ async def _tool_design_drawer(args: dict) -> list[types.TextContent]:
     std_height   = snap_to_standard_box_height(raw_height)
 
     result: dict[str, Any] = {
-        "box_width_mm":               cfg.box_width,
+        # Width comes in three parts because one number cannot be checked:
+        # the OUTSIDE is what you build, the INSIDE is what the slide maker
+        # constrains (Blum: opening − 42 mm, "must equal"), and the GAP is
+        # where the box sits in the opening. Print all three so a box can be
+        # measured against the rule instead of against the drawing.
+        "box_width_mm":               cfg.box_width,          # outside
+        "box_inside_width_mm":        cfg.box_inside_width,
+        "box_side_gap_mm":            cfg.side_gap,           # per side, air
+        "box_width_basis": (
+            f"outside = opening {cfg.opening_width:g} − "
+            f"{2 * slide.nominal_side_clearance:g} + 2 × {cfg.side_thickness:g} mm side"
+            if slide.clearance_reference is ClearanceReference.INSIDE else
+            f"outside = opening {cfg.opening_width:g} − "
+            f"{2 * slide.nominal_side_clearance:g}"
+        ),
         "box_height_mm":              cfg.box_height,   # snapped when use_standard_height=True
         "box_height_raw_mm":          raw_height,       # clearance-adjusted, before snapping
         "standard_box_height_mm":     std_height,       # always the snapped value for reference
@@ -3900,6 +3916,10 @@ async def _tool_design_drawer(args: dict) -> list[types.TextContent]:
             "name":                     slide.name,
             "selected_length_mm":       slide_length,
             "nominal_side_clearance_mm": slide.nominal_side_clearance,
+            # Which drawer-box face that clearance is measured to. Undermount
+            # runners quote it to the INSIDE face, side-mount slides to the
+            # OUTSIDE — the difference is 2 × side thickness of box width.
+            "clearance_reference":      slide.clearance_reference.value,
             "min_bottom_clearance_mm":  slide.min_bottom_clearance,
             "max_load_kg":              slide.max_load_kg,
         },
@@ -4201,19 +4221,37 @@ def _raw_panels_for_cabinet(
                 jspec = dcfg.joinery
                 side_len = round(dcfg.side_panel_length, 1)
                 fb_len = round(dcfg.front_back_panel_length, 1)
+                # Where the box's outside width came from, in one clause, so
+                # the row can be checked against the slide maker's rule
+                # instead of trusted. Undermount runners constrain the
+                # drawer's INSIDE width; the outside grows with the sides.
+                _sl = dcfg.slide
+                if _sl.clearance_reference is ClearanceReference.INSIDE:
+                    width_basis = (
+                        f"box {bw:g} outside = opening {col_width:g} − "
+                        f"{2 * _sl.nominal_side_clearance:g} + 2 × {bt:g} sides; "
+                        f"{dcfg.box_inside_width:g} inside, "
+                        f"{dcfg.side_gap:g} air per side")
+                else:
+                    width_basis = (
+                        f"box {bw:g} outside = opening {col_width:g} − "
+                        f"{2 * _sl.nominal_side_clearance:g}; "
+                        f"{dcfg.side_gap:g} air per side")
                 if jspec.laps_front:
                     side_note = (
                         f"cut {2 * jspec.lip:g} mm short of the {bd:g} mm box "
                         f"depth — {jspec.lip:g} mm lock lip per corner; "
                         f"confirm the lip on a test corner before batching")
-                    fb_note = ("full box width — laps the ends of the sides")
+                    fb_note = (f"full box width — laps the ends of the sides "
+                               f"({width_basis})")
                 else:
                     side_note = "full box depth — the sides wrap the corners"
                     fb_note = (
                         f"cut {2 * (bt - jspec.engagement_x):g} mm short of the "
                         f"{bw:g} mm box width"
                         + (f" — seats {jspec.engagement_x:g} mm into each side"
-                           if jspec.engagement_x else " — butts between the sides"))
+                           if jspec.engagement_x else " — butts between the sides")
+                        + f" ({width_basis})")
 
                 raw_box += [
                     CutlistPanel(name="drawer_box_side", length=side_len,
@@ -4243,7 +4281,9 @@ def _raw_panels_for_cabinet(
                     material=box_material,
                     notes=(f"{bottom_label}, dado-captured — sized to the "
                            f"groove floors, {dcfg.bottom_dado_depth:g} mm "
-                           f"into all four parts"),
+                           f"into all four parts "
+                           f"({dcfg.box_inside_width:g} inside the box + "
+                           f"{2 * dcfg.bottom_dado_depth:g} of groove)"),
                 ))
 
     # ── Show faces — single source of truth ───────────────────────────────

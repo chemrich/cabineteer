@@ -280,8 +280,151 @@ _s(Scenario(
                 Assertion("joinery.corner_lap", Op.EQ, "front"),
                 Assertion("joinery.lip_mm", Op.GT, 0),
                 Assertion("joinery.socket_depth_mm", Op.GT, 0),
-                Assertion("front_back_panel_length_mm", Op.APPROX, 558.0),
+                # 600 opening, 15 mm sides: the box is 588 outside / 558
+                # inside (Blum constrains the INSIDE at opening − 42), and
+                # a front-lapping front/back runs the full outside width.
+                Assertion("front_back_panel_length_mm", Op.APPROX, 588.0),
+                Assertion("box_width_mm", Op.APPROX, 588.0),
+                Assertion("box_inside_width_mm", Op.APPROX, 558.0),
+                Assertion("box_side_gap_mm", Op.APPROX, 6.0),
+                Assertion("slide.clearance_reference", Op.EQ, "inside"),
                 Assertion("side_panel_length_mm", Op.LT, 500.0),
+            ],
+        ),
+    ],
+))
+
+_s(Scenario(
+    name="undermount_box_width_is_blums_inside_rule",
+    prompt=(
+        "345 mm opening, 12 mm Baltic birch drawer box on Blum Tandem plus "
+        "563H — how wide is the box?"
+    ),
+    tags=["drawer", "hardware", "regression"],
+    difficulty="standard",
+    description=(
+        "Blum: INSIDE drawer width = opening − 42 mm. The 21 mm per side is "
+        "measured to the drawer's inside face, so the OUTSIDE width grows "
+        "with the side stock: 345 − 42 + 2 × 12 = 327 outside, 303 inside, "
+        "9 mm of air per side. Until 2026-08-29 the code returned the 303 "
+        "and called it the exterior, so every box in the corpus was two "
+        "side thicknesses too narrow to reach its runners."
+    ),
+    tool_calls=[
+        ToolCall(
+            tool="design_drawer",
+            args={
+                "opening_width": 345,
+                "opening_height": 133,
+                "opening_depth": 448,
+                "side_thickness": 12,
+                "front_back_thickness": 12,
+                "slide_key": "blum_tandem_plus_563h",
+            },
+            label="Charlie's pedestal box",
+            assertions=[
+                Assertion("box_width_mm", Op.APPROX, 327.0),
+                Assertion("box_inside_width_mm", Op.APPROX, 303.0),
+                Assertion("box_side_gap_mm", Op.APPROX, 9.0),
+                Assertion("slide.clearance_reference", Op.EQ, "inside"),
+                # The paper has to show its working, not just a number.
+                Assertion("box_width_basis", Op.CONTAINS, "opening 345"),
+                # Bottom spans the inside plus a groove at each side.
+                Assertion("bottom_panel_width_mm", Op.APPROX, 315.0),
+            ],
+        ),
+        ToolCall(
+            tool="design_drawer",
+            args={
+                "opening_width": 345,
+                "opening_height": 133,
+                "opening_depth": 448,
+                "side_thickness": 16,
+                "front_back_thickness": 16,
+                "slide_key": "blum_tandem_plus_563h",
+            },
+            label="thicker sides — Blum deducts 10, not 42",
+            assertions=[
+                # Blum's own table: 16 mm sides deduct 10 mm from the opening.
+                Assertion("box_width_mm", Op.APPROX, 335.0),
+                # ...and the inside width does not move at all.
+                Assertion("box_inside_width_mm", Op.APPROX, 303.0),
+                Assertion("box_side_gap_mm", Op.APPROX, 5.0),
+            ],
+        ),
+    ],
+))
+
+_s(Scenario(
+    name="side_mount_width_ignores_side_stock",
+    prompt=(
+        "Same 345 mm opening but on Accuride 3832 side-mount slides — does "
+        "thicker box stock change the box width?"
+    ),
+    tags=["drawer", "hardware", "regression"],
+    difficulty="standard",
+    description=(
+        "A side-mount slide body lives in the gap BESIDE the drawer, so its "
+        "12.7 mm is measured to the box's outside face and the outside width "
+        "is independent of the side stock. The undermount fix must not touch "
+        "this branch."
+    ),
+    tool_calls=[
+        ToolCall(
+            tool="design_drawer",
+            args={"opening_width": 345, "opening_height": 133,
+                  "opening_depth": 448, "side_thickness": 12,
+                  "front_back_thickness": 12, "slide_key": "accuride_3832"},
+            label="12 mm sides",
+            assertions=[
+                Assertion("box_width_mm", Op.APPROX, 319.6),
+                Assertion("box_side_gap_mm", Op.APPROX, 12.7),
+                Assertion("slide.clearance_reference", Op.EQ, "outside"),
+            ],
+        ),
+        ToolCall(
+            tool="design_drawer",
+            args={"opening_width": 345, "opening_height": 133,
+                  "opening_depth": 448, "side_thickness": 19,
+                  "front_back_thickness": 19, "slide_key": "accuride_3832"},
+            label="19 mm sides — same outside width",
+            assertions=[
+                Assertion("box_width_mm", Op.APPROX, 319.6),
+                Assertion("box_side_gap_mm", Op.APPROX, 12.7),
+            ],
+        ),
+    ],
+))
+
+_s(Scenario(
+    name="box_sides_thicker_than_the_clearance_errors",
+    prompt=(
+        "Check a 600 mm cabinet with 22 mm drawer-box sides on Blum Tandem "
+        "plus runners."
+    ),
+    tags=["evaluation", "drawer", "hardware", "edge_case"],
+    difficulty="advanced",
+    description=(
+        "With the clearance referenced to the drawer's inside face, the box's "
+        "outside width grows with the stock: 22 mm sides on a 21 mm-per-side "
+        "runner make the box wider than its opening. This is a real check — "
+        "side thickness is an independent input, not something derived from "
+        "the clearance the check compares against — and it was unreachable "
+        "while box_width was read as opening − 42."
+    ),
+    tool_calls=[
+        ToolCall(
+            tool="evaluate_cabinet",
+            args={
+                "width": 600, "height": 720, "depth": 550,
+                "drawer_box_thickness": 22,
+                "drawer_slide": "blum_tandem_plus_563h",
+                "drawer_config": [[200, "drawer"]],
+            },
+            label="box sides eat the whole clearance",
+            assertions=[
+                Assertion("summary.pass", Op.IS_FALSE),
+                Assertion("summary.errors", Op.GTE, 1),
             ],
         ),
     ],
@@ -797,18 +940,21 @@ _s(Scenario(
             },
             label="drawer-lock box parts",
             assertions=[
-                # The box is 303 x 381. A front-lapping corner means the
-                # front/back runs the full width and the SIDES lose two lips
-                # — 377, not the 381 the paper carried before 2026-08.
+                # The box is 327 outside / 303 inside x 381 deep — the 345
+                # opening less Blum's 42 for the runners, plus both 12 mm
+                # walls. A front-lapping corner means the front/back runs
+                # the full OUTSIDE width and the SIDES lose two lips — 377,
+                # not the 381 the paper carried before 2026-08.
                 Assertion("panels_summary.3.name", Op.EQ, "drawer_box_side"),
                 Assertion("panels_summary.3.length_mm", Op.APPROX, 377.0),
                 Assertion("panels_summary.4.name", Op.EQ, "drawer_box_front"),
-                Assertion("panels_summary.4.length_mm", Op.APPROX, 303.0),
+                Assertion("panels_summary.4.length_mm", Op.APPROX, 327.0),
                 Assertion("panels_summary.5.name", Op.EQ, "drawer_box_back"),
-                Assertion("panels_summary.5.length_mm", Op.APPROX, 303.0),
-                # Bottom reaches the groove floors on all four sides.
+                Assertion("panels_summary.5.length_mm", Op.APPROX, 327.0),
+                # Bottom reaches the groove floors on all four sides:
+                # 303 inside + 6 of groove per side.
                 Assertion("panels_summary.7.name", Op.EQ, "drawer_box_bottom"),
-                Assertion("panels_summary.7.length_mm", Op.APPROX, 291.0),
+                Assertion("panels_summary.7.length_mm", Op.APPROX, 315.0),
                 Assertion("panels_summary.7.width_mm", Op.APPROX, 369.0),
             ],
         ),
@@ -1324,7 +1470,9 @@ _s(Scenario(
     prompt="Evaluate a 100 mm wide cabinet with a drawer — should fail because the cabinet is too narrow for the slide.",
     tags=["evaluation", "drawer", "edge_case"],
     difficulty="advanced",
-    description="interior_width = 100 - 36 = 64 mm; Blum Tandem needs 42 mm side clearance total → box_width < 22 mm",
+    description=("interior_width = 100 - 36 = 64 mm; the Blum Tandem takes 42 mm "
+                 "of it for the runners and the 15 mm box walls take 30 more, "
+                 "leaving 22 mm inside the drawer — under the practicality floor"),
     tool_calls=[
         ToolCall(
             tool="evaluate_cabinet",
@@ -8134,7 +8282,9 @@ SCENARIOS.append(Scenario(
             label="wide deep box → 12 mm bottom",
             assertions=[
                 Assertion("box_height_mm", Op.EQ, 229.0),
-                Assertion("box_width_mm", Op.APPROX, 567.6),
+                # 609.6 opening, 15 mm sides: 597.6 outside / 567.6 inside.
+                Assertion("box_width_mm", Op.APPROX, 597.6),
+                Assertion("box_inside_width_mm", Op.APPROX, 567.6),
                 Assertion("bottom_thickness_mm", Op.EQ, 12.0),
                 Assertion("bottom_thickness_auto", Op.IS_TRUE),
             ],

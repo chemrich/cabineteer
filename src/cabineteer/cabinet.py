@@ -1884,7 +1884,7 @@ def build_multi_bay_cabinet(
                         raise ValueError(
                             f"bay{bay_idx}_drawer{drw_idx}: {e}") from None
 
-                    drw_x = bx + cfg.side_thickness + dcfg.slide.nominal_side_clearance
+                    drw_x = bx + cfg.side_thickness + dcfg.side_gap
                     drw_y = dcfg.front_gap
                     drw_z = z + dcfg.slide.min_bottom_clearance
 

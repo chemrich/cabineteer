@@ -3,7 +3,10 @@
 For every DrawerJoineryStyle and a sweep of opening sizes, verifies:
 
   1. Assembled bbox = cfg.box_width × box_depth × box_height.
-  2. Side clearance to the cabinet opening = slide.nominal_side_clearance.
+  2. Side clearance to the cabinet opening = cfg.side_gap — the AIR beside
+     the box, which is the slide's nominal clearance only for a side-mount
+     slide. An undermount quotes its clearance to the drawer's inside face,
+     so the air gap is that minus one side thickness.
   3. No material interference between any pair of wall panels.
   4. The bottom panel sits in each wall's dado at the expected engagement
      volume (intersection with the wall's *uncut envelope*, not the cut wall —
@@ -66,13 +69,13 @@ def _intersect_vol(a, b):
 
 def _build_placed(cfg):
     """Return (LS, RS, SF, BK, BT) at their world-coordinate positions inside
-    a cabinet opening with x_offset = slide.nominal_side_clearance.
+    a cabinet opening with x_offset = cfg.side_gap.
 
     Placement comes from ``drawer_part_offsets`` — the same rule the assembly
     uses. Re-deriving it here would let the probe agree with a stale idea of
     the joint instead of with the box that gets built.
     """
-    x0 = cfg.slide.nominal_side_clearance
+    x0 = cfg.side_gap
     off = drawer_part_offsets(cfg)
 
     def at(shape, key):
@@ -124,9 +127,23 @@ class TestCabinetClearance:
         union = ls.fuse(rs).fuse(sf).fuse(bk)
         bb = union.BoundingBox()
         opening_w = cfg.opening_width
-        clr = cfg.slide.nominal_side_clearance
-        assert bb.xmin == pytest.approx(clr, abs=0.5)
-        assert opening_w - bb.xmax == pytest.approx(clr, abs=0.5)
+        # Air beside the box, not the slide's quoted clearance: these are
+        # undermount slides, whose 21 mm reaches the drawer's INSIDE face.
+        gap = cfg.side_gap
+        assert bb.xmin == pytest.approx(gap, abs=0.5)
+        assert opening_w - bb.xmax == pytest.approx(gap, abs=0.5)
+
+    def test_inside_width_matches_the_slide_rule(self, cfg):
+        """The box's INSIDE width is what an undermount runner constrains.
+
+        Measured off the built walls rather than read back off the config,
+        so this fails if the geometry and the spec ever drift apart.
+        """
+        ls, rs, _sf, _bk, _ = _build_placed(cfg)
+        inside = rs.BoundingBox().xmin - ls.BoundingBox().xmax
+        slide = cfg.slide
+        expected = cfg.opening_width - 2 * slide.nominal_side_clearance
+        assert inside == pytest.approx(expected, abs=0.5)
 
 
 @skipif_no_cq
@@ -149,7 +166,7 @@ class TestBottomDadoEngagement:
     equal the theoretical engagement volume = dado_depth × span × bt_thickness."""
 
     def test_engages_all_four_walls(self, cfg):
-        x0 = cfg.slide.nominal_side_clearance
+        x0 = cfg.side_gap  # air beside the box (see _build_placed)
         t_s = cfg.side_thickness
         t_fb = cfg.front_back_thickness
         bd = cfg.box_depth
@@ -187,7 +204,7 @@ class TestBottomDadoEngagement:
 @skipif_no_cq
 class TestBottomContainedInCarcass:
     def test_no_overhang(self, cfg):
-        x0 = cfg.slide.nominal_side_clearance
+        x0 = cfg.side_gap  # air beside the box (see _build_placed)
         bw = cfg.box_width
         bd = cfg.box_depth
         _, _, _, _, bt = _build_placed(cfg)
@@ -211,7 +228,7 @@ class TestJointEngagement:
             pytest.skip("QQQ uses a shallow Y rabbet — see TestQQQGeometry")
         if cfg.joinery.laps_front:
             pytest.skip("front-lapping inverts this — see TestFrontLapEngagement")
-        x0 = cfg.slide.nominal_side_clearance
+        x0 = cfg.side_gap  # air beside the box (see _build_placed)
         t_s = cfg.side_thickness
         t_fb = cfg.front_back_thickness
         bh = cfg.box_height
@@ -253,7 +270,7 @@ class TestFrontLapEngagement:
     def test_side_end_fills_the_front_socket(self, cfg):
         if not cfg.joinery.laps_front:
             pytest.skip("side-lapping — see TestJointEngagement")
-        x0 = cfg.slide.nominal_side_clearance
+        x0 = cfg.side_gap  # air beside the box (see _build_placed)
         t_s = cfg.side_thickness
         bh = cfg.box_height
         depth = cfg.joinery.socket_depth
@@ -273,7 +290,7 @@ class TestFrontLapEngagement:
     def test_lip_covers_the_side_end(self, cfg):
         if not cfg.joinery.laps_front:
             pytest.skip("side-lapping has no lip")
-        x0 = cfg.slide.nominal_side_clearance
+        x0 = cfg.side_gap  # air beside the box (see _build_placed)
         t_s = cfg.side_thickness
         bh = cfg.box_height
         lip = cfg.joinery.lip
@@ -287,7 +304,7 @@ class TestFrontLapEngagement:
     def test_no_side_material_outboard_of_the_lip(self, cfg):
         if not cfg.joinery.laps_front:
             pytest.skip("side-lapping has no lip")
-        x0 = cfg.slide.nominal_side_clearance
+        x0 = cfg.side_gap  # air beside the box (see _build_placed)
         zone = _envelope(x0, 0, 0, cfg.side_thickness,
                          cfg.joinery.lip, cfg.box_height)
         ls, _, _, _, _ = _build_placed(cfg)
@@ -317,7 +334,7 @@ class TestQQQGeometry:
         lip that wraps the corner from outside.
         """
         ls, _, _, _, _ = _build_placed(qqq_cfg)
-        x0 = qqq_cfg.slide.nominal_side_clearance
+        x0 = qqq_cfg.side_gap  # air beside the box (see _build_placed)
         t_s = qqq_cfg.side_thickness
         bh = qqq_cfg.box_height
         bd = qqq_cfg.box_depth
@@ -339,7 +356,7 @@ class TestQQQGeometry:
         """The set-in dado pocket (panel-local X `t_s/2…t_s`, Y `t_s/2…t_s`
         at the front; Y `bd−t_s…bd−t_s/2` at the back) is fully cut out."""
         ls, _, _, _, _ = _build_placed(qqq_cfg)
-        x0 = qqq_cfg.slide.nominal_side_clearance
+        x0 = qqq_cfg.side_gap  # air beside the box (see _build_placed)
         t_s = qqq_cfg.side_thickness
         bh = qqq_cfg.box_height
         bd = qqq_cfg.box_depth
@@ -352,7 +369,7 @@ class TestQQQGeometry:
         """The outer-face rabbet at each end of the sub-front (panel-local
         X `0…t_s/2`, Y `0…t_fb − t_s/2`) is fully cut out."""
         _, _, sf, _, _ = _build_placed(qqq_cfg)
-        x0 = qqq_cfg.slide.nominal_side_clearance
+        x0 = qqq_cfg.side_gap  # air beside the box (see _build_placed)
         t_s = qqq_cfg.side_thickness
         t_fb = qqq_cfg.front_back_thickness
         bh = qqq_cfg.box_height
@@ -368,7 +385,7 @@ class TestQQQGeometry:
         """The sub-front's inside-face tongue at the left end fills the side's
         set-in dado pocket: zone = world (X `t_s/2…t_s`, Y `t_s/2…t_s`)."""
         _, _, sf, _, _ = _build_placed(qqq_cfg)
-        x0 = qqq_cfg.slide.nominal_side_clearance
+        x0 = qqq_cfg.side_gap  # air beside the box (see _build_placed)
         t_s = qqq_cfg.side_thickness
         t_fb = qqq_cfg.front_back_thickness
         bh = qqq_cfg.box_height
@@ -394,7 +411,7 @@ class TestQQQGeometry:
         side panel alone — the sub-front does not appear at the outside corner
         because its outer-face rabbet has removed material there."""
         ls, _, sf, _, _ = _build_placed(qqq_cfg)
-        x0 = qqq_cfg.slide.nominal_side_clearance
+        x0 = qqq_cfg.side_gap  # air beside the box (see _build_placed)
         t_s = qqq_cfg.side_thickness
         bh = qqq_cfg.box_height
         corner = _envelope(x0, 0, 0, t_s, t_s / 2, bh)
