@@ -56,6 +56,7 @@ import json
 import math
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Optional
 from importlib import resources
 
 
@@ -162,6 +163,7 @@ class DrawerSlideSpec:
     min_top_clearance: float    # minimum gap above drawer box top
     min_bottom_clearance: float # minimum gap below drawer box (undermount body height)
 
+
     # Slide dimensions
     available_lengths: tuple[int, ...]  # nominal slide lengths in mm
     max_load_kg: float                  # maximum rated dynamic load
@@ -183,6 +185,24 @@ class DrawerSlideSpec:
     # side-mount ball-bearing slides (Accuride) are commonly sold as singles.
     # Drives HardwareLine.pack_quantity and must match the PRICE_LIST basis.
     sold_as_pair: bool = True
+
+    #: Drawer-bottom recess required by this runner, in mm: the distance from
+    #: the BOTTOM EDGE of the drawer side up to the UNDERSIDE of the drawer
+    #: bottom panel — which is the lower shoulder of the bottom groove.
+    #:
+    #: An INTERFACE dimension, not a design preference. An undermount runner
+    #: carries the box under its bottom panel and its front locking devices
+    #: engage that panel, so the runner decides where the bottom sits. It
+    #: lived on ``DrawerConfig`` as a bare 12.0 default until 2026-08-29,
+    #: unreachable from every tool argument and checked by nothing — the same
+    #: shape as the side clearance in #91, one axis over.
+    #:
+    #: ``None`` means this runner imposes none: a side-mount slide never
+    #: touches the drawer bottom, and for an undermount it means the figure
+    #: is simply not sourced in this repo. Say so rather than guessing —
+    #: a wrong number here is a groove, and a groove floor can be lowered
+    #: but never raised.
+    bottom_recess: Optional[float] = None
 
     #: Which drawer-box face the three side-clearance numbers above are
     #: measured to.  ``None`` (the default) resolves from ``mount_location``
@@ -531,6 +551,16 @@ BLUM_TANDEM_550H = DrawerSlideSpec(
     nominal_side_clearance=21.0,
     min_top_clearance=7.0,          # 9/32" — keep this gap above drawer box
     min_bottom_clearance=14.0,      # 9/16" — slide body height below drawer
+    #: 13 mm bottom recess — Blum dimensions it on the drawer-box front view
+    #: beside the 14 mm bottom clearance. The locking devices are literally
+    #: "designed for 13 (1/2") drawer bottom recess" (TANDEM plus BLUMOTION
+    #: brochure LIT.TDM1100, locking-device pages). No tolerance is published,
+    #: and none of the runner's four adjustments (side-to-side ±1.5, height
+    #: +3, tilt +5, depth ±4.5) moves it — they all align the drawer FRONT.
+    #: Source: TANDEM plus BLUMOTION 563H/563 Installation Instructions,
+    #: INST-TDM563H-563 05.16, page 2. Confirmed at the bench by Charlie
+    #: 2026-08-29: dadoed at 13, drawers run.
+    bottom_recess=13.0,
     available_lengths=(270, 300, 350, 400, 450, 500, 550, 600),
     max_load_kg=30,
     min_drawer_height=68,
@@ -571,6 +601,7 @@ BLUM_TANDEM_PLUS_563H = DrawerSlideSpec(
     nominal_side_clearance=21.0,
     min_top_clearance=6.0,          # ¼" — slightly tighter than 550H
     min_bottom_clearance=14.0,      # 9/16"
+    bottom_recess=13.0,   # see BLUM_TANDEM_550H
     available_lengths=(229, 305, 381, 457, 533),  # 9", 12", 15", 18", 21"
     max_load_kg=41,                 # 90 lb (Woodworker Express listing)
     min_drawer_height=68,
@@ -610,6 +641,7 @@ BLUM_TANDEM_PLUS_563F = DrawerSlideSpec(
     nominal_side_clearance=21.0,
     min_top_clearance=6.0,
     min_bottom_clearance=14.0,
+    bottom_recess=13.0,   # see BLUM_TANDEM_550H
     available_lengths=(229, 305, 381, 457, 533),
     max_load_kg=41,
     min_drawer_height=68,
@@ -648,6 +680,7 @@ BLUM_MOVENTO_760H = DrawerSlideSpec(
     nominal_side_clearance=21.0,
     min_top_clearance=3.0,
     min_bottom_clearance=15.0,      # Movento body is slightly taller than Tandem
+    bottom_recess=13.0,   # see BLUM_TANDEM_550H
     available_lengths=(250, 270, 300, 350, 400, 450, 500, 550, 600),
     max_load_kg=40,
     min_drawer_height=68,
@@ -688,6 +721,7 @@ BLUM_MOVENTO_769 = DrawerSlideSpec(
     nominal_side_clearance=21.0,
     min_top_clearance=3.0,
     min_bottom_clearance=15.0,
+    bottom_recess=13.0,   # see BLUM_TANDEM_550H
     available_lengths=(457, 533, 610, 686, 762),  # 18"–30"
     max_load_kg=70,  # dynamic rating; 77 kg is the static figure
     min_drawer_height=68,
