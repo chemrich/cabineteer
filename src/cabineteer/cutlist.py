@@ -415,9 +415,19 @@ def consolidate_bom(panels: list[CutlistPanel]) -> list[CutlistPanel]:
             # leading ", ") so it is intentionally dropped.
             existing = consolidated[key]
             if panel.notes and panel.notes not in existing.notes:
-                existing.notes = (
-                    f"{existing.notes}; {panel.notes}" if existing.notes else panel.notes
-                )
+                # Merge CLAUSE by clause, not whole string by whole string.
+                # Appending the entire incoming note repeated every clause
+                # the two already shared — a merged pair of mirrored bay
+                # faces printed "species TBD" twice and, worse, carried both
+                # "18 mm left / 8 mm right" and "8 mm left / 18 mm right" for
+                # one panel. Only what is genuinely new is added.
+                have = [c.strip() for c in existing.notes.split(";")]
+                add = [c.strip() for c in panel.notes.split(";")
+                       if c.strip() and c.strip() not in have]
+                if add:
+                    existing.notes = "; ".join(
+                        [existing.notes] + add) if existing.notes \
+                        else "; ".join(add)
         else:
             # Preserve original notes; track part names separately in a leading tag
             new_panel = CutlistPanel(
@@ -1893,24 +1903,19 @@ def band_segments_for_panels(
 ) -> dict[str, list[float]]:
     """Per-material band piece lengths (mm) from ``edge_band`` markers.
 
-    ``"front"``/``"back"`` run along the panel's *length*, ``"left"``/
-    ``"right"`` along its *width*, ``"all"`` is the full perimeter (false
-    fronts / door leaves). One entry per physical piece × quantity.
+    One entry per physical piece × quantity, grouped by band species.
+
+    A thin view over :func:`band_pieces_for_panels` rather than a second
+    implementation. It WAS a second implementation, with its own copy of
+    which edge runs along which axis — and when the perimeter arithmetic was
+    corrected in one of them, the ordering BOM and the banding document
+    would have quoted different lengths for the same strip. Two functions
+    deriving one quantity is the whole defect class this file is being swept
+    for; there is now one derivation and this is a projection of it.
     """
     per_material: dict[str, list[float]] = {}
-    for p in panels:
-        if not p.edge_band:
-            continue
-        segs: list[float] = []
-        for edge in p.edge_band:
-            if edge == "all":
-                segs += [p.length, p.length, p.width, p.width]
-            elif edge in ("left", "right"):
-                segs.append(p.width)
-            else:
-                segs.append(p.length)
-        mat = _band_material_for(p.material, cfg)
-        per_material.setdefault(mat, []).extend(segs * p.quantity)
+    for piece in band_pieces_for_panels(panels, cfg):
+        per_material.setdefault(piece["material"], []).append(piece["length"])
     return per_material
 
 
@@ -2008,6 +2013,8 @@ def band_pieces_for_panels(
     edge for full-perimeter faces), ``length`` and ``material`` (band
     species via the same resolution the BOM line uses).
     """
+    band_t = (float(getattr(cfg, "edge_band_thickness_mm", 0.0))
+              if getattr(cfg, "edge_band_mode", "none") != "none" else 0.0)
     pieces: list[dict] = []
     for p in panels:
         if not p.edge_band:
@@ -2016,11 +2023,33 @@ def band_pieces_for_panels(
         per: list[tuple[str, float]] = []
         for edge in p.edge_band:
             if edge == "all":
-                per += [("long edge", p.length), ("long edge", p.length),
-                        ("short edge", p.width), ("short edge", p.width)]
+                # A full perimeter goes on in two passes: the SHORT pair
+                # first, trimmed flush, then the LONG pair over the top of
+                # them (see _band_corner_notes). So the long pieces do not
+                # span the panel — they span the panel PLUS the two short
+                # bands already stuck to its ends, which is 2 x band
+                # thickness more.
+                #
+                # This was emitting the bare panel length under a "Finished
+                # length" header, and the corner note claimed the 10 mm
+                # proud allowance absorbed the difference. It does not: at
+                # 1/8" it leaves 3.6 mm to flush-trim BOTH ends, and at 1/4"
+                # — which the evaluator accepts without a word — 2 x 6.35 is
+                # 12.7, so the piece comes out 2.7 mm SHORTER than the edge
+                # it has to cover. 56 strips on the sideboards.
+                #
+                # Which pair is "short" is geometry, not which field it
+                # happens to live in: a wide, low door has width > length.
+                long_edge = max(p.length, p.width)
+                short_edge = min(p.length, p.width)
+                per += [("long edge", long_edge + 2 * band_t),
+                        ("long edge", long_edge + 2 * band_t),
+                        ("short edge", short_edge),
+                        ("short edge", short_edge)]
             elif edge in ("left", "right"):
                 per.append((f"{edge} edge", p.width))
             else:
+                # A single banded edge laps nothing — it runs the edge.
                 per.append((f"{edge} edge", p.length))
         for _ in range(p.quantity):
             for label, ln in per:
@@ -2048,6 +2077,15 @@ def edge_band_lines_for_panels(
     stock = getattr(cfg, "edge_band_stock", None) if mode == "hardwood" else None
 
     MM_PER_FT = 304.8
+    HOT_MELT_ROLL_MM = 22.2      # 7/8" pre-glued roll
+    DEFAULT_RIP_WIDTH_MM = 20.0  # when no stock spec names one
+    # The thickest edge any of these panels actually bands. Both notes below
+    # used to assert 18 mm and ~20 mm outright, so a 25 mm carcass was told
+    # a 7/8" roll covers its edges — it does not, and that note is where the
+    # roll gets ordered from.
+    banded_t = sorted({float(p.thickness) for p in panels if p.edge_band})
+    max_edge = banded_t[-1] if banded_t else 0.0
+    rip_w = float((stock or {}).get("strip_width_mm", DEFAULT_RIP_WIDTH_MM))
     lines: list[HardwareLine] = []
     for mat, segs in sorted(band_segments_for_panels(panels, cfg).items()):
         mm = sum(segs)
@@ -2063,7 +2101,12 @@ def edge_band_lines_for_panels(
                 pieces_needed=ft,
                 pack_quantity=50,
                 notes=(f"{mm / 1000:.1f} m of edges (+15% waste); "
-                       f'7/8" width covers 18 mm edges (trim flush)'),
+                       + (f'7/8" ({HOT_MELT_ROLL_MM:g} mm) width covers the '
+                          f'{max_edge:g} mm edges here (trim flush)'
+                          if max_edge <= HOT_MELT_ROLL_MM else
+                          f'WARNING: a 7/8" ({HOT_MELT_ROLL_MM:g} mm) roll '
+                          f'does NOT cover the {max_edge:g} mm edges here '
+                          '— order a wider roll')),
             ))
         elif stock is None:
             lines.append(HardwareLine(
@@ -2075,8 +2118,10 @@ def edge_band_lines_for_panels(
                 pieces_needed=ft,
                 pack_quantity=1,
                 notes=(f"{mm / 1000:.1f} m of edges (+15% waste); rip "
-                       f"{thk:g} mm × ~20 mm strips from solid stock/offcuts "
-                       "(proud, flush-trim after glue-up)"),
+                       f"{thk:g} mm × {rip_w:g} mm strips from solid "
+                       f"stock/offcuts — {rip_w - max_edge:g} mm proud of "
+                       f"the {max_edge:g} mm edges, flush-trim after "
+                       "glue-up"),
             ))
         else:
             pack = pack_band_strips(segs, stock)
@@ -2214,11 +2259,15 @@ def _band_corner_notes(cfg, schedule: list[dict]) -> list[str]:
             "full height; top/bottom bands butt between them (their length "
             "is the interior span, already what the schedule lists).")
     if has_faces:
+        thk = float(getattr(cfg, "edge_band_thickness_mm", 0.0))
         notes.append(
             "Door / false-front perimeters: band the SHORT edges first and "
             "trim flush, then the LONG edges — the long bands OVERLAP and "
-            "hide the short bands' end grain. The proud allowance covers "
-            "the extra 2× band thickness the long pair spans.")
+            "hide the short bands' end grain. The long pieces in the "
+            f"schedule are already {2 * thk:g} mm longer than the panel "
+            f"({thk:g} mm of band at each end) — that is the panel's own "
+            "geometry, not trim allowance, and the proud allowance is on "
+            "top of it.")
     return notes
 
 

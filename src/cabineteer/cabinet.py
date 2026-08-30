@@ -1407,6 +1407,162 @@ def _door_transition_exists(bay_configs: "list[CabinetConfig]") -> bool:
     return False
 
 
+def bay_x_offsets(
+    bay_configs: "list[CabinetConfig]",
+) -> "tuple[list[float], float]":
+    """``([x per bay], total run width)`` — adjacent bays share a divider.
+
+    Written out verbatim in three places before this. Nothing had drifted
+    yet, which is the only reason it was a nit and not a defect.
+    """
+    n = len(bay_configs)
+    xs: list[float] = []
+    x = 0.0
+    for i, cfg in enumerate(bay_configs):
+        xs.append(x)
+        x += cfg.width - (cfg.side_thickness if i < n - 1 else 0)
+    return xs, x
+
+
+@dataclass(frozen=True)
+class FacePlacement:
+    """Where one show face sits, and what it laps — signed.
+
+    ``face_layout`` says how big a face is and where it starts. This says
+    what a person needs in order to HANG it, which was on no document at
+    all: the cutlist's only positioning sentence was a hardcoded
+    ``face_gap_mm`` that contradicted the row's own height at both anchored
+    ends of every stack.
+
+    The sign carries the meaning, and it is the whole reason one formula
+    covers every case:
+
+    * ``> 0`` — a reveal, the shadow line to shim
+    * ``0``   — flush with that carcass member
+    * ``< 0`` — the face LAPS the member by that much (a ``furniture_top``
+      bottom face drops over the bottom panel; a door-transition top face
+      runs up over the top panel)
+
+    Deriving it beside ``face_layout`` rather than in the cutlist is
+    deliberate: a second implementation of stack adjacency in another module
+    is precisely the drift channel that produced #88.
+    """
+
+    panel: FacePanel
+    #: Signed distance to the neighbour below / above, or to the carcass.
+    reveal_below: float
+    reveal_above: float
+    #: Bottom edge relative to the bottom panel's TOP face. Negative when
+    #: the face hangs below it.
+    datum: float
+    #: How much of the named member each vertical edge covers. Against a
+    #: "meeting leaf" the sign reads the same way as a reveal: negative is
+    #: the gap between the two leaves of a pair, which is the number a
+    #: person setting them actually needs.
+    left_lap: float
+    right_lap: float
+    left_member: str        # "cabinet side" | "divider" | "meeting leaf"
+    right_member: str
+    #: What the face actually meets below / above — the neighbouring face,
+    #: the carcass panel, or a furniture-top cap. Named here because only
+    #: this function knows which; a consumer guessing from "is there a face
+    #: above" called the cap "the top panel".
+    below_member: str
+    above_member: str
+
+
+def face_placements(
+    bay_configs: "list[CabinetConfig]", **kw,
+) -> "list[FacePlacement]":
+    """Every show face with the numbers needed to hang it.
+
+    A face's neighbour is the next face in ITS OWN stack — same bay, same
+    leaf. At the ends of a stack the neighbour is the carcass: the bottom
+    panel's top face below, the top panel's underside above, and the
+    furniture-top cap where there is one, since the cap is what the topmost
+    face actually meets.
+    """
+    panels = face_layout(bay_configs, **kw)
+    x_offsets, _total = bay_x_offsets(bay_configs)
+    n_bays = len(bay_configs)
+
+    faces = [p for p in panels if p.kind in ("drawer_face", "door")]
+    cap = next((p for p in panels if p.kind == "top_cap"), None)
+
+    # VERTICAL neighbours come from the slot stack, not from ``leaf``.
+    # ``leaf`` is a HORIZONTAL index — the two leaves of a door pair share a
+    # slot and sit side by side — so keying a column by it made the right
+    # leaf a stack of one, and both its reveals got measured to the carcass
+    # instead of to the faces 4 mm away. Both leaves of a pair occupy the
+    # same z band, so group by z.
+    rows_by_bay: dict[int, list[tuple[float, float]]] = {}
+    for p in faces:
+        band = (round(p.z, 3), round(p.z + p.height, 3))
+        rows_by_bay.setdefault(p.bay, [])
+        if band not in rows_by_bay[p.bay]:
+            rows_by_bay[p.bay].append(band)
+    for bands in rows_by_bay.values():
+        bands.sort()
+
+    # HORIZONTAL neighbours: the leaves that share this face's slot, left to
+    # right. A pair's inner edges meet EACH OTHER, not the carcass.
+    slots: dict[tuple[int, int], list[FacePanel]] = {}
+    for p in faces:
+        slots.setdefault((p.bay, p.slot), []).append(p)
+    for row in slots.values():
+        row.sort(key=lambda q: q.x)
+
+    out: list[FacePlacement] = []
+    for p in faces:
+        cfg = bay_configs[p.bay]
+        bands = rows_by_bay[p.bay]
+        i = bands.index((round(p.z, 3), round(p.z + p.height, 3)))
+        if i:
+            below = p.z - bands[i - 1][1]
+            below_member = "face below"
+        else:
+            below = p.z - cfg.bottom_thickness
+            below_member = "bottom panel"
+        if i + 1 < len(bands):
+            above = bands[i + 1][0] - (p.z + p.height)
+            above_member = "face above"
+        elif cap is not None:
+            above = cap.z - (p.z + p.height)
+            above_member = "top cap"
+        else:
+            above = (cfg.height - cfg.top_thickness) - (p.z + p.height)
+            above_member = "top panel"
+
+        row = slots[(p.bay, p.slot)]
+        j = row.index(p)
+        bx = x_offsets[p.bay]
+        if j:
+            left_lap = round(row[j - 1].x + row[j - 1].width - p.x, 3)
+            left_member = "meeting leaf"
+        else:
+            left_lap = round((bx + cfg.side_thickness) - p.x, 3)
+            left_member = "cabinet side" if p.bay == 0 else "divider"
+        if j + 1 < len(row):
+            right_lap = round((p.x + p.width) - row[j + 1].x, 3)
+            right_member = "meeting leaf"
+        else:
+            right_lap = round((p.x + p.width)
+                              - (bx + cfg.side_thickness + cfg.interior_width), 3)
+            right_member = ("cabinet side" if p.bay == n_bays - 1
+                            else "divider")
+
+        out.append(FacePlacement(
+            panel=p,
+            reveal_below=round(below, 3),
+            reveal_above=round(above, 3),
+            datum=round(p.z - cfg.bottom_thickness, 3),
+            left_lap=left_lap, right_lap=right_lap,
+            left_member=left_member, right_member=right_member,
+            below_member=below_member, above_member=above_member,
+        ))
+    return out
+
+
 def face_layout(
     bay_configs: "list[CabinetConfig]",
     *,
@@ -1454,12 +1610,7 @@ def face_layout(
     has_transition = _door_transition_exists(bay_configs)
 
     # Bay X offsets — adjacent bays share a divider (same rule as the 3D).
-    x_offsets: list[float] = []
-    x = 0.0
-    for i, cfg in enumerate(bay_configs):
-        x_offsets.append(x)
-        x += cfg.width - (cfg.side_thickness if i < n_bays - 1 else 0)
-    total_width = x
+    x_offsets, total_width = bay_x_offsets(bay_configs)
 
     panels: list[FacePanel] = []
     for bay_idx, (cfg, bx) in enumerate(zip(bay_configs, x_offsets)):
@@ -1833,12 +1984,7 @@ def build_multi_bay_cabinet(
     # Adjacent bays share a single divider panel: the right panel of bay N serves
     # as the left wall of bay N+1.  Each non-leftmost bay is therefore shifted
     # one side_thickness to the left so its interior aligns with the shared panel.
-    x_offsets: list[float] = []
-    x = 0.0
-    for i, cfg in enumerate(bay_configs):
-        x_offsets.append(x)
-        x += cfg.width - (cfg.side_thickness if i < n_bays - 1 else 0)
-    total_width = x
+    x_offsets, total_width = bay_x_offsets(bay_configs)
 
     # ── Show-face geometry — single source of truth ────────────────────────────
     # face_layout() owns every face/door/cap dimension and position; this
