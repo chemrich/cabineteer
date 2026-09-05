@@ -8214,7 +8214,8 @@ SCENARIOS.append(Scenario(
             args={"project": {
                 "name": "eval_single_col",
                 "cabinets": [{"name": "a", "config": {
-                    "width": 600, "height": 720, "depth": 550, "num_drawers": 3}}],
+                    "width": 600, "height": 720, "depth": 550, "num_drawers": 3,
+                    "face_top_style": "plain", "face_bottom_style": "plain"}}],
             }},
             assertions=[
                 Assertion("panel_count", Op.EQ, 18,
@@ -8896,7 +8897,8 @@ _s(Scenario(
         ToolCall(
             tool="design_project",
             args={"name": "eval_worktop_desk", "overwrite": True,
-                  "shared": {"side_thickness": 18, "carcass_joinery": "floating_tenon"},
+                  "shared": {"side_thickness": 18, "carcass_joinery": "floating_tenon",
+                             "face_top_style": "plain", "face_bottom_style": "plain"},
                   "cabinets": [
                       {"name": "tower-left",
                        "config": {"width": 381, "height": 500, "depth": 457,
@@ -8974,6 +8976,8 @@ _s(Scenario(
             args={"project": {"name": "eval_face_doors", "cabinets": [
                 {"name": "a", "config": {"width": 800, "height": 762,
                                          "depth": 500,
+                                         "face_top_style": "plain",
+                                         "face_bottom_style": "plain",
                                          "openings": [[150, "drawer"],
                                                        [558, "door_pair"]]}}]}},
             label="default faces: doors emitted, species TBD group",
@@ -8991,7 +8995,9 @@ _s(Scenario(
         ToolCall(
             tool="generate_project_cutlist",
             args={"project": {"name": "eval_face_doors_bb",
-                  "shared": {"face_material": "baltic_birch"},
+                  "shared": {"face_material": "baltic_birch",
+                             "face_top_style": "plain",
+                             "face_bottom_style": "plain"},
                   "cabinets": [
                 {"name": "a", "config": {"width": 800, "height": 762,
                                          "depth": 500,
@@ -9148,7 +9154,9 @@ SCENARIOS.append(Scenario(
                   "shared": {"edge_band_mode": "hardwood",
                              "edge_band_thickness_mm": 6.4,
                              "face_material": "rift_white_oak_ply",
-                             "carcass_material": "rift_white_oak_ply"},
+                             "carcass_material": "rift_white_oak_ply",
+                             "face_top_style": "plain",
+                             "face_bottom_style": "plain"},
                   "cabinets": [
                       {"name": "a", "config": {
                           "width": 800, "height": 700, "depth": 457,
@@ -9698,6 +9706,11 @@ _s(Scenario(
             tool="generate_cutlist",
             args={"name": "eval_face_geometry_plain",
                   "width": 381, "height": 389, "depth": 457,
+                  # Explicit plain/plain: the CabinetConfig default flipped
+                  # to ("cap", "flush") ("always default to some sort of
+                  # flushness"), so omitting these would no longer test the
+                  # plain case this scenario is named for.
+                  "face_top_style": "plain", "face_bottom_style": "plain",
                   "drawer_config": [[133, "drawer"], [110, "drawer"],
                                     [110, "drawer"]]},
             label="plain stack: faces + 4 mm gaps tile the 353 mm span",
@@ -9707,6 +9720,35 @@ _s(Scenario(
                 Assertion("panels_summary.12.width_mm", Op.APPROX, 106),
                 Assertion("panels_summary.13.width_mm", Op.APPROX, 108),
                 # no furniture_top → no cap row
+                Assertion("panels_summary", Op.LEN_EQ, 14),
+            ],
+        ),
+        ToolCall(
+            tool="generate_cutlist",
+            args={"name": "eval_face_geometry_flush",
+                  "width": 381, "height": 389, "depth": 457,
+                  "face_gap_mm": 2.5,
+                  # "flush" is the top-only counterpart to "cap": no cap
+                  # strip panel, but the topmost face itself rises to the
+                  # true top of the top panel instead of stopping under a
+                  # gap like the plain case does.
+                  "face_top_style": "flush", "face_bottom_style": "plain",
+                  "drawer_config": [[133, "drawer"], [110, "drawer"],
+                                    [110, "drawer"]]},
+            label="flush top: no cap row, top face rises to the panel's own top",
+            assertions=[
+                Assertion("panels_summary.11.name", Op.EQ, "false_front"),
+                Assertion("panels_summary.11.length_mm", Op.APPROX, 381),
+                # bottom face is plain-style — same as the plain scenario
+                Assertion("panels_summary.11.width_mm", Op.APPROX, 131.8),
+                Assertion("panels_summary.12.width_mm", Op.APPROX, 107.5),
+                # top face gains a full top_thickness (18) over the plain
+                # case's 108 — it covers the top panel's front edge itself,
+                # so no separate cap strip is needed.
+                Assertion("panels_summary.13.width_mm", Op.APPROX, 126.8),
+                Assertion("panels_summary.13.name", Op.EQ, "false_front"),
+                # flush emits no top_front_cap row — the tall face already
+                # covers that edge.
                 Assertion("panels_summary", Op.LEN_EQ, 14),
             ],
         ),

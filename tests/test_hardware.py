@@ -344,6 +344,10 @@ class TestHingeSystemBOM:
         cfg = build_cabinet_config({
             "width": 600, "height": 720, "depth": 550,
             "door_hinge": hinge_key,
+            # plain/plain: this is about hinge BOM notes, not face style —
+            # a "cap" top or "flush" bottom would change the leaf height
+            # the "684 mm" note is hand-checked against.
+            "face_top_style": "plain", "face_bottom_style": "plain",
             "drawer_config": [[684, "door"]]})
         return hinge_lines_for_cabinet_config(cfg)
 

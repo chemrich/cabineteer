@@ -49,7 +49,12 @@ def _cfg(**kw):
     base = dict(width=600, height=900, depth=600,
                 side_thickness=18, bottom_thickness=18, top_thickness=18,
                 shelf_thickness=18, back_thickness=6,
-                carcass_joinery="floating_tenon")
+                carcass_joinery="floating_tenon",
+                # This module is about the door-floor axis, not the
+                # show-face top/bottom style — pin plain/plain so the
+                # CabinetConfig default (now "cap"/"flush") doesn't change
+                # the face-stack numbers these tests were pinned against.
+                face_top_style="plain", face_bottom_style="plain")
     base.update(kw)
     return build_cabinet_config(base)
 

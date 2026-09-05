@@ -28,13 +28,27 @@ from cabineteer.cabinet import (
     face_layout,
 )
 from cabineteer.server import _raw_panels_for_cabinet
+from cabineteer.cutlist import consolidate_bom
 
 TOL = 0.05
 
 
 def _cfg(**kw):
+    # Explicit plain/plain UNLESS the caller already said something about
+    # top/bottom style: this module's numbers were all pinned against the
+    # old furniture_top=False default (no cap, no bottom drop). The
+    # CabinetConfig default flipped to ("cap", "flush") — "always default
+    # to some sort of flushness" — so an un-pinned _cfg() would silently
+    # start testing cap/flush geometry everywhere instead of the plain
+    # stack this file is about. A test that DOES pass furniture_top= or
+    # either style kwarg is left alone — pinning "plain" here too would
+    # shadow it (build_cabinet_config's legacy translation only fires when
+    # the new-style key is absent from this SAME call).
     base = dict(width=381, height=389, depth=457,
                 drawer_config=[[133, "drawer"], [110, "drawer"], [110, "drawer"]])
+    if not ({"furniture_top", "face_top_style", "face_bottom_style"} & set(kw)):
+        base["face_top_style"] = "plain"
+        base["face_bottom_style"] = "plain"
     base.update(kw)
     return build_cabinet_config(base)
 
@@ -167,7 +181,10 @@ class TestDoors:
         assert abs(centre_gap - expected_gap) < 0.1
 
     def test_door_above_drawer_extends_to_exterior_top(self):
+        # plain/plain: a "cap" top would steal this test's signal (the
+        # transition rule's fto) under its own -gap branch instead.
         cfg = build_cabinet_config(dict(width=609.6, height=720, depth=550,
+                            face_top_style="plain", face_bottom_style="plain",
                             drawer_config=[[110, "drawer"], [538, "door_pair"]]))
         panels = face_layout([cfg])
         door = next(p for p in panels if p.kind == "door")
@@ -195,6 +212,7 @@ class TestCutlistMatchesLayout:
             [180, "drawer"], [180, "drawer"], [180, "drawer"]]),  # B tower
         dict(furniture_top=True),
         dict(face_gap_mm=2.5),
+        dict(face_top_style="flush", face_bottom_style="plain"),
     ])
     def test_false_front_rows_equal_layout(self, kwargs):
         cfg = _cfg(**kwargs)
@@ -251,24 +269,41 @@ class TestCutlistMatchesLayout:
 
 class TestConfigPlumbing:
     def test_shared_design_tokens_round_trip(self):
+        # furniture_top is a legacy CONVENIENCE key: shared_from_dict
+        # translates it into the two real fields at load time (see
+        # test_face_top_bottom_style.py for the split's own coverage);
+        # SharedDesign itself no longer stores the boolean.
         from cabineteer.project import shared_from_dict, _shared_to_dict
         sd = shared_from_dict({"face_gap_mm": 2.5, "furniture_top": True})
-        assert sd.face_gap_mm == 2.5 and sd.furniture_top is True
-        assert _shared_to_dict(sd) == {"face_gap_mm": 2.5, "furniture_top": True}
+        assert sd.face_gap_mm == 2.5
+        assert sd.face_top_style == "cap" and sd.face_bottom_style == "flush"
+        assert _shared_to_dict(sd) == {
+            "face_gap_mm": 2.5,
+            "face_top_style": "cap", "face_bottom_style": "flush",
+        }
 
     def test_config_dict_round_trip(self):
+        # _config_to_dict persists the real stored fields, not the derived
+        # (and lossy) furniture_top boolean — see project._config_to_dict's
+        # comment for why a "flush" top would silently disappear otherwise.
         from cabineteer.project import _config_to_dict, config_from_dict
         cfg = _cfg(face_gap_mm=2.5, furniture_top=True)
         d = _config_to_dict(cfg)
-        assert d["face_gap_mm"] == 2.5 and d["furniture_top"] is True
+        assert d["face_gap_mm"] == 2.5
+        assert d["face_top_style"] == "cap" and d["face_bottom_style"] == "flush"
+        assert "furniture_top" not in d
         back = config_from_dict(d)
         assert back.face_gap_mm == 2.5 and back.furniture_top is True
 
     def test_build_cabinet_config_keeps_furniture_top(self):
+        # furniture_top is now a DERIVED property, not a stored field — the
+        # legacy boolean kwarg still round-trips through it via
+        # build_cabinet_config's translation shim.
         from cabineteer.cabinet import build_cabinet_config
         cfg = build_cabinet_config({"width": 381, "height": 389, "depth": 457,
                                     "furniture_top": True})
         assert cfg.furniture_top is True
+        assert cfg.face_top_style == "cap" and cfg.face_bottom_style == "flush"
 
 
 class TestFaceClearanceCheckWired:
@@ -330,6 +365,7 @@ class TestRenderMatchesLayout:
         (dict(height=1168, drawer_config=[
             [296, "drawer"], [296, "drawer"],
             [180, "drawer"], [180, "drawer"], [180, "drawer"]]), None),
+        (dict(face_top_style="flush", face_bottom_style="plain"), None),
     ])
     def test_single_bay_faces(self, kwargs, ft):
         cfg = _cfg(**kwargs)
@@ -424,8 +460,11 @@ class TestHardwareBomUsesRealFaces:
         """
         from cabineteer.cabinet import bays_from_config, face_layout
         from cabineteer.cutlist import hinge_lines_for_cabinet_config
+        # plain/plain: the door-transition rule (not the "cap" style's -gap
+        # trim) is what carries this leaf over the threshold.
         cfg = build_cabinet_config(dict(
             width=600, height=1182, depth=550,
+            face_top_style="plain", face_bottom_style="plain",
             drawer_config=[[246, "drawer"], [900, "door"]]))
         leaf = next(p for p in face_layout(bays_from_config(cfg, None))
                     if p.kind == "door")
@@ -519,13 +558,65 @@ class TestFurnitureTopCutlistInteractions:
         assert ids["top_front_cap"].startswith("TC")
         assert ids["top"] == "T1"
 
+    def test_flush_covers_top_front_edge_not_banded(self):
+        # The "flush" analogue of test_cap_covers_top_front_edge_not_banded:
+        # no cap strip exists, but the tall top face still covers the top
+        # panel's front edge, so that edge must stay unbanded and un-shrunk
+        # exactly like the "cap" case — and, unlike "cap", NO top_front_cap
+        # row is emitted at all (flush adds no standalone panel).
+        cfg = build_cabinet_config(dict(
+            width=381, height=389, depth=457,
+            face_top_style="flush", face_bottom_style="plain",
+            edge_band_mode="hardwood", edge_band_thickness_mm=3.175,
+            edge_band_material="birch",
+            drawer_config=[[133, "drawer"], [110, "drawer"], [110, "drawer"]]))
+        raw_c, _, _, ff = _raw_panels_for_cabinet(cfg, None)
+        top = next(p for p in raw_c if p.name == "top")
+        assert "front" not in top.edge_band
+        assert "tall top face" in top.notes
+        assert "top_front_cap" not in [p.name for p in ff]
+        # sides keep their banded front edge
+        side = next(p for p in raw_c if p.name == "side")
+        assert "front" in side.edge_band
+
+    def test_flush_and_cap_top_notes_survive_consolidation(self):
+        # A "cap"-style and a "flush"-style cabinet with otherwise identical
+        # top-panel dims consolidate their "top" rows into one quantity-2
+        # line (same name/length/width/thickness/edge_band) — but the two
+        # styles' notes must BOTH survive that merge, clause by clause, so
+        # the printed line never claims a top_front_cap strip covers an
+        # edge that a flush-style cabinet's top has none of (or vice versa).
+        common = dict(width=381, height=389, depth=457,
+                      drawer_config=[[133, "drawer"], [110, "drawer"],
+                                     [110, "drawer"]])
+        cap_cfg = build_cabinet_config(
+            dict(common, face_top_style="cap", face_bottom_style="flush"))
+        flush_cfg = build_cabinet_config(
+            dict(common, face_top_style="flush", face_bottom_style="plain"))
+        cap_top = next(p for p in _raw_panels_for_cabinet(cap_cfg, None)[0]
+                       if p.name == "top")
+        flush_top = next(p for p in _raw_panels_for_cabinet(flush_cfg, None)[0]
+                         if p.name == "top")
+        # Same stock, so they really do belong on one consolidated line.
+        assert (cap_top.length, cap_top.width, cap_top.thickness) == \
+               (flush_top.length, flush_top.width, flush_top.thickness)
+        merged = consolidate_bom([cap_top, flush_top])
+        assert len(merged) == 1
+        row = merged[0]
+        assert row.quantity == 2
+        assert "front" not in row.edge_band
+        assert "top_front_cap strip" in row.notes
+        assert "tall top face" in row.notes
+
 
 class TestLayoutSemantics:
     def test_transition_counts_every_door_slot(self):
         # #10: a [door, drawer, door] column's top door extends to the
-        # exterior top exactly like a [drawer, door]'s.
+        # exterior top exactly like a [drawer, door]'s. plain/plain so the
+        # transition rule (not a "cap" style) is what's under test.
         cfg = build_cabinet_config(dict(
             width=600, height=900, depth=500,
+            face_top_style="plain", face_bottom_style="plain",
             drawer_config=[[400, "door"], [200, "drawer"], [264, "door"]]))
         doors = [p for p in face_layout([cfg]) if p.kind == "door"]
         top_door = max(doors, key=lambda p: p.z)
@@ -544,6 +635,7 @@ class TestLayoutSemantics:
         # #13: each bay tiles its own span with its OWN face_gap_mm.
         mk = lambda g: build_cabinet_config(dict(
             width=381, height=389, depth=457, face_gap_mm=g,
+            face_top_style="plain", face_bottom_style="plain",
             drawer_config=[[133, "drawer"], [110, "drawer"], [110, "drawer"]]))
         faces = _drawer_faces(face_layout([mk(4.0), mk(2.5)]))
         by_bay: dict = {}

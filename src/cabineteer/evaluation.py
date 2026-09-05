@@ -1059,6 +1059,40 @@ def check_back_capture(cab_cfg: CabinetConfig) -> list[Issue]:
     return issues
 
 
+def check_face_top_bottom_style(cab_cfg: CabinetConfig) -> list[Issue]:
+    """Validate ``face_top_style`` / ``face_bottom_style``.
+
+    Two independent axes replacing the old combined ``furniture_top``
+    boolean (see ``CabinetConfig.face_top_style`` / ``.face_bottom_style``).
+    Unlike ``back_style``/``back_capture`` this pair has no combinatorial
+    constraints against the rest of the config: ``"flush"`` only moves a
+    face taller so it covers the same edge a cap strip would — it never
+    cuts the carcass, so it is compatible with miter, dado/rabbet, and any
+    back_capture. The only thing that can be wrong here is the string
+    itself.
+    """
+    issues: list[Issue] = []
+    top = getattr(cab_cfg, "face_top_style", "cap")
+    if top not in ("plain", "cap", "flush"):
+        issues.append(Issue(
+            check="face_top_bottom_style",
+            severity=Severity.ERROR,
+            message=(f"Unknown face_top_style {top!r} — "
+                     "use 'plain', 'cap', or 'flush'."),
+            value=top,
+        ))
+    bottom = getattr(cab_cfg, "face_bottom_style", "flush")
+    if bottom not in ("plain", "flush"):
+        issues.append(Issue(
+            check="face_top_bottom_style",
+            severity=Severity.ERROR,
+            message=(f"Unknown face_bottom_style {bottom!r} — "
+                     "use 'plain' or 'flush'."),
+            value=bottom,
+        ))
+    return issues
+
+
 def check_miter_corners(cab_cfg: CabinetConfig) -> list[Issue]:
     """Validate mitered exterior corners.
 
@@ -2200,6 +2234,8 @@ def check_face_clearances(
     face_top_overhang: Optional[float] = None,
     furniture_top: Optional[bool] = None,
     min_face_gap: float = 2.0,
+    face_top_style: Optional[str] = None,
+    face_bottom_style: Optional[str] = None,
 ) -> list[Issue]:
     """Check clearances between all drawer and door faces in a multi-bay assembly.
 
@@ -2236,14 +2272,19 @@ def check_face_clearances(
                               half from the bottom of the upper face.
         face_bottom_overhang: How far the lowest face extends below the bottom
                               panel top surface (mm). None (default) lets
-                              face_layout resolve it — furniture_top drop,
-                              door-transition extension and all.
+                              face_layout resolve it — face_bottom_style
+                              drop, door-transition extension and all.
         face_top_overhang:    How far the highest face extends above the top
                               panel bottom surface (mm). None (default) as above.
-        furniture_top:        Tri-state furniture-top style; None (default)
-                              reads bay 0's stored config flag, matching what
-                              the cutlist and render produce.
+        furniture_top:        DEPRECATED tri-state boolean alias for
+                              (face_top_style, face_bottom_style); prefer
+                              the two style parameters below.
         min_face_gap:         Minimum acceptable clearance between any two faces.
+        face_top_style:       Tri-state "plain"/"cap"/"flush"; None (default)
+                              reads bay 0's stored config field, matching
+                              what the cutlist and render produce.
+        face_bottom_style:    Tri-state "plain"/"flush"; None (default) reads
+                              bay 0's stored config field, same as above.
 
     Returns:
         List of Issue objects; empty list means all faces clear one another.
@@ -2332,6 +2373,8 @@ def check_face_clearances(
         face_bottom_overhang=face_bottom_overhang,
         face_top_overhang=face_top_overhang,
         furniture_top=furniture_top,
+        face_top_style=face_top_style,
+        face_bottom_style=face_bottom_style,
     )
     per_bay: dict[int, list] = {}
     for p in face_panels:
@@ -2502,6 +2545,7 @@ def evaluate_cabinet(
     all_issues.extend(check_miter_corners(cab_cfg))
     all_issues.extend(check_back_style(cab_cfg))
     all_issues.extend(check_back_capture(cab_cfg))
+    all_issues.extend(check_face_top_bottom_style(cab_cfg))
     all_issues.extend(check_carcass_joinery(cab_cfg))
     if cab_cfg.columns:
         # Run carcass clearance checks per-column using correct per-column width.
@@ -2521,7 +2565,7 @@ def evaluate_cabinet(
     # never wired in before 2026-08, which is how paper with an untileable
     # face stack (the kids'-desk fronts) evaluated clean. No overrides
     # passed: the check must validate the SAME geometry the cutlist and
-    # render produce (furniture_top drop, transition extension included).
+    # render produce (top/bottom style, transition extension included).
     from .cabinet import bays_from_config as _bays_from_config
     all_issues.extend(check_face_clearances(
         _bays_from_config(cab_cfg),

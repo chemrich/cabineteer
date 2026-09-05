@@ -195,6 +195,8 @@ def generate_bench_card(
     face_kinds: tuple = ("drawer_face", "door"),
     face_gap: Optional[float] = None,
     furniture_top: Optional[bool] = None,
+    face_top_style: Optional[str] = None,
+    face_bottom_style: Optional[str] = None,
     face_bottom_overhang: Optional[float] = None,
     face_top_overhang: Optional[float] = None,
     face_height_overrides: "Optional[dict[str, list[list]]]" = None,
@@ -285,6 +287,7 @@ def generate_bench_card(
         bays = bays_from_config(cfg)
         panels = face_layout(
             bays, face_gap=face_gap, furniture_top=furniture_top,
+            face_top_style=face_top_style, face_bottom_style=face_bottom_style,
             face_bottom_overhang=face_bottom_overhang,
             face_top_overhang=face_top_overhang,
         )
@@ -336,6 +339,7 @@ def generate_bench_card(
             assert_face_heights_close(
                 bays, claims, bay_index=bay_idx,
                 face_gap=face_gap, furniture_top=furniture_top,
+                face_top_style=face_top_style, face_bottom_style=face_bottom_style,
                 face_bottom_overhang=face_bottom_overhang,
                 face_top_overhang=face_top_overhang,
                 face_kinds=face_kinds, tolerance_mm=closure_tolerance_mm,
@@ -427,6 +431,7 @@ def generate_bench_card(
         donor_results=donor_results, assignments=assignments,
         unassigned=unassigned, grain_policy=grain_policy,
         face_gap=face_gap, furniture_top=furniture_top,
+        face_top_style=face_top_style, face_bottom_style=face_bottom_style,
         closure_tolerance_mm=closure_tolerance_mm,
         paper=paper, title=title,
     )
@@ -529,6 +534,7 @@ def _render_bench_card_pdf(
     source_letters: dict, donor_results: list, assignments: list,
     unassigned: list, grain_policy: str, face_gap, furniture_top,
     closure_tolerance_mm: float, paper: str, title: str,
+    face_top_style=None, face_bottom_style=None,
 ) -> bytes:
     if not _REPORTLAB_AVAILABLE:
         raise ImportError(
@@ -588,6 +594,8 @@ def _render_bench_card_pdf(
     story.append(_Paragraph(_esc(subtitle), norm))
     assumptions = (
         f"Computed with furniture_top={furniture_top!r}, "
+        f"face_top_style={face_top_style!r}, "
+        f"face_bottom_style={face_bottom_style!r}, "
         f"face_gap={face_gap!r} — every height on this card was checked "
         "against cabinet.face_layout under exactly these assumptions "
         "before being printed."

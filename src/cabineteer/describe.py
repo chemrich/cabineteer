@@ -336,12 +336,36 @@ def describe_design(cfg: CabinetConfig) -> dict:
     # Show-face style — name the tokens in plain English (project
     # convention: describe_design explains every token, like the
     # "grooved-in back").
+    top_style = getattr(cfg, "face_top_style", "cap")
+    bottom_style = getattr(cfg, "face_bottom_style", "flush")
+    # cfg.furniture_top is the single derived source for "both axes read as
+    # the classic furniture-top look" — read it rather than re-deriving the
+    # same AND here, so a future change to that combined look only has to
+    # be made once (cabinet.CabinetConfig.furniture_top).
     if getattr(cfg, "furniture_top", False):
         lines.append(
             "Furniture-top style: a front cap strip closes the top panel's "
             "front edge flush with the drawer faces, and the lowest face "
             "drops to the carcass underside."
         )
+    else:
+        if top_style == "cap":
+            lines.append(
+                "Top style: a front cap strip closes the top panel's front "
+                "edge flush with the drawer faces."
+            )
+        elif top_style == "flush":
+            lines.append(
+                "Top style: the highest face itself rises flush with the "
+                "TOP of the top panel, covering its front edge entirely "
+                "(the same plane a cap strip would occupy) — no separate "
+                "cap strip."
+            )
+        if bottom_style == "flush":
+            lines.append(
+                "Bottom style: the lowest face drops to the carcass "
+                "underside, flush with the bottom panel's exterior face."
+            )
     _gap = getattr(cfg, "face_gap_mm", 4.0)
     if _gap != 4.0:
         lines.append(

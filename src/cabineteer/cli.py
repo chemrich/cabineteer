@@ -155,12 +155,20 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--drawer-box-finish", dest="drawer_box_finish")
     sp.add_argument("--grain-direction", dest="grain_direction",
                     choices=["vertical", "horizontal"])
+    # --furniture-top is a DEPRECATED boolean alias for
+    # (--face-top-style, --face-bottom-style); prefer the two style flags.
     sp.add_argument("--furniture-top", dest="furniture_top", action="store_true", default=None)
+    sp.add_argument("--face-top-style", dest="face_top_style",
+                    choices=["plain", "cap", "flush"], default=None)
+    sp.add_argument("--face-bottom-style", dest="face_bottom_style",
+                    choices=["plain", "flush"], default=None)
     sp.add_argument("--manga", action="store_true", default=None)
     sp.set_defaults(func=lambda ns: _run_tool("visualize_project", {
         "project_name": ns.project_name, "finish": ns.finish,
         "drawer_box_finish": ns.drawer_box_finish, "grain_direction": ns.grain_direction,
-        "furniture_top": ns.furniture_top, "manga": ns.manga, "open_browser": False}))
+        "furniture_top": ns.furniture_top, "face_top_style": ns.face_top_style,
+        "face_bottom_style": ns.face_bottom_style,
+        "manga": ns.manga, "open_browser": False}))
 
     sp = sub.add_parser("assembly", help="generate carcass assembly instructions")
     sp.add_argument("project_name")

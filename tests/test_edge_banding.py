@@ -9,6 +9,12 @@ from cabineteer.server import _raw_panels_for_cabinet
 
 
 def _cfg(**kw) -> CabinetConfig:
+    # This module is about edge banding, not the show-face top/bottom
+    # style — pin plain/plain (the CabinetConfig default is now "cap" /
+    # "flush") so a top_front_cap row and an unbanded top panel don't
+    # change the counts and footage these tests hand-check.
+    kw.setdefault("face_top_style", "plain")
+    kw.setdefault("face_bottom_style", "plain")
     return CabinetConfig(width=800, height=700, depth=457,
                          carcass_material="rift_white_oak_ply",
                          face_material="rift_white_oak_ply", **kw)

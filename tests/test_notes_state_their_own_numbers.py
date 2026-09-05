@@ -148,6 +148,15 @@ def _cfg(**kw):
                 shelf_thickness=18, back_thickness=6,
                 drawer_box_thickness=12, drawer_joinery="drawer_lock",
                 carcass_joinery="floating_tenon")
+    # Explicit plain/plain UNLESS the caller already said something about
+    # top/bottom style: most of this module's cases (incl. the dedicated
+    # "flush overlay stack is flush at both ends" test) were written
+    # against the old furniture_top=False default. The CabinetConfig
+    # default flipped to ("cap", "flush"), which this module's OWN
+    # dedicated "furniture_top" matrix case exercises explicitly.
+    if not ({"furniture_top", "face_top_style", "face_bottom_style"} & set(kw)):
+        base["face_top_style"] = "plain"
+        base["face_bottom_style"] = "plain"
     base.update(kw)
     return build_cabinet_config(base)
 

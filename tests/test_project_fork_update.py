@@ -333,6 +333,56 @@ class TestPatchCanonicalization:
         (_, cfg), = proj.resolved()
         assert cfg.drawer_pull != "topknobs-hb-96"
 
+    def test_furniture_top_patch_pins_over_shared_style_token(self, store):
+        """Code-review finding #1, scenario 1: an active shared face_top_style
+        / face_bottom_style token must not silently win over a legacy
+        furniture_top patch on an existing cabinet. The per-key config-patch
+        loop has to translate the literal "furniture_top" key to the real
+        field names BEFORE the override-pin check runs — shared_keys only
+        ever names real fields, never "furniture_top" itself, so an
+        untranslated patch never gets pinned and the shared cap/flush token
+        keeps winning at resolve time."""
+        import cabineteer.project as pmod
+        name = self._saved(
+            store, shared={"face_top_style": "cap", "face_bottom_style": "flush"},
+            name="fork_canon_ft_shared")
+        proj, changes = pmod.update_saved_project({
+            "name": name,
+            "cabinets": [{"name": "a", "config": {"furniture_top": False}}]})
+        (_, cfg), = proj.resolved()
+        assert cfg.face_top_style == "plain"
+        assert cfg.face_bottom_style == "plain"
+        assert any("face_top_style" in c for c in changes)
+        # The pin has to survive another round-trip, not just this resolve.
+        reloaded = pmod.load_project(name)
+        (_, cfg2), = reloaded.resolved()
+        assert cfg2.face_top_style == "plain"
+        assert cfg2.face_bottom_style == "plain"
+
+    def test_furniture_top_patch_overrides_already_serialized_style(self, store):
+        """Code-review finding #1, scenario 2: every _config_to_dict output
+        already serializes face_top_style/face_bottom_style explicitly (the
+        CabinetConfig default, "cap"/"flush", when never set otherwise).
+        Merging the literal "furniture_top" key alongside an already-present
+        "face_top_style" must not be a silent no-op — build_cabinet_config's
+        legacy translation only fires when face_top_style is ABSENT from the
+        same dict, so the patch has to replace the stale key, not add beside
+        it."""
+        import cabineteer.project as pmod
+        name = self._saved(store, name="fork_canon_ft_noop")
+        # Baseline: no shared token, no explicit style on the cabinet — the
+        # stored config still carries CabinetConfig's own default explicitly.
+        (_, base_cfg), = pmod.load_project(name).resolved()
+        assert base_cfg.face_top_style == "cap"
+        assert base_cfg.face_bottom_style == "flush"
+        proj, changes = pmod.update_saved_project({
+            "name": name,
+            "cabinets": [{"name": "a", "config": {"furniture_top": False}}]})
+        (_, cfg), = proj.resolved()
+        assert cfg.face_top_style == "plain"
+        assert cfg.face_bottom_style == "plain"
+        assert any("face_top_style" in c for c in changes)
+
     def test_drawer_config_patch_replaces_openings(self, store):
         import cabineteer.project as pmod
         name = self._saved(store, name="fork_canon_dc")

@@ -45,6 +45,12 @@ def _sample_payload(name: str = "trio") -> dict:
             "drawer_slide": "blum_tandem_550h",
             "pull_preset": "contemporary_slab",
             "carcass_joinery": "floating_tenon",
+            # This fixture is about project merge/override semantics and
+            # cutlist counts, not the show-face top/bottom axis — pin
+            # plain/plain so the CabinetConfig default (now "cap"/"flush")
+            # doesn't add a top_front_cap panel to every cabinet's count.
+            "face_top_style": "plain",
+            "face_bottom_style": "plain",
         },
         "cabinets": [
             {"name": "left",   "config": {"width": 1219, "height": 762, "depth": 500,

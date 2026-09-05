@@ -18,6 +18,11 @@ from cabineteer.server import _raw_panels_for_cabinet
 
 def _cfg(**kw) -> CabinetConfig:
     kw.setdefault("carcass_joinery", CarcassJoinery.FLOATING_TENON)
+    # This module is about back_style, not the show-face top/bottom axis —
+    # pin plain/plain so a "cap" top's banded_edges=() (unrelated to
+    # back_style) doesn't change what these tests are measuring.
+    kw.setdefault("face_top_style", "plain")
+    kw.setdefault("face_bottom_style", "plain")
     return CabinetConfig(width=1219.2, height=663.6, depth=457, **kw)
 
 

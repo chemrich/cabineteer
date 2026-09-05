@@ -51,6 +51,14 @@ def _cfg(**kw):
                 back_rabbet_depth=6, back_groove_setback=12,
                 carcass_joinery="floating_tenon",
                 drawer_config=[[764, "open"]])
+    # Explicit plain/plain UNLESS the caller already said something about
+    # top/bottom style: this module's carcass-panel numbers were pinned
+    # against the old furniture_top=False default (top's front edge
+    # banded like every other carcass panel). The CabinetConfig default
+    # flipped to ("cap", "flush"), which hides that same edge.
+    if not ({"furniture_top", "face_top_style", "face_bottom_style"} & set(kw)):
+        base["face_top_style"] = "plain"
+        base["face_bottom_style"] = "plain"
     base.update(kw)
     return build_cabinet_config(base)
 
@@ -319,6 +327,53 @@ class TestCutlistMatchesDims:
         """``edge_band=[]`` on an unbanded build, whatever the panel says."""
         carcass, _, _, _ = _raw_panels_for_cabinet(_cfg(), None)
         assert all(r.edge_band == [] for r in carcass)
+
+    @pytest.mark.parametrize("capture", CAPTURES)
+    @pytest.mark.parametrize("band,band_t", BANDS)
+    @pytest.mark.parametrize("top_style", ["plain", "cap", "flush"])
+    def test_top_style_crossed_with_capture_and_banding(self, capture, band,
+                                                         band_t, top_style):
+        """The ``face_top_style`` axis, crossed here rather than left to the
+        single un-crossed ``face_top_style="plain"`` pin every other case in
+        this module uses. ``carcass_panel_dims`` treats "cap" and "flush"
+        identically for the top's ``banded_edges`` (both cover the front
+        edge, one with a strip, one with the tall face itself) — a rule
+        that lives beside ``back_capture``/banding/columns logic this
+        module already exercises, so a regression that makes "flush"
+        diverge from "cap" specifically under a housed back or a hardwood
+        band would pass every other test here.
+        """
+        bottom_style = "flush" if top_style != "plain" else "plain"
+        cfg = _cfg(back_capture=capture, face_top_style=top_style,
+                   face_bottom_style=bottom_style,
+                   edge_band_mode=band, edge_band_thickness_mm=band_t)
+        carcass, six_mm, _, _ = _raw_panels_for_cabinet(cfg, None)
+        dims = carcass_panel_dims(cfg, None)
+
+        assert [p.name for p in dims if p.kind != "back"] == \
+            [r.name for r in carcass]
+
+        shrink = band_t if band == "hardwood" else 0.0
+        by_name: dict = {}
+        for r in carcass + six_mm:
+            by_name.setdefault(r.name, []).append(r)
+        top = next(p for p in dims if p.name == "top")
+        cut_l, cut_w = top.core(shrink)
+        match = [r for r in by_name["top"]
+                 if (round(r.length, 2), round(r.width, 2))
+                 == (round(cut_l, 2), round(cut_w, 2))]
+        assert match, (
+            f"{capture}/{band}/{top_style}: no top row at "
+            f"{cut_l:g} x {cut_w:g}; rows are "
+            f"{[(r.length, r.width) for r in by_name['top']]}")
+        row = match[0]
+        # "cap" and "flush" both leave the front edge unbanded and the
+        # core un-shrunk for it; "plain" bands it like any other panel.
+        expect_front_banded = top_style == "plain" and band != "none"
+        assert ("front" in row.edge_band) == expect_front_banded
+        assert ("front" in top.banded_edges) == (top_style == "plain")
+        if band != "none":
+            assert list(top.banded_edges) == row.edge_band
 
 
 class TestAssemblyMapMatchesDims:
