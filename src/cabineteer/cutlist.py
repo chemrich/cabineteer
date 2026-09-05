@@ -809,14 +809,18 @@ def _optimize_with_rectpack(
     eff_w = stock_sheet.width - kerf
     EPS = 0.05
 
-    grain_constrained: set[str] = {
-        p.name for p in panels if p.grain_direction not in ("", None)
-    }
-
     # Expand with a globally-unique piece index so two distinct CutlistPanel
     # objects that share a name (e.g. "side" across cabinets) never collide.
     # ``dims`` are the orientation the piece is added to the packer in, and
     # ``pre_rotated`` records whether that differs from the nominal L×W.
+    #
+    # ``can_rotate`` is read off THIS panel INSTANCE's own grain_direction,
+    # never grouped by name first: two CutlistPanel objects sharing a name
+    # (e.g. bench_card.py's per-row grain_overrides, which locks some rows
+    # of a same-named face and frees others) are independent pieces, and a
+    # name-keyed set collapses that back to "any instance of this name is
+    # locked" — silently defeating a free-rotation override whenever a
+    # same-named sibling stays locked.
     oversized: list[str] = []
     # (add_len, add_wid, name, uid, pre_rotated)
     packable: list[tuple[float, float, str, int, bool]] = []
@@ -827,7 +831,7 @@ def _optimize_with_rectpack(
 
     counter = 0
     for p in panels:
-        can_rotate = p.name not in grain_constrained
+        can_rotate = p.grain_direction in ("", None)
         for _ in range(p.quantity):
             uid = counter
             counter += 1
@@ -935,14 +939,13 @@ def _optimize_with_opcut(
     eff_w = stock_sheet.width  - kerf
     EPS = 0.05
 
-    grain_constrained: set[str] = {
-        p.name for p in panels if p.grain_direction not in ("", None)
-    }
-
+    # ``can_rotate`` is read off THIS panel INSTANCE's own grain_direction —
+    # see the matching note in _optimize_with_rectpack. A name-keyed set
+    # would silently re-lock a same-named row that grain_overrides freed.
     oversized: list[str] = []
     valid: list[CutlistPanel] = []
     for p in panels:
-        can_rotate = p.name not in grain_constrained
+        can_rotate = p.grain_direction in ("", None)
         fits = p.length <= eff_l + EPS and p.width <= eff_w + EPS
         fits_rot = can_rotate and p.width <= eff_l + EPS and p.length <= eff_w + EPS
         if not fits and not fits_rot:
@@ -962,8 +965,10 @@ def _optimize_with_opcut(
     id_to_name: dict[str, str] = {}
     id_to_source: dict[str, str] = {}
     id_to_part_id: dict[str, str] = {}
+    id_to_constrained: dict[str, bool] = {}
     counter = 0
     for p in valid:
+        constrained = p.grain_direction not in ("", None)
         for _ in range(p.quantity):
             iid = f"{p.name}__{counter}"
             counter += 1
@@ -971,11 +976,12 @@ def _optimize_with_opcut(
                 id=iid,
                 width=p.length,
                 height=p.width,
-                can_rotate=p.name not in grain_constrained,
+                can_rotate=not constrained,
             ))
             id_to_name[iid] = p.name
             id_to_source[iid] = p.source
             id_to_part_id[iid] = p.part_id
+            id_to_constrained[iid] = constrained
 
     total_area = sum(p.length * p.width * p.quantity for p in valid)
     base = max(1, math.ceil(total_area / (eff_l * eff_w)))
@@ -1009,7 +1015,8 @@ def _optimize_with_opcut(
             placed_l, placed_w = used.item.height, used.item.width
         else:
             placed_l, placed_w = used.item.width, used.item.height
-        if used.rotate and name in grain_constrained and name not in grain_mismatched:
+        if (used.rotate and id_to_constrained[used.item.id]
+                and name not in grain_mismatched):
             grain_mismatched.append(name)
         placements.append(Placement(
             panel_name=name,
@@ -1288,16 +1295,15 @@ def _optimize_strip(
     eff_w = stock_sheet.width  - kerf
     EPS = 0.05
 
-    grain_constrained: set[str] = {
-        p.name for p in panels if p.grain_direction not in ("", None)
-    }
-
     oversized: list[str] = []
     oriented: list[tuple[float, float, str, str, bool]] = []
 
+    # ``grain_direction`` is read off THIS panel INSTANCE — see the matching
+    # note in _optimize_with_rectpack. A name-keyed set would silently
+    # re-lock a same-named row that grain_overrides freed.
     for p in panels:
         for _ in range(p.quantity):
-            if p.name in grain_constrained:
+            if p.grain_direction not in ("", None):
                 plen, pwid, rot = p.length, p.width, False
                 if plen > eff_l + EPS or pwid > eff_w + EPS:
                     if p.name not in oversized:

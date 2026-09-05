@@ -1662,10 +1662,10 @@ def face_row_bands(faces: "list[FacePanel]") -> list[tuple[float, float]]:
     A door pair's two leaves share one band — grouped by z, not by
     ``leaf`` (see the note in ``face_placements``). This is the ONE place
     that rounding/dedupe rule lives: ``face_placements``,
-    ``assert_face_heights_close``, and ``bench_card._row_bands`` all call
-    this instead of each re-deriving it, so a future change to the
-    banding rule (rounding precision, how a pair is treated) can't drift
-    between copies.
+    ``assert_face_heights_close``, and ``bench_card.generate_bench_card``
+    all call this instead of each re-deriving it, so a future change to
+    the banding rule (rounding precision, how a pair is treated) can't
+    drift between copies.
     """
     bands: list[tuple[float, float]] = []
     for p in faces:
@@ -1710,6 +1710,7 @@ def assert_face_heights_close(
     furniture_top: Optional[bool] = None,
     face_kinds: tuple[str, ...] = ("drawer_face", "door"),
     tolerance_mm: float = DEFAULT_HEIGHT_TOLERANCE_MM,
+    precomputed_panels: "Optional[list]" = None,
 ) -> None:
     """Assert ``claims`` close into bay ``bay_index``'s LIVE face stack.
 
@@ -1717,6 +1718,16 @@ def assert_face_heights_close(
     exposes (face_gap / face_bottom_overhang / face_top_overhang /
     furniture_top) — never re-derives the span arithmetic, so this can
     never drift from the single source of truth it is checking against.
+
+    ``precomputed_panels`` is a pure efficiency escape hatch: a caller that
+    already ran ``face_layout(bay_configs, ...)`` under the IDENTICAL
+    kwargs a moment ago (e.g. ``generate_bench_card`` looping over every
+    bay of one cabinet) may pass that list to skip recomputing it here —
+    the caller is trusted to have used the same ``bay_configs`` and
+    override kwargs, since this function has no way to check that for a
+    plain list of panels. Omit it (the default) and this always recomputes
+    fresh, which is what keeps the check honest when that trust doesn't
+    hold.
 
     Rows are the bottom-to-top z-bands of ``bay_index``'s faces (a door
     pair's two leaves share one band, same convention as
@@ -1736,7 +1747,7 @@ def assert_face_heights_close(
     re-derive rather than reuse a remembered number. Returns ``None``
     when every claim closes.
     """
-    panels = face_layout(
+    panels = precomputed_panels if precomputed_panels is not None else face_layout(
         bay_configs, face_gap=face_gap,
         face_bottom_overhang=face_bottom_overhang,
         face_top_overhang=face_top_overhang, furniture_top=furniture_top,

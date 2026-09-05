@@ -365,3 +365,50 @@ class TestRectpackDuplicateNames:
         result = _optimize_with_rectpack(panels, big, kerf=3.2)
         assert len(result.placements) == 6
         assert not result.unplaced
+
+
+# ─── Per-instance grain constraint (regression) ──────────────────────────────
+
+
+class TestPerInstanceGrainConstraint:
+    """Regression: ``can_rotate`` must be read off each CutlistPanel
+    INSTANCE's own ``grain_direction``, never aggregated into a
+    name-keyed set first. bench_card.py's per-row ``grain_overrides``
+    frees rotation on individual rows of a same-named stack (e.g. one
+    'false_front' out of five) while leaving the sibling rows
+    grain-locked; before the fix, every backend but ``rips_first`` built
+    a ``{p.name for p in panels if grain_direction}`` set and tested
+    ``p.name not in that_set`` — collapsing "this instance is free" back
+    to "no instance of this name is locked", so the freed row silently
+    stayed locked and failed to place at all whenever any same-named
+    sibling was locked."""
+
+    #: A 620x320 donor board: the nominal orientation (length=176,
+    #: width=600) does not fit (width 600 > 320), but the ROTATED
+    #: orientation (600x176) does. Placement is only reachable through
+    #: rotation, so it proves can_rotate was actually True for this row.
+    _STOCK = SheetStock(name="donor", length=620, width=320, thickness=18)
+
+    def _mixed_grain_panels(self):
+        # Row 0 is free-rotation (the override); rows 1-4 share the same
+        # name and stay grain-locked (the un-overridden siblings).
+        return [
+            CutlistPanel(name="false_front", length=176, width=600,
+                         thickness=18, quantity=1,
+                         grain_direction="" if i == 0 else "length")
+            for i in range(5)
+        ]
+
+    @pytest.mark.parametrize("algo", ["auto"] + _ALGOS)
+    def test_freed_row_rotates_despite_locked_same_named_siblings(self, algo):
+        result = optimize_cutlist(
+            self._mixed_grain_panels(), stock_sheet=self._STOCK,
+            kerf=3.2, algorithm=algo)
+        # Only the free-rotation row can possibly fit this board (the
+        # four locked siblings are 600 mm wide against a 320 mm board and
+        # may never rotate) — exactly one placement, and it must be the
+        # rotated one.
+        assert len(result.placements) == 1
+        assert result.placements[0].rotated is True
+        # The four locked instances correctly remain unplaced.
+        assert result.unplaced.count("false_front") == 1

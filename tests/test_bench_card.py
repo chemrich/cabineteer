@@ -199,6 +199,41 @@ class TestAssertFaceHeightsClose:
     def test_tolerance_is_submillimeter_by_default(self):
         assert DEFAULT_HEIGHT_TOLERANCE_MM == 0.5
 
+    def test_precomputed_panels_agrees_with_recomputing_fresh(self):
+        """``precomputed_panels`` is a pure efficiency escape hatch
+        (generate_bench_card already ran face_layout under the identical
+        kwargs a moment ago) — passing it must reach the exact same
+        verdict as letting the function recompute face_layout itself,
+        for both a passing and a failing claim set."""
+        cfg = _tower_left_cfg()
+        panels = face_layout([cfg], face_gap=2.5, furniture_top=True)
+        good_claims = [
+            FaceHeightClaim("bottom", 312.75),
+            FaceHeightClaim("2nd", 293.5),
+            FaceHeightClaim("3rd", 177.5),
+            FaceHeightClaim("4th", 177.5),
+            FaceHeightClaim("top", 176.25),
+        ]
+        assert assert_face_heights_close(
+            [cfg], good_claims, bay_index=0,
+            face_gap=2.5, furniture_top=True,
+            precomputed_panels=panels,
+        ) is None
+
+        bad_claims = [
+            FaceHeightClaim("bottom", 294.5),   # wrong: no-cap number
+            FaceHeightClaim("2nd", 293.5),
+            FaceHeightClaim("3rd", 177.5),
+            FaceHeightClaim("4th", 177.5),
+            FaceHeightClaim("top", 176.5),
+        ]
+        with pytest.raises(ValueError, match="312.75"):
+            assert_face_heights_close(
+                [cfg], bad_claims, bay_index=0,
+                face_gap=2.5, furniture_top=True,
+                precomputed_panels=panels,
+            )
+
 
 # ─── P2: DonorPiece ─────────────────────────────────────────────────────────
 
@@ -228,6 +263,29 @@ class TestDonorPiece:
         assert stock.thickness == 18
         assert stock.quantity == 1
 
+    def test_grain_along_typo_raises_instead_of_silently_swapping_axes(self):
+        """as_stock() branches on the EXACT string 'length'/'width'; a
+        typo like 'Length' (capitalized) must raise at construction, not
+        silently fall into the 'width' branch and swap length_mm/width_mm
+        — defeating the grain-lock feature with a plausible-looking but
+        wrong card."""
+        with pytest.raises(ValueError, match="grain_along"):
+            DonorPiece(id="E1", name="offcut", length_mm=1200,
+                       width_mm=600, thickness_mm=18, grain_along="Length")
+
+    @pytest.mark.parametrize("length_mm,width_mm,thickness_mm", [
+        (0, 600, 18), (1200, 0, 18), (1200, 600, 0), (-100, 600, 18),
+    ])
+    def test_non_positive_dims_raise(self, length_mm, width_mm, thickness_mm):
+        """A non-positive dimension is schema-valid but physically
+        meaningless — as_stock() feeding it straight to a division in
+        _donor_piece_drawing (content_width / stock.length) would raise a
+        raw ZeroDivisionError deep inside PDF rendering instead of a
+        clean error naming the bad piece. Caught at construction."""
+        with pytest.raises(ValueError, match="E1"):
+            DonorPiece(id="E1", name="offcut", length_mm=length_mm,
+                       width_mm=width_mm, thickness_mm=thickness_mm)
+
 
 # ─── P2: generate_bench_card (pure — no filesystem) ────────────────────────
 
@@ -247,6 +305,23 @@ class TestGenerateBenchCard:
         assert len(result.assignments) == 5
         assert result.unassigned == []
         assert len(result.pdf_bytes) > 0
+
+    def test_single_cabinet_card_leaves_source_empty(self):
+        """Codebase-wide convention (assign_part_ids/consolidate_bom):
+        ``source`` stays empty for a single-project/single-cabinet run —
+        a nonempty value prints a 'Project A — <name>' section header and
+        letter-prefixed part IDs that imply a multi-cabinet batch that
+        isn't there. A single requested cabinet must produce bare part
+        IDs (no letter prefix)."""
+        project = self._project()
+        donors = [DonorPiece(id="E1", name="big offcut", length_mm=1300,
+                             width_mm=700, thickness_mm=18.0,
+                             material="finished_wood")]
+        result = generate_bench_card(
+            project, ["tower-left"], donors,
+            face_gap=2.5, furniture_top=True)
+        assert all(a.panel.source == "" for a in result.assignments)
+        assert all("-" not in a.panel.part_id for a in result.assignments)
 
     def test_unassigned_when_donor_too_small(self):
         project = self._project()
@@ -286,6 +361,35 @@ class TestGenerateBenchCard:
         unassigned_ids = {f.part_id for f in result.unassigned}
         assert assigned_ids.isdisjoint(unassigned_ids)
         assert len(assigned_ids | unassigned_ids) == 5
+
+    def test_donor_results_agree_with_the_physical_overflow(self):
+        """``BenchCardResult.donor_results`` must reflect the SAME
+        physical reality as ``assignments``/``unassigned`` — not the raw,
+        unfiltered ``OptimizationResult`` optimize_cutlist returned
+        (which still counts the phantom overflow sheet as used/complete).
+        A future caller reading ``donor_results[i][1]`` directly must see
+        a board that could not hold everything, not one reporting
+        'fully placed' or 'used 2 sheets'."""
+        project = self._project()
+        donors = [DonorPiece(id="E1", name="offcut", length_mm=1000,
+                             width_mm=650, thickness_mm=18.0,
+                             material="finished_wood")]
+        result = generate_bench_card(
+            project, ["tower-left"], donors,
+            face_gap=2.5, furniture_top=True)
+        assert len(result.donor_results) == 1
+        donor, opt_result = result.donor_results[0]
+        assert donor.id == "E1"
+        # Exactly one physical board — never a phantom second sheet.
+        assert opt_result.sheets_used == 1
+        assert all(pl.sheet_index == 0 for pl in opt_result.placements)
+        # The board could not hold everything — must not report complete.
+        assert opt_result.is_complete is False
+        # unplaced is name-deduped (like every other optimizer backend);
+        # every unassigned panel's name must be represented in it.
+        assert set(opt_result.unplaced) == {f.name for f in result.unassigned}
+        # waste_pct computed against the one real sheet, not two.
+        assert 0.0 <= opt_result.waste_pct <= 100.0
 
     def test_multi_donor_allocation_no_piece_missing_or_double_cut(self):
         """Faces that don't fit the first donor spill into the pool for the
@@ -411,6 +515,99 @@ class TestGenerateBenchCard:
             generate_bench_card(project, ["tower-left"], donors,
                                grain_policy="sideways")
 
+    def test_unknown_grain_overrides_value_raises(self):
+        """A per-row override value must be validated against
+        _GRAIN_POLICIES — a typo like 'locked' (for 'locked_vertical')
+        must raise, not silently fall through to free rotation."""
+        project = self._project()
+        donors = [DonorPiece(id="E1", name="offcut", length_mm=1300,
+                             width_mm=700, thickness_mm=18.0,
+                             material="finished_wood")]
+        with pytest.raises(ValueError, match="grain_overrides"):
+            generate_bench_card(
+                project, ["tower-left"], donors, face_gap=2.5,
+                furniture_top=True,
+                grain_overrides={"tower-left:0:0:0": "locked"})
+
+    def test_duplicate_donor_ids_raises(self):
+        """Two DonorPiece entries sharing an id would have their
+        assignments matched back by that free-text id — merging two
+        distinct physical boards' cut pieces on the rendered card."""
+        project = self._project()
+        donors = [
+            DonorPiece(id="E1", name="board one", length_mm=1300,
+                       width_mm=700, thickness_mm=18.0,
+                       material="finished_wood"),
+            DonorPiece(id="E1", name="board two", length_mm=1300,
+                       width_mm=700, thickness_mm=18.0,
+                       material="finished_wood"),
+        ]
+        with pytest.raises(ValueError, match="donor_pieces"):
+            generate_bench_card(project, ["tower-left"], donors,
+                               face_gap=2.5, furniture_top=True)
+
+    def test_duplicate_cabinet_names_in_project_raises(self):
+        """Two cabinets sharing a name would have
+        ``dict(project.resolved())`` silently keep only the last one's
+        config — the wrong dimensions printed with no error."""
+        payload = _tower_project_payload("bench_card_dup_cabinet_project")
+        payload["cabinets"].append({
+            "name": "tower-left",
+            "config": {
+                "width": 900, "height": 2000, "depth": 550,
+                "bottom_thickness": 18, "top_thickness": 18,
+                "face_gap_mm": 2.5,
+                "openings": [[1964, "door"]],
+            },
+        })
+        project = build_project(payload)
+        donors = [DonorPiece(id="E1", name="offcut", length_mm=1300,
+                             width_mm=700, thickness_mm=18.0,
+                             material="finished_wood")]
+        with pytest.raises(ValueError, match="more than one cabinet named"):
+            generate_bench_card(project, ["tower-left"], donors,
+                               face_gap=2.5, furniture_top=True)
+
+    def test_duplicate_requested_cabinet_names_raises(self):
+        project = self._project()
+        donors = [DonorPiece(id="E1", name="offcut", length_mm=1300,
+                             width_mm=700, thickness_mm=18.0,
+                             material="finished_wood")]
+        with pytest.raises(ValueError, match="cabinet_names"):
+            generate_bench_card(
+                project, ["tower-left", "tower-left"], donors,
+                face_gap=2.5, furniture_top=True)
+
+    def test_face_height_overrides_unknown_bay_index_raises(self):
+        """An override list longer than the cabinet's real bay count must
+        raise rather than silently discard the extra entry."""
+        project = self._project()
+        donors = [DonorPiece(id="E1", name="offcut", length_mm=1300,
+                             width_mm=700, thickness_mm=18.0,
+                             material="finished_wood")]
+        overrides = {"tower-left": [
+            [None, None, None, None, None],   # bay 0 — real
+            [None],                            # bay 1 — doesn't exist
+        ]}
+        with pytest.raises(ValueError, match="bay"):
+            generate_bench_card(
+                project, ["tower-left"], donors, face_gap=2.5,
+                furniture_top=True, face_height_overrides=overrides)
+
+    def test_face_height_overrides_extra_row_raises(self):
+        """An override row list longer than the bay's real row count must
+        raise rather than silently discard the extra rows."""
+        project = self._project()
+        donors = [DonorPiece(id="E1", name="offcut", length_mm=1300,
+                             width_mm=700, thickness_mm=18.0,
+                             material="finished_wood")]
+        # tower-left bay 0 has exactly 5 rows; a 6th entry is out of range.
+        overrides = {"tower-left": [[None, None, None, None, None, None]]}
+        with pytest.raises(ValueError, match="row"):
+            generate_bench_card(
+                project, ["tower-left"], donors, face_gap=2.5,
+                furniture_top=True, face_height_overrides=overrides)
+
     def test_free_rotation_policy_allows_rotation(self):
         project = self._project()
         # Every face here is 600 mm wide (single-column tower, flush
@@ -433,6 +630,41 @@ class TestGenerateBenchCard:
             grain_policy=GRAIN_FREE_ROTATION)
         assert len(free.assignments) >= 1
         assert all(a.placement.rotated for a in free.assignments)
+
+    def test_grain_override_frees_exactly_the_overridden_row_default_algorithm(self):
+        """The headline regression: a grain_overrides entry freeing ONE
+        row of a same-named 'false_front' stack while its siblings stay
+        grain-locked (the module default) must actually free THAT row —
+        run through algorithm='auto', the path every real bench card
+        uses. Before the cutlist fix, every backend but rips_first
+        grouped can_rotate by CutlistPanel.name across ALL rows sharing
+        that name, so a locked sibling re-locked the freed row too (0
+        assignments where 1 was expected)."""
+        project = self._project()
+        cfg = dict(project.resolved())["tower-left"]
+        bays = bays_from_config(cfg)
+        panels = face_layout(bays, face_gap=2.5, furniture_top=True)
+        faces = [p for p in panels if p.kind in ("drawer_face", "door")]
+        bottom = min(faces, key=lambda p: p.z)
+        key = f"tower-left:{bottom.bay}:{bottom.slot}:{bottom.leaf}"
+
+        # All 5 rows are 600 mm wide (single-column tower); this donor is
+        # too NARROW (320 mm) for any row nominally (width 600 > 320) but
+        # long enough to take one rotated (600 <= 620), and every row's
+        # height fits the 320 mm width once rotated. Only the overridden
+        # row may rotate under the default grain_policy
+        # (GRAIN_LOCKED_VERTICAL), so exactly one placement is reachable.
+        donors = [DonorPiece(id="E1", name="narrow offcut", length_mm=620,
+                             width_mm=320, thickness_mm=18.0,
+                             material="finished_wood")]
+        result = generate_bench_card(
+            project, ["tower-left"], donors,
+            face_gap=2.5, furniture_top=True,
+            grain_overrides={key: GRAIN_FREE_ROTATION},
+            algorithm="auto")
+        assert len(result.assignments) == 1
+        assert result.assignments[0].placement.rotated is True
+        assert len(result.unassigned) == 4
 
     def test_grain_mismatch_from_optimizer_surfaces_as_warning(self):
         """bench_card.py's own translation of a packer-reported
@@ -482,6 +714,94 @@ class TestGenerateBenchCard:
             project, ["tower-left"], donors,
             face_gap=2.5, furniture_top=True)
         assert result.pdf_bytes[:5] == b"%PDF-"
+
+
+# ─── P2: _donor_piece_drawing label fit ────────────────────────────────────
+
+
+class TestDonorPieceDrawingLabelFit:
+    """CLAUDE.md documents the general renderer's label-overprint defect as
+    already fixed (stringWidth-based shrink/truncate). ``_donor_piece_
+    drawing`` drew part labels at a fixed fontSize with no such fit, which
+    reintroduces that same defect for the bench card's own diagram — a
+    long label on a narrow or rotated donor rectangle overruns the sheet
+    border or a neighbouring label."""
+
+    def _label_strings(self, drawing):
+        from reportlab.graphics.shapes import Group, String
+        out = []
+
+        def walk(obj):
+            for child in getattr(obj, "contents", []):
+                if isinstance(child, String):
+                    out.append(child)
+                elif isinstance(child, Group):
+                    walk(child)
+        walk(drawing)
+        return out
+
+    def test_long_label_fits_within_its_own_narrow_rectangle(self):
+        pytest.importorskip("reportlab")
+        from reportlab.pdfbase.pdfmetrics import stringWidth
+        from cabineteer.bench_card import _donor_piece_drawing, BenchCardAssignment
+        from cabineteer.cutlist import CutlistPanel, Placement
+
+        # A long part_id + name on a narrow, short rectangle — at the
+        # fixed fontSize=9 this label is far wider than the piece it sits
+        # on, which is exactly the overprint the general renderer's
+        # stringWidth fit was added to prevent.
+        panel = CutlistPanel(name="false_front_extra_long_description",
+                              length=80, width=40, thickness=18,
+                              part_id="A-VERYLONGPARTNUMBER1")
+        placement = Placement(panel_name=panel.name, sheet_index=0,
+                               x=0, y=0, placed_length=80, placed_width=40,
+                               rotated=False, part_id=panel.part_id)
+        assignment = BenchCardAssignment(donor_id="E1", placement=placement,
+                                          panel=panel)
+        piece = DonorPiece(id="E1", name="offcut", length_mm=200,
+                           width_mm=100, thickness_mm=18.0)
+
+        content_width = 200.0
+        drawing = _donor_piece_drawing(piece, [assignment], content_width)
+
+        scale = content_width / piece.length_mm
+        pw, ph = placement.placed_length * scale, placement.placed_width * scale
+        tall = ph > pw
+        along = (ph if tall else pw) - 4.0
+
+        labels = [s for s in self._label_strings(drawing)
+                  if s.text.startswith("A-VERYLONGPARTNUMBER1")]
+        assert labels, "expected the part label to be rendered"
+        label = labels[0]
+        # The rendered label, AT ITS OWN reported fontSize, must fit
+        # within the rectangle it's drawn on — either shrunk or
+        # truncated, never printed at a fixed size regardless of fit.
+        assert stringWidth(label.text, "Helvetica", label.fontSize) <= along + 0.05
+
+    def test_short_label_on_a_roomy_rectangle_is_unshrunk(self):
+        """A label that already fits keeps the original fontSize/text —
+        the fit logic must not shrink or truncate when there's no need
+        to."""
+        pytest.importorskip("reportlab")
+        from cabineteer.bench_card import _donor_piece_drawing, BenchCardAssignment
+        from cabineteer.cutlist import CutlistPanel, Placement
+
+        panel = CutlistPanel(name="ff", length=800, width=300, thickness=18,
+                              part_id="DB1")
+        placement = Placement(panel_name=panel.name, sheet_index=0,
+                               x=0, y=0, placed_length=800, placed_width=300,
+                               rotated=False, part_id=panel.part_id)
+        assignment = BenchCardAssignment(donor_id="E1", placement=placement,
+                                          panel=panel)
+        piece = DonorPiece(id="E1", name="offcut", length_mm=1200,
+                           width_mm=600, thickness_mm=18.0)
+        drawing = _donor_piece_drawing(piece, [assignment], content_width=1200.0)
+
+        labels = [s for s in self._label_strings(drawing)
+                  if s.text.startswith("DB1")]
+        assert labels
+        assert labels[0].text == "DB1 ff"
+        assert labels[0].fontSize == 9.0
 
 
 # ─── P2: generate_bench_card MCP tool handler ──────────────────────────────
