@@ -167,7 +167,7 @@ See [docs/architecture.md](docs/architecture.md) for the module map.
 | **Projects** | Multi-cabinet runs with shared design settings, saved library, delta edits, forking, batch cutlists, worktops | [projects](docs/projects.md) |
 | **3D viewer** | Self-contained HTML, keyboard shortcuts, live wood finishes, section plane, diagnostics | [viewer](docs/viewer.md) |
 
-The engine exposes <!--stat:tools-->30<!--/stat:tools--> tools in all; `cabineteer-cli list-tools` prints them.
+The engine exposes <!--stat:tools-->31<!--/stat:tools--> tools in all; `cabineteer-cli list-tools` prints them.
 
 > **One cutlist caveat, stated plainly:** cut dimensions are exact for the *butt-joint* carcass methods — floating tenon (Domino), pocket screw, biscuit, dowel — which is how cabineteer is built to work. If you pick **dado/rabbet** construction, the 3D model draws the housed panels correctly but the cutlist does **not** yet add the dado/rabbet allowances (it emits butt-joint panel sizes, which run narrow for housed joints). Use a butt method for a saw-ready cutlist, or add the housing allowances yourself.
 

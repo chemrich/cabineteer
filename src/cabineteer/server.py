@@ -3317,6 +3317,90 @@ async def list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
+            name="generate_bench_card",
+            description=textwrap.dedent("""\
+                Generate a printable BENCH CARD (PDF) for re-cutting specific
+                show faces (drawer fronts / doors) from rough-cut donor pieces
+                already in hand, instead of buying fresh sheet stock.
+
+                Every dimension is derived FRESH from cabinet.face_layout for
+                the given project/cabinets — nothing is hand-typed. Before any
+                height is printed, it is asserted to close into the live face
+                stack (cabinet.assert_face_heights_close); a mismatched
+                furniture_top/face_gap/overhang assumption raises instead of
+                producing a wrong document. Files land in
+                ~/.cabineteer/bench_cards/<project>/.
+            """),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_name": {
+                        "type": "string",
+                        "description": "Name of a previously persisted project (see design_project).",
+                    },
+                    "project": {
+                        "type": "object",
+                        "description": "Inline project payload — same shape as design_project input.",
+                    },
+                    "cabinet_names": {
+                        "type": "array", "items": {"type": "string"}, "minItems": 1,
+                        "description": "Which cabinets' faces to include (share the same donor pieces).",
+                    },
+                    "donor_pieces": {
+                        "type": "array", "minItems": 1,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {"type": "string"},
+                                "name": {"type": "string"},
+                                "length_mm": {"type": "number"},
+                                "width_mm": {"type": "number"},
+                                "thickness_mm": {"type": "number"},
+                                "material": {"type": "string", "default": "baltic_birch"},
+                                "grain_along": {"type": "string", "enum": ["length", "width"], "default": "length"},
+                                "notes": {"type": "string"},
+                            },
+                            "required": ["id", "length_mm", "width_mm", "thickness_mm"],
+                        },
+                    },
+                    "grain_policy": {
+                        "type": "string", "enum": ["locked_vertical", "free_rotation"],
+                        "default": "locked_vertical",
+                    },
+                    "grain_overrides": {
+                        "type": "object",
+                        "description": "Per-row override, keyed 'cabinet:bay:slot:leaf' -> policy.",
+                    },
+                    "face_gap_mm": {"type": "number"},
+                    "furniture_top": {"type": "boolean"},
+                    "face_bottom_overhang_mm": {"type": "number"},
+                    "face_top_overhang_mm": {"type": "number"},
+                    "face_height_overrides": {
+                        "type": "object",
+                        "description": (
+                            "Manual height overrides, checked against the live stack before "
+                            "use. Keyed {cabinet_name: [bay0_rows, bay1_rows, ...]} — indexed "
+                            "by BAY, since a multi-column cabinet's columns have independent "
+                            "row stacks. Each bay's rows is a list of "
+                            "{row_index, height_mm, measure_to_remainder} | null (null keeps "
+                            "the computed default); row_index must equal its position in the "
+                            "list."
+                        ),
+                    },
+                    "closure_tolerance_mm": {"type": "number", "default": 0.5},
+                    "kerf": {"type": "number", "default": 3.2},
+                    "algorithm": {
+                        "type": "string",
+                        "enum": ["auto", "opcut", "rectpack", "strip", "rips_first"],
+                        "default": "auto",
+                    },
+                    "paper": {"type": "string", "enum": ["letter", "a4"], "default": "letter"},
+                    "name": {"type": "string", "default": "bench_card"},
+                },
+                "required": ["cabinet_names", "donor_pieces"],
+            },
+        ),
+        types.Tool(
             name="visualize_project",
             description=textwrap.dedent("""\
                 Render every cabinet in a project as one 3D scene: cabinets are
@@ -6405,6 +6489,103 @@ async def _tool_generate_assembly_instructions(args: dict) -> list[types.TextCon
     return _ok(result)
 
 
+async def _tool_generate_bench_card(args: dict) -> list[types.TextContent]:
+    from .bench_card import DonorPiece, generate_bench_card
+    from .cabinet import FaceHeightClaim
+
+    project = _project_from_args(args)
+    name = _safe_stem(args.get("name", "bench_card"), kind="bench card name")
+
+    cabinet_names = args.get("cabinet_names") or []
+    if not cabinet_names:
+        raise ValueError("cabinet_names is required.")
+    known = {cname for cname, _ in project.resolved()}
+    unknown = [c for c in cabinet_names if c not in known]
+    if unknown:
+        raise ValueError(f"Unknown cabinet name(s) {unknown} — project has {sorted(known)}.")
+
+    donor_raw = args.get("donor_pieces") or []
+    if not donor_raw:
+        raise ValueError("donor_pieces is required — at least one rough-cut piece.")
+    donor_pieces = [DonorPiece(
+        id=d["id"], name=d.get("name", d["id"]),
+        length_mm=float(d["length_mm"]), width_mm=float(d["width_mm"]),
+        thickness_mm=float(d["thickness_mm"]),
+        material=str(d.get("material", "baltic_birch")),
+        grain_along=str(d.get("grain_along", "length")),
+        notes=str(d.get("notes", "")),
+    ) for d in donor_raw]
+
+    paper = str(args.get("paper", "letter")).lower()
+    if paper not in ("letter", "a4"):
+        raise ValueError(f"paper must be 'letter' or 'a4', got {paper!r}.")
+
+    # face_height_overrides wire shape: {cabinet_name: [bay0_rows, bay1_rows,
+    # ...]} where each bay's rows is [{"row_index": int, "height_mm": float,
+    # "measure_to_remainder": bool} | null, ...] — indexed by BAY so an
+    # override meant for one column of a multi-column cabinet can't collide
+    # with an unrelated column's identically-numbered rows (bench_card.
+    # generate_bench_card's docstring has the full contract).
+    overrides = {}
+    for cname, bay_rows in (args.get("face_height_overrides") or {}).items():
+        cab_bays = []
+        for bay_idx, rows in enumerate(bay_rows):
+            bay_claims = []
+            for i, o in enumerate(rows):
+                if o is None:
+                    bay_claims.append(None)
+                    continue
+                row_index = int(o["row_index"])
+                if row_index != i:
+                    raise ValueError(
+                        f"face_height_overrides[{cname!r}][{bay_idx}][{i}] "
+                        f"has row_index={row_index}, but its position in "
+                        f"the list is {i} — row_index must match position "
+                        "(it's a label check, not a reorder).")
+                bay_claims.append(FaceHeightClaim(
+                    part_name=f"{cname} bay{bay_idx} row {row_index}",
+                    height_mm=float(o["height_mm"]),
+                    measure_to_remainder=bool(o.get("measure_to_remainder", False)),
+                ))
+            cab_bays.append(bay_claims)
+        overrides[cname] = cab_bays
+
+    try:
+        result = generate_bench_card(
+            project=project, cabinet_names=list(cabinet_names),
+            donor_pieces=donor_pieces,
+            grain_policy=str(args.get("grain_policy", "locked_vertical")),
+            grain_overrides=args.get("grain_overrides"),
+            face_gap=args.get("face_gap_mm"),
+            furniture_top=args.get("furniture_top"),
+            face_bottom_overhang=args.get("face_bottom_overhang_mm"),
+            face_top_overhang=args.get("face_top_overhang_mm"),
+            face_height_overrides=overrides or None,
+            closure_tolerance_mm=float(args.get("closure_tolerance_mm", 0.5)),
+            kerf=float(args.get("kerf", 3.2)),
+            algorithm=str(args.get("algorithm", "auto")),
+            paper=paper,
+        )
+    except ImportError:
+        return _err("PDF export requires reportlab (lite mode) — "
+                     "install with: uv pip install reportlab")
+
+    out_dir = data_dir() / "bench_cards" / project.name
+    out_dir.mkdir(parents=True, exist_ok=True)
+    p = out_dir / f"{name}_bench_card.pdf"
+    p.write_bytes(result.pdf_bytes)
+
+    return _ok({
+        "project": project.name,
+        "cabinets": cabinet_names,
+        "donor_pieces": [d.id for d in donor_pieces],
+        "assigned_count": len(result.assignments),
+        "unassigned": [f.name for f in result.unassigned],
+        "warnings": result.warnings,
+        "file": str(p),
+    })
+
+
 async def _tool_visualize_project(args: dict) -> list[types.TextContent]:
     import cadquery as cq  # raises in lite mode; call_tool wraps into an error
 
@@ -6763,6 +6944,7 @@ TOOL_DISPATCH: dict[str, Any] = {
     "evaluate_project":              _tool_evaluate_project,
     "generate_project_cutlist":      _tool_generate_project_cutlist,
     "generate_assembly_instructions": _tool_generate_assembly_instructions,
+    "generate_bench_card":           _tool_generate_bench_card,
     "visualize_project":             _tool_visualize_project,
 }
 

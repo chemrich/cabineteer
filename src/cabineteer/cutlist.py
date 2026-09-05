@@ -3367,7 +3367,8 @@ function showTab(n){{
 
 
 def _parts_table(panels: list["CutlistPanel"], content_width: float,
-                 source_letters: dict | None = None):
+                 source_letters: dict | None = None,
+                 from_map: dict | None = None):
     """Cut-parts table in Charlie's approved bench format (2026-08-02).
 
     Per part: a bold METRIC row with scannable L/W/T columns, a grey
@@ -3376,6 +3377,11 @@ def _parts_table(panels: list["CutlistPanel"], content_width: float,
     "Project X — name" section header rows instead of a Project column
     (part IDs carry the letter anyway). Requires reportlab; only call
     behind a ``_REPORTLAB_AVAILABLE`` check.
+
+    ``from_map`` ({part_id: label}) is the bench-card generator's one
+    addition to this otherwise-general table: an extra "From" column
+    naming which donor piece a row was cut from. ``None`` (every other
+    caller) reproduces the stock 7-column layout byte-for-byte.
     """
     from xml.sax.saxutils import escape as _esc
 
@@ -3398,8 +3404,11 @@ def _parts_table(panels: list["CutlistPanel"], content_width: float,
     def _i(text: str):
         return _Paragraph(_esc(text), sub_sty)
 
-    data: list[list] = [["ID", "Part", "L (mm)", "W (mm)", "T (mm)",
-                         "Qty", "Material"]]
+    header = ["ID", "Part", "L (mm)", "W (mm)", "T (mm)", "Qty", "Material"]
+    if from_map is not None:
+        header.append("From")
+    data: list[list] = [header]
+    blank_row_extra = [""] if from_map is not None else []
     cmds: list[tuple] = [
         ("BACKGROUND", (0, 0), (-1, 0), _HexColor("#2c3e50")),
         ("TEXTCOLOR", (0, 0), (-1, 0), _HexColor("#ffffff")),
@@ -3423,7 +3432,7 @@ def _parts_table(panels: list["CutlistPanel"], content_width: float,
             label = (f"Project {letter} — {p.source}" if letter
                      else (p.source or "Unassigned"))
             data.append([_Paragraph(f"<b>{_esc(label)}</b>", name_sty),
-                         "", "", "", "", "", ""])
+                         "", "", "", "", "", ""] + blank_row_extra)
             cmds += [("SPAN", (0, r), (-1, r)),
                      ("BACKGROUND", (0, r), (-1, r), _HexColor("#dfe6ec")),
                      ("TOPPADDING", (0, r), (-1, r), 5),
@@ -3431,20 +3440,23 @@ def _parts_table(panels: list["CutlistPanel"], content_width: float,
             shade = False
 
         r0 = len(data)
-        data.append([
+        row = [
             p.part_id or "—",
             _Paragraph(_esc(p.name), name_sty),
             _m(f"{p.length:.0f}"), _m(f"{p.width:.0f}"),
             _m(f"{p.thickness:g}"),
             p.quantity, _Paragraph(
                 _esc(p.material.replace("_", " ").title()), name_sty),
-        ])
+        ]
+        if from_map is not None:
+            row.append(_Paragraph(_esc(from_map.get(p.part_id, "—")), name_sty))
+        data.append(row)
         data.append([
             "", _Paragraph("in", sub_l_sty),
             _i(_inch_frac(p.length)), _i(_inch_frac(p.width)),
             _i(_thickness_imperial(p.thickness).replace('"', "")),
             "", "",
-        ])
+        ] + blank_row_extra)
         note_bits = []
         if p.edge_band:
             note_bits.append("band: " + ", ".join(p.edge_band))
@@ -3453,7 +3465,8 @@ def _parts_table(panels: list["CutlistPanel"], content_width: float,
         if note_bits:
             r = len(data)
             data.append(["", _Paragraph(_esc(" — ".join(note_bits)),
-                                        note_sty), "", "", "", "", ""])
+                                        note_sty), "", "", "", "", ""]
+                        + blank_row_extra)
             cmds.append(("SPAN", (1, r), (-1, r)))
         r1 = len(data) - 1
         if shade:
@@ -3463,8 +3476,9 @@ def _parts_table(panels: list["CutlistPanel"], content_width: float,
         cmds.append(("LINEBELOW", (0, r1), (-1, r1), 0.5,
                      _HexColor("#cccccc")))
 
-    col_w = [content_width * x
-             for x in (0.11, 0.30, 0.12, 0.12, 0.09, 0.06, 0.20)]
+    widths = ((0.10, 0.24, 0.11, 0.11, 0.08, 0.05, 0.17, 0.14)
+              if from_map is not None else (0.11, 0.30, 0.12, 0.12, 0.09, 0.06, 0.20))
+    col_w = [content_width * x for x in widths]
     tbl = _Table(data, colWidths=col_w, repeatRows=1)
     tbl.setStyle(_TableStyle(cmds))
     return tbl

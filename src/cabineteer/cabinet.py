@@ -1591,15 +1591,11 @@ def face_placements(
     # slot and sit side by side — so keying a column by it made the right
     # leaf a stack of one, and both its reveals got measured to the carcass
     # instead of to the faces 4 mm away. Both leaves of a pair occupy the
-    # same z band, so group by z.
-    rows_by_bay: dict[int, list[tuple[float, float]]] = {}
-    for p in faces:
-        band = (round(p.z, 3), round(p.z + p.height, 3))
-        rows_by_bay.setdefault(p.bay, [])
-        if band not in rows_by_bay[p.bay]:
-            rows_by_bay[p.bay].append(band)
-    for bands in rows_by_bay.values():
-        bands.sort()
+    # same z band, so group by z (see ``face_row_bands``).
+    rows_by_bay: dict[int, list[tuple[float, float]]] = {
+        b: face_row_bands([p for p in faces if p.bay == b])
+        for b in sorted({p.bay for p in faces})
+    }
 
     # HORIZONTAL neighbours: the leaves that share this face's slot, left to
     # right. A pair's inner edges meet EACH OTHER, not the carcass.
@@ -1658,6 +1654,128 @@ def face_placements(
             below_member=below_member, above_member=above_member,
         ))
     return out
+
+
+def face_row_bands(faces: "list[FacePanel]") -> list[tuple[float, float]]:
+    """Bottom-to-top z-bands for one bay's face panels, deduped and sorted.
+
+    A door pair's two leaves share one band — grouped by z, not by
+    ``leaf`` (see the note in ``face_placements``). This is the ONE place
+    that rounding/dedupe rule lives: ``face_placements``,
+    ``assert_face_heights_close``, and ``bench_card._row_bands`` all call
+    this instead of each re-deriving it, so a future change to the
+    banding rule (rounding precision, how a pair is treated) can't drift
+    between copies.
+    """
+    bands: list[tuple[float, float]] = []
+    for p in faces:
+        band = (round(p.z, 3), round(p.z + p.height, 3))
+        if band not in bands:
+            bands.append(band)
+    bands.sort()
+    return bands
+
+
+@dataclass(frozen=True)
+class FaceHeightClaim:
+    """One face height someone is about to write onto a bench document.
+
+    ``part_name`` is a free-form label used only in the error message —
+    order is everything (see ``assert_face_heights_close``), not the name.
+    ``measure_to_remainder`` marks a piece deliberately cut OVERSIZE to be
+    trimmed to the as-built remainder at glue-up (Charlie's shop practice):
+    such a piece is checked only for "not shorter than the real slot",
+    never for an exact match, because by design its claimed height will
+    not equal the computed one.
+    """
+    part_name: str
+    height_mm: float
+    measure_to_remainder: bool = False
+
+
+#: Sub-millimeter — far tighter than the mixed-assumption bug this exists
+#: to catch (double-digit mm), far looser than face_layout's own float
+#: rounding noise.
+DEFAULT_HEIGHT_TOLERANCE_MM = 0.5
+
+
+def assert_face_heights_close(
+    bay_configs: "list[CabinetConfig]",
+    claims: "list[FaceHeightClaim]",
+    *,
+    bay_index: int = 0,
+    face_gap: Optional[float] = None,
+    face_bottom_overhang: Optional[float] = None,
+    face_top_overhang: Optional[float] = None,
+    furniture_top: Optional[bool] = None,
+    face_kinds: tuple[str, ...] = ("drawer_face", "door"),
+    tolerance_mm: float = DEFAULT_HEIGHT_TOLERANCE_MM,
+) -> None:
+    """Assert ``claims`` close into bay ``bay_index``'s LIVE face stack.
+
+    Calls ``face_layout`` FRESH with the same override contract it already
+    exposes (face_gap / face_bottom_overhang / face_top_overhang /
+    furniture_top) — never re-derives the span arithmetic, so this can
+    never drift from the single source of truth it is checking against.
+
+    Rows are the bottom-to-top z-bands of ``bay_index``'s faces (a door
+    pair's two leaves share one band, same convention as
+    ``face_placements``' ``rows_by_bay``). Two failure modes, both
+    ``ValueError``:
+
+    * wrong ROW COUNT — ``len(claims) != len(rows)`` (wrong opening
+      count, wrong bay_index, or a stale claim list);
+    * wrong HEIGHT — a normal claim differs from its row's real height by
+      more than ``tolerance_mm`` in EITHER direction; a
+      ``measure_to_remainder`` claim is SHORTER than its row by more than
+      ``tolerance_mm`` (it may run long — that's the point of the flag —
+      but never short).
+
+    Raises immediately on the first bad row; the message names the row,
+    the real height, and the claimed height, and tells the caller to
+    re-derive rather than reuse a remembered number. Returns ``None``
+    when every claim closes.
+    """
+    panels = face_layout(
+        bay_configs, face_gap=face_gap,
+        face_bottom_overhang=face_bottom_overhang,
+        face_top_overhang=face_top_overhang, furniture_top=furniture_top,
+    )
+    faces = [p for p in panels if p.bay == bay_index and p.kind in face_kinds]
+    if not faces:
+        raise ValueError(
+            f"bay {bay_index} has no {face_kinds} panels — nothing to "
+            "check claims against.")
+
+    bands = face_row_bands(faces)
+
+    if len(bands) != len(claims):
+        raise ValueError(
+            f"{len(claims)} height claim(s) given but bay {bay_index}'s "
+            f"live face stack has {len(bands)} row(s) "
+            f"(furniture_top={furniture_top!r}, face_gap={face_gap!r}). "
+            "Check the opening count, bay_index, and overhang/gap "
+            "assumptions before re-deriving the claims.")
+
+    for i, ((z0, z1), claim) in enumerate(zip(bands, claims)):
+        real_h = round(z1 - z0, 3)
+        diff = claim.height_mm - real_h
+        if claim.measure_to_remainder:
+            if diff < -tolerance_mm:
+                raise ValueError(
+                    f"row {i} ({claim.part_name!r}): claimed "
+                    f"{claim.height_mm:g} mm is SHORTER than the "
+                    f"{real_h:g} mm this row actually needs (measure-to-"
+                    "remainder pieces may run oversize, never short).")
+        elif abs(diff) > tolerance_mm:
+            raise ValueError(
+                f"row {i} ({claim.part_name!r}): claimed "
+                f"{claim.height_mm:g} mm but the live face stack for bay "
+                f"{bay_index} (furniture_top={furniture_top!r}, "
+                f"face_gap={face_gap!r}) computes {real_h:g} mm — off by "
+                f"{diff:+.2f} mm, more than the {tolerance_mm:g} mm "
+                "tolerance. Re-derive from cabinet.face_layout, don't "
+                "reuse a remembered number.")
 
 
 def face_layout(
