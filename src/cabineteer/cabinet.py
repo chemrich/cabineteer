@@ -256,12 +256,39 @@ class CabinetConfig:
     # reveal the builder sets with shims at install. Half is trimmed from
     # each face at every internal opening boundary. SharedDesign token.
     face_gap_mm: float = DEFAULT_FACE_GAP_MM
-    # Furniture-top style: the top panel gains a front cap strip flush with
-    # the face plane, and the lowest face drops to the carcass underside.
-    # Persisted here (SharedDesign token) so the CUTLIST sees it — before
-    # 2026-08 this was a render-only flag and the cap strip plus the
-    # bottom-face drop existed in the 3D model but never on paper.
-    furniture_top: bool = False
+    # Top/bottom show-face style — two INDEPENDENT axes (Charlie's ask,
+    # 2026-09: "furniture_top" conflated whether the top panel gets a cap
+    # strip with whether the bottom face drops flush, and a build can want
+    # either alone). "cap": the top panel gains a front cap strip flush with
+    # the face plane, the topmost face stops short of it (today's
+    # furniture-top look). "flush": no cap strip — the topmost face itself
+    # rises to the true TOP of the top panel, covering its front edge
+    # entirely (the same plane a cap strip would occupy). "plain": face stops
+    # at the panel's own underside (no cap, no rise) — the old furniture_top =
+    # False look. Bottom has no "cap" state (nothing is capped at the
+    # bottom): "flush" drops the lowest face to the carcass underside,
+    # "plain" starts it at the bottom panel's top face. Persisted here
+    # (SharedDesign tokens) so the CUTLIST sees them — before 2026-08 this
+    # was a render-only flag and the cap strip plus the bottom-face drop
+    # existed in the 3D model but never on paper.
+    face_top_style: str = "cap"       # plain | cap | flush
+    face_bottom_style: str = "flush"  # plain | flush
+
+    @property
+    def furniture_top(self) -> bool:
+        """Deprecated read-only alias for the old combined boolean flag.
+
+        ``True`` exactly when both axes read as the classic "furniture top,
+        flush bottom" look (``face_top_style == "cap"`` AND
+        ``face_bottom_style == "flush"``). This is a DERIVED view, never a
+        stored field — a second stored boolean that could independently
+        disagree with the two real fields is exactly the "two documents
+        agreeing with each other while both are wrong" failure mode the
+        dimensioning arc (#88, #89, the depth-datum arc) exists to
+        eliminate. Kept only so old callers reading ``cfg.furniture_top``
+        keep working; new code should read the two style fields directly.
+        """
+        return self.face_top_style == "cap" and self.face_bottom_style == "flush"
 
     # Joinery
     dado_depth: float = 9.0  # half thickness dado for shelves/bottom
@@ -641,6 +668,20 @@ def _coerce_opening_options(options: dict) -> dict:
     return out
 
 
+def furniture_top_to_styles(flag: bool) -> tuple[str, str]:
+    """The legacy ``furniture_top`` boolean's per-axis translation:
+    ``("cap", "flush")`` when True, ``("plain", "plain")`` when False.
+
+    THE single implementation of this mapping — ``build_cabinet_config``,
+    ``face_layout``, and ``project.shared_from_dict`` all resolve the same
+    legacy flag and must never independently re-derive it (a second copy
+    that could quietly diverge from this one is exactly the "two documents
+    agreeing with each other while both are wrong" failure class the
+    dimensioning arc, #88/#89, exists to eliminate).
+    """
+    return ("cap", "flush") if flag else ("plain", "plain")
+
+
 def build_cabinet_config(args: dict) -> CabinetConfig:
     """Build a CabinetConfig from a flat dict of keyword arguments.
 
@@ -651,15 +692,27 @@ def build_cabinet_config(args: dict) -> CabinetConfig:
 
     Also accepts the ``design_cabinet`` convenience parameters:
     ``num_drawers`` (+ optional ``drawer_proportion``) auto-computes a
-    graduated drawer stack when no explicit stack is given, and
-    ``furniture_top`` (now a real CabinetConfig field) is normalised to a
-    bool — so any config shape a design tool accepted can be rebuilt here.
+    graduated drawer stack when no explicit stack is given, and the legacy
+    ``furniture_top`` boolean — no longer a real ``CabinetConfig`` field,
+    since it collapsed two independent axes into one flag — is translated
+    into ``face_top_style``/``face_bottom_style`` here, the single legacy
+    chokepoint every raw-dict path (MCP tool args, ``project.config_from_
+    dict``, test helpers) already funnels through. Per-axis precedence:
+    explicit new-style key on this same call > the legacy boolean >
+    ``CabinetConfig``'s own defaults. Critically, ``furniture_top=False``
+    maps to ``("plain", "plain")`` — NOT to the new defaults — so every
+    already-approved ``furniture_top=False`` design stays byte-identical
+    after the class default changed to ``("cap", "flush")``.
     """
     num_drawers       = args.pop("num_drawers", None)
     drawer_proportion = args.pop("drawer_proportion", None)
     _ft = args.pop("furniture_top", None)
     if _ft is not None:
-        args["furniture_top"] = bool(_ft)
+        _top_style, _bottom_style = furniture_top_to_styles(bool(_ft))
+        if "face_top_style" not in args:
+            args["face_top_style"] = _top_style
+        if "face_bottom_style" not in args:
+            args["face_bottom_style"] = _bottom_style
     if num_drawers and not args.get("drawer_config") and not args.get("openings"):
         from .proportions import graduated_drawer_heights
         bottom_t   = float(args.get("bottom_thickness", 18))
@@ -718,7 +771,7 @@ def build_cabinet_config(args: dict) -> CabinetConfig:
     if unknown:
         raise ValueError(
             f"Unknown cabinet parameter(s): {', '.join(sorted(unknown))}. "
-            f"Valid parameters: {', '.join(sorted(valid | {'drawer_config', 'pull_preset', 'num_drawers', 'drawer_proportion'}))}."
+            f"Valid parameters: {', '.join(sorted(valid | {'drawer_config', 'pull_preset', 'num_drawers', 'drawer_proportion', 'furniture_top'}))}."
         )
     return CabinetConfig(**kwargs)
 
@@ -1314,8 +1367,10 @@ class CarcassPanel:
     assembled cabinet. Hardwood edge banding replaces core stock, so the saw
     cuts something smaller; :meth:`core` is that view, and it lives here
     rather than at each call site because the rule differs per panel (a
-    ``furniture_top`` cap covers the top's front edge, so that one is never
-    banded and its core must not be shrunk for a band it will not carry).
+    ``face_top_style`` of ``"cap"`` covers the top's front edge with a cap
+    strip, and ``"flush"`` covers it with the tall top face itself — either
+    way that edge is never banded and its core must not be shrunk for a
+    band it will not carry).
 
     ``name`` is the cutlist row name. For the five single-family members
     that is a join key on its own; for shelves it is not — three different
@@ -1417,10 +1472,12 @@ def carcass_panel_dims(
             kind="top", name="top", quantity=1,
             length=tb_length, width=float(geo.top_depth),
             thickness=float(cfg.top_thickness),
-            # A furniture-top cap strip is glued to the top panel's front
-            # edge, so that edge is never banded — and the core must not be
-            # shrunk for a band the panel will not carry.
-            banded_edges=() if cfg.furniture_top else front,
+            # "cap": a cap strip is glued to this front edge. "flush": the
+            # tall top face itself covers it (see face_layout's face_top_
+            # style == "flush" branch — the two must never independently
+            # derive this same fact). Either way the edge is never banded
+            # and the core must not be shrunk for a band it will not carry.
+            banded_edges=() if cfg.face_top_style in ("cap", "flush") else front,
             bevel_ends=miter),
     ]
 
@@ -1708,6 +1765,8 @@ def assert_face_heights_close(
     face_bottom_overhang: Optional[float] = None,
     face_top_overhang: Optional[float] = None,
     furniture_top: Optional[bool] = None,
+    face_top_style: Optional[str] = None,
+    face_bottom_style: Optional[str] = None,
     face_kinds: tuple[str, ...] = ("drawer_face", "door"),
     tolerance_mm: float = DEFAULT_HEIGHT_TOLERANCE_MM,
     precomputed_panels: "Optional[list]" = None,
@@ -1716,7 +1775,8 @@ def assert_face_heights_close(
 
     Calls ``face_layout`` FRESH with the same override contract it already
     exposes (face_gap / face_bottom_overhang / face_top_overhang /
-    furniture_top) — never re-derives the span arithmetic, so this can
+    face_top_style / face_bottom_style, plus the deprecated ``furniture_top``
+    boolean alias) — never re-derives the span arithmetic, so this can
     never drift from the single source of truth it is checking against.
 
     ``precomputed_panels`` is a pure efficiency escape hatch: a caller that
@@ -1751,6 +1811,7 @@ def assert_face_heights_close(
         bay_configs, face_gap=face_gap,
         face_bottom_overhang=face_bottom_overhang,
         face_top_overhang=face_top_overhang, furniture_top=furniture_top,
+        face_top_style=face_top_style, face_bottom_style=face_bottom_style,
     )
     faces = [p for p in panels if p.bay == bay_index and p.kind in face_kinds]
     if not faces:
@@ -1799,6 +1860,8 @@ def face_layout(
     face_bottom_overhang: Optional[float] = None,
     face_top_overhang: Optional[float] = None,
     furniture_top: Optional[bool] = None,
+    face_top_style: Optional[str] = None,
+    face_bottom_style: Optional[str] = None,
 ) -> list[FacePanel]:
     """Compute every show-face panel for a bank of side-by-side bays.
 
@@ -1815,14 +1878,24 @@ def face_layout(
     neighbour, so faces + gaps tile the opening span exactly. ``face_gap``
     defaults to each bay's ``face_gap_mm``.
 
-    ``furniture_top`` (default: bay 0's config flag) drops the lowest face
-    to the carcass underside, trims the top face by one gap under the cap,
-    and appends the ``top_cap`` strip panel. Explicitly-passed
-    ``face_bottom_overhang`` / ``face_top_overhang`` always win — over the
-    furniture_top style AND the door-transition default (door slots above
-    anything extend the stack to the carcass exterior top). Per-bay values
-    (gap, anchors, drop) resolve from EACH bay's own config; only the
-    furniture_top decision itself and the cap strip are cabinet-global.
+    ``face_top_style`` (default: bay 0's config field) — ``"cap"`` trims the
+    top face by one gap under a front cap strip and appends the ``top_cap``
+    panel (today's "furniture top" look); ``"flush"`` emits NO cap panel and
+    instead rises the top face itself all the way to the true TOP of the
+    top panel, covering its front edge (no cap strip is needed because the
+    tall face itself does the covering — see ``carcass_panel_dims``, which
+    must agree on this same fact rather than re-deriving it); ``"plain"``
+    stops the face at the panel's own underside. ``face_bottom_style`` — ``"flush"`` drops the
+    lowest face to the carcass underside; ``"plain"`` starts it at the
+    bottom panel's top face. Explicitly-passed ``face_bottom_overhang`` /
+    ``face_top_overhang`` always win over BOTH styles AND the
+    door-transition default (door slots above anything extend the stack to
+    the carcass exterior top). The deprecated ``furniture_top`` boolean is
+    an alias for ``("cap", "flush")`` when True / ``("plain", "plain")`` when
+    False — an explicit ``face_top_style``/``face_bottom_style`` argument on
+    THIS call wins over it, matching ``build_cabinet_config``'s precedence.
+    Per-bay values (gap, anchors, drop) resolve from EACH bay's own config;
+    only the style decision itself and the cap strip are cabinet-global.
     """
     from .door import DoorConfig  # lazy — door.py has no cabinet import
 
@@ -1831,8 +1904,14 @@ def face_layout(
     n_bays = len(bay_configs)
     cfg0 = bay_configs[0]
 
-    if furniture_top is None:
-        furniture_top = cfg0.furniture_top
+    if face_top_style is None or face_bottom_style is None:
+        _legacy_top, _legacy_bottom = (
+            furniture_top_to_styles(furniture_top)
+            if furniture_top is not None else (None, None))
+        if face_top_style is None:
+            face_top_style = _legacy_top if _legacy_top is not None else cfg0.face_top_style
+        if face_bottom_style is None:
+            face_bottom_style = _legacy_bottom if _legacy_bottom is not None else cfg0.face_bottom_style
     has_transition = _door_transition_exists(bay_configs)
 
     # Bay X offsets — adjacent bays share a divider (same rule as the 3D).
@@ -1843,18 +1922,20 @@ def face_layout(
         if not cfg.openings:
             continue
         gap = face_gap if face_gap is not None else cfg.face_gap_mm
-        # Anchor overhangs: explicit argument > furniture_top style >
-        # door-transition rule > flush-to-panels. Per-bay thicknesses.
+        # Anchor overhangs: explicit argument > style > door-transition rule
+        # (top only) > flush-to-panels. Per-bay thicknesses.
         if face_bottom_overhang is not None:
             fbo = face_bottom_overhang
-        elif furniture_top:
+        elif face_bottom_style == "flush":
             fbo = cfg.bottom_thickness
         else:
             fbo = 0.0
         if face_top_overhang is not None:
             fto = face_top_overhang
-        elif furniture_top:
+        elif face_top_style == "cap":
             fto = -gap
+        elif face_top_style == "flush":
+            fto = cfg.top_thickness
         elif has_transition:
             fto = cfg.top_thickness
         else:
@@ -1950,7 +2031,7 @@ def face_layout(
                     ))
             # z_acc now comes from the shared walk; nothing to accumulate.
 
-    if furniture_top:
+    if face_top_style == "cap":
         panels.append(FacePanel(
             kind="top_cap", bay=-1, slot=-1, leaf=0,
             x=0.0, z=cfg0.height - cfg0.top_thickness,
@@ -2157,6 +2238,8 @@ def build_multi_bay_cabinet(
     include_feet: bool = True,
     feet_at_dividers: bool = True,
     furniture_top: Optional[bool] = None,
+    face_top_style: Optional[str] = None,
+    face_bottom_style: Optional[str] = None,
     divider_top_z: Optional[float] = None,
     include_manga: bool = False,
 ) -> tuple["cq.Assembly", list["PartInfo"]]:
@@ -2196,13 +2279,26 @@ def build_multi_bay_cabinet(
         include_drawers:      Build and add drawer box assemblies.
         include_faces:        Build and add drawer face panels.
         include_feet:         Build and add adjustable-foot cylinders.
-        furniture_top:        When True, adds a "furniture top" style: a front cap
-                              strip extends the top panel forward to the drawer-face
-                              plane, and the bottom of the lowest drawer face drops
-                              to the underside of the carcass bottom panel.
+        furniture_top:        DEPRECATED boolean alias for
+                              (face_top_style, face_bottom_style) =
+                              ("cap", "flush") when True / ("plain", "plain")
+                              when False. Prefer the two style parameters.
+        face_top_style:       "cap" (default: bay 0's config field) adds a
+                              front cap strip that extends the top panel
+                              forward to the drawer-face plane, trimming the
+                              top face by one gap under it. "flush" adds no
+                              cap strip — the top face itself rises to the
+                              TOP of the top panel, covering its front edge
+                              (the same plane a cap strip would occupy).
+                              "plain" stops the top face at the panel's own
+                              underside.
+        face_bottom_style:    "flush" (default: bay 0's config field) drops
+                              the bottom of the lowest drawer face to the
+                              underside of the carcass bottom panel. "plain"
+                              starts it at the bottom panel's top face.
                               Explicitly-passed face_bottom_overhang /
                               face_top_overhang arguments take precedence
-                              over the furniture_top defaults.
+                              over both style parameters AND furniture_top.
         include_manga:        Add a manga scale-reference stack to every drawer
                               box (viewer prop, excluded from the parts list).
                               Raises ValueError naming the drawer if any
@@ -2233,10 +2329,15 @@ def build_multi_bay_cabinet(
     # ── Show-face geometry — single source of truth ────────────────────────────
     # face_layout() owns every face/door/cap dimension and position; this
     # builder only extrudes what it returns. None-valued parameters resolve
-    # inside the layout (furniture_top / face_gap from bay 0's config,
-    # face_top_overhang from the door-transition rule).
-    if furniture_top is None:
-        furniture_top = bay_configs[0].furniture_top
+    # inside the layout (face_top_style / face_bottom_style / face_gap from
+    # bay 0's config, face_top_overhang from the door-transition rule). Do
+    # NOT pre-resolve furniture_top from bay_configs[0] here the way this
+    # used to: cfg.furniture_top is a LOSSY derived boolean (it collapses
+    # "flush" and "plain" tops to the same False), so resolving through it
+    # before calling face_layout would silently overwrite a stored "flush"
+    # style with "plain". Pass all three straight through and let
+    # face_layout's own precedence (style kwarg > furniture_top kwarg >
+    # cfg0's stored fields) do the resolving exactly once.
     _face_panels = face_layout(
         bay_configs,
         face_thickness=face_thickness,
@@ -2246,6 +2347,8 @@ def build_multi_bay_cabinet(
         face_bottom_overhang=face_bottom_overhang,
         face_top_overhang=face_top_overhang,
         furniture_top=furniture_top,
+        face_top_style=face_top_style,
+        face_bottom_style=face_bottom_style,
     )
     _drawer_face_at = {(p.bay, p.slot): p for p in _face_panels
                        if p.kind == "drawer_face"}

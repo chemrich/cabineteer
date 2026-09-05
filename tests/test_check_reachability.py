@@ -144,6 +144,8 @@ FIRES = {
                       carcass_joinery=CarcassJoinery.DADO_RABBET),),
     "check_back_capture":
         lambda: (_cfg(back_capture="half_lap", back_thickness=6.0),),
+    "check_face_top_bottom_style":
+        lambda: (_cfg(face_top_style="bogus"),),
     "check_miter_corners":
         lambda: (_cfg(carcass_corner_style="miter",
                       carcass_joinery=CarcassJoinery.POCKET_SCREW),),

@@ -118,6 +118,17 @@ def _base(**kw) -> CabinetConfig:
         carcass_joinery=CarcassJoinery.FLOATING_TENON,
         openings=list(DRAWERS_3),
     )
+    # Explicit plain/plain UNLESS the case sets one of the style fields
+    # itself: the CabinetConfig default flipped to ("cap", "flush")
+    # ("always default to some sort of flushness"), and this matrix's
+    # single dedicated "furniture_top" case is the only one meant to
+    # exercise that axis — every other case would otherwise silently start
+    # testing cap/flush geometry (and a hardwood top's banded_edges) by
+    # accident, which is exactly the kind of un-crossed, invisible default
+    # change this module exists to catch in OTHER code.
+    if not ({"face_top_style", "face_bottom_style"} & set(kw)):
+        args["face_top_style"] = "plain"
+        args["face_bottom_style"] = "plain"
     args.update(kw)
     return CabinetConfig(**args)
 
@@ -143,7 +154,8 @@ def _matrix() -> list[Case]:
     for depth in DEPTH_SWEEP:
         cases.append(Case(f"depth={depth:g}", _base(depth=depth)))
 
-    cases.append(Case("furniture_top", _base(furniture_top=True)))
+    cases.append(Case("furniture_top",
+                      _base(face_top_style="cap", face_bottom_style="flush")))
     # The matrix had no mitered case at all, so nothing in this module ever
     # looked at the axis D12 lives on: the paper cuts the top and bottom to
     # the full exterior long point and the render draws neither the length
@@ -160,11 +172,29 @@ def _matrix() -> list[Case]:
     cases.append(Case("hardwood+furniture_top",
                       _base(edge_band_mode="hardwood",
                             edge_band_thickness_mm=3.2,
-                            furniture_top=True)))
+                            face_top_style="cap", face_bottom_style="flush")))
     cases.append(Case("miter+hardwood",
                       _base(carcass_corner_style="miter",
                             edge_band_mode="hardwood",
                             edge_band_thickness_mm=3.2)))
+    # "flush" is the actual new axis VALUE this branch introduces — "cap"
+    # was already exercised above (as half of "furniture_top"), but
+    # "flush" was crossed with nothing: not back_capture, not
+    # carcass_corner_style, not columns, not drawer_joinery. Isolate it
+    # once (paired with a plain bottom, so this case is not silently
+    # re-testing the cap/flush combo "furniture_top" already covers), then
+    # cross it with the axes most likely to interact with a face that
+    # rises all the way to the top panel's own TOP surface rather than
+    # stopping under a cap strip.
+    cases.append(Case("face_top_style=flush",
+                      _base(face_top_style="flush", face_bottom_style="plain")))
+    cases.append(Case("flush+dado",
+                      _base(face_top_style="flush", back_capture="dado")))
+    cases.append(Case("flush+miter",
+                      _base(face_top_style="flush", carcass_corner_style="miter")))
+    cases.append(Case("flush+half_lap",
+                      _base(face_top_style="flush",
+                            drawer_joinery=DrawerJoineryStyle.HALF_LAP)))
     # A shelf family with two DIFFERENT widths, which is what makes a
     # per-family set comparison unable to fail.
     cases.append(Case(
@@ -195,6 +225,9 @@ def _matrix() -> list[Case]:
     cols = [{"width_mm": 300.0, "openings": [[133, "drawer"], [110, "drawer"]]},
             {"width_mm": 446.0, "openings": [[243, "open"]]}]
     cases.append(Case("2col", _base(width=800.0, openings=[]), cols))
+    cases.append(Case("flush+2col",
+                      _base(width=800.0, openings=[], face_top_style="flush"),
+                      cols))
 
     # A depth that puts a slide threshold just past what a grooved back
     # leaves. The review measured the harm here: a 381 mm box on the paper
@@ -311,6 +344,14 @@ KNOWN_DEFECTS: dict[tuple[str, str | None], str] = {
      "miter+hardwood"):
         "D12 — same, with banding on. Listed separately so a corner-style "
         "fix has to satisfy both and cannot pass by special-casing one.",
+    ("test_the_render_draws_the_carcass_at_the_size_the_cutlist_cuts",
+     "flush+miter"):
+        "D12 — same defect (the render still takes the butt-length "
+        "top/bottom regardless of face_top_style), newly visible because "
+        "the flush-top axis added alongside face_top_style had never been "
+        "crossed with a mitered carcass before. Listed separately for the "
+        "same reason as miter+hardwood — a corner-style fix has to satisfy "
+        "every crossed case, not just the first one found.",
 
     # ── D14 · five Domino rows have tenons longer than their mortises ────
     # Fix the five depths in DOMINO_SIZES, and derive
@@ -606,7 +647,11 @@ def test_the_face_stack_tiles_its_span(case: Case):
     no document noticed.
     """
     bays = bays_from_config(case.cfg, case.columns_raw)
-    faces = [f for f in face_layout(bays, furniture_top=case.cfg.furniture_top)
+    # Read the real stored fields, not the derived (and lossy) furniture_top
+    # boolean — a "flush" case would round-trip through it as False and
+    # silently get checked as "plain" instead.
+    faces = [f for f in face_layout(bays, face_top_style=case.cfg.face_top_style,
+                                    face_bottom_style=case.cfg.face_bottom_style)
              if f.kind != "top_cap"]
     if not faces:
         pytest.skip("no faces")
@@ -774,7 +819,13 @@ def design_tool_call(case: Case) -> tuple[str, dict]:
         "carcass_corner_style": cfg.carcass_corner_style,
         "edge_band_mode": cfg.edge_band_mode,
         "edge_band_thickness_mm": cfg.edge_band_thickness_mm,
-        "furniture_top": cfg.furniture_top,
+        # The real stored fields, not the derived furniture_top boolean —
+        # feeding that back in would lose a "flush" case's actual style
+        # (it round-trips as False, i.e. "plain") and the tool would design
+        # a different cabinet than the collector measured, the exact
+        # failure this docstring already warns about.
+        "face_top_style": cfg.face_top_style,
+        "face_bottom_style": cfg.face_bottom_style,
         "face_gap_mm": cfg.face_gap_mm,
     }
     if cfg.fixed_shelf_positions:

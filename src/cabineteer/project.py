@@ -25,7 +25,10 @@ from dataclasses import asdict, dataclass, field, fields, replace
 from pathlib import Path
 from typing import Any, Optional
 
-from .cabinet import CabinetConfig, ColumnConfig, OpeningConfig, build_cabinet_config
+from .cabinet import (
+    CabinetConfig, ColumnConfig, OpeningConfig, build_cabinet_config,
+    furniture_top_to_styles,
+)
 from .joinery import (
     CarcassJoinery,
     DrawerJoineryStyle,
@@ -53,7 +56,8 @@ _SHARED_FIELDS = (
     "edge_band_material",
     "edge_band_stock",
     "face_gap_mm",
-    "furniture_top",
+    "face_top_style",
+    "face_bottom_style",
     "carcass_joinery",
     "carcass_corner_style",
     "back_style",
@@ -96,10 +100,16 @@ class SharedDesign:
     edge_band_material: Optional[str] = None   # "" → derive from panel material
     edge_band_stock: Optional[dict] = None     # strip stock spec (see CabinetConfig)
     # Show-face geometry: vertical reveal between stacked faces (mm), and the
-    # furniture-top style (front cap strip + flush-bottom face drop) — both
-    # feed cabinet.face_layout, the single source for face/door dimensions.
+    # top/bottom show-face style — two INDEPENDENT axes (plain | cap | flush
+    # top; plain | flush bottom), replacing the old combined furniture_top
+    # boolean. Both feed cabinet.face_layout, the single source for
+    # face/door dimensions. The legacy furniture_top boolean is no longer a
+    # SharedDesign field — shared_from_dict translates a legacy
+    # {"furniture_top": ...} key at load time so an old saved snapshot still
+    # round-trips (none of the projects on disk today carry one).
     face_gap_mm: Optional[float] = None
-    furniture_top: Optional[bool] = None
+    face_top_style: Optional[str] = None      # plain | cap | flush
+    face_bottom_style: Optional[str] = None   # plain | flush
 
     # Joinery
     carcass_joinery:  Optional[CarcassJoinery]     = None
@@ -504,6 +514,12 @@ def duplicate_project(name: str, new_name: str, notes: str | None = None) -> Pat
 # round-tripped overrides lists are exhaustive). A shared pull_preset expands
 # into the pull fields at merge time, so those count too.
 _PULL_EXPANSION_KEYS = ("drawer_pull", "door_pull", "door_pull_inset_mm")
+# Same reasoning for the legacy furniture_top convenience key: config_from_
+# dict/build_cabinet_config expand it into these two real fields, so a
+# cabinet that sets it explicitly must be able to override a shared token
+# on either name. Named (not a literal at each call site) so the two stay
+# in sync automatically if the expansion ever grows a third field.
+_FURNITURE_TOP_EXPANSION_KEYS = ("face_top_style", "face_bottom_style")
 
 
 def _shared_override_keys(shared_dict: dict) -> set[str]:
@@ -626,6 +642,8 @@ def apply_project_patch(base: dict, patch: dict) -> tuple[dict, list[str]]:
             explicit_keys = set(entry["config"].keys())
             if "pull_preset" in explicit_keys:
                 explicit_keys |= set(_PULL_EXPANSION_KEYS)
+            if "furniture_top" in explicit_keys:
+                explicit_keys |= set(_FURNITURE_TOP_EXPANSION_KEYS)
             entry["overrides"] = sorted(shared_keys & explicit_keys)
             out["cabinets"].append(entry)
             stored[cname] = entry
@@ -803,7 +821,12 @@ def _config_to_dict(cfg: CabinetConfig) -> dict:
         "edge_band_material": cfg.edge_band_material,
         "edge_band_stock": dict(cfg.edge_band_stock) if cfg.edge_band_stock else None,
         "face_gap_mm": cfg.face_gap_mm,
-        "furniture_top": cfg.furniture_top,
+        # face_top_style / face_bottom_style are the real stored fields —
+        # NOT cfg.furniture_top, which is now a derived, LOSSY boolean (it
+        # collapses "flush" and "plain" tops to the same False). Persisting
+        # the boolean here would silently drop a "flush" top on save/load.
+        "face_top_style": cfg.face_top_style,
+        "face_bottom_style": cfg.face_bottom_style,
         "dado_depth":         cfg.dado_depth,
         "back_rabbet_width":  cfg.back_rabbet_width,
         "back_rabbet_depth":  cfg.back_rabbet_depth,
@@ -877,6 +900,20 @@ def _shared_to_dict(shared: SharedDesign) -> dict:
 def shared_from_dict(d: dict | None) -> SharedDesign:
     if not d:
         return SharedDesign()
+    # "furniture_top" is a legacy key: SharedDesign no longer carries it as
+    # a field (it collapsed two independent axes into one boolean), but a
+    # saved snapshot from before this split could in principle still have
+    # one in its "shared" block, and the unknown-key guard below would
+    # otherwise hard-reject it outright. Accept and translate it here — the
+    # same per-axis precedence build_cabinet_config uses (explicit new-style
+    # token on the same dict > the legacy boolean > SharedDesign's own
+    # None-means-don't-override default) — so an old shared block still
+    # loads instead of failing to parse.
+    d = dict(d)
+    if "furniture_top" in d:
+        _top_style, _bottom_style = furniture_top_to_styles(bool(d.pop("furniture_top")))
+        d.setdefault("face_top_style", _top_style)
+        d.setdefault("face_bottom_style", _bottom_style)
     valid = set(_SHARED_FIELDS) | {"pull_preset"}
     unknown = set(d) - valid
     if unknown:
@@ -1055,6 +1092,12 @@ def build_project(payload: dict) -> CabinetProject:
             # set too.
             if "pull_preset" in explicit_keys:
                 explicit_keys |= {"drawer_pull", "door_pull", "door_pull_inset_mm"}
+            # Same reasoning for the legacy furniture_top convenience key —
+            # config_from_dict expands it into face_top_style/face_bottom_
+            # style, so a child that sets it explicitly must be able to
+            # override a shared token on either of THOSE names.
+            if "furniture_top" in explicit_keys:
+                explicit_keys |= set(_FURNITURE_TOP_EXPANSION_KEYS)
             overrides = frozenset(shared_keys & explicit_keys)
         cfg = config_from_dict(cfg_dict)
         cabinets.append(ProjectCabinet(

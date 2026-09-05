@@ -402,12 +402,13 @@ def build_assembly_plan(
     # in hand when this map is used measures the finished number. The note
     # says so rather than leaving the reader to guess which face is meant.
     #
-    # Per PANEL, not per cabinet: a furniture_top top is never banded (the
-    # cap strip covers that edge, and carcass_panel_dims says so with
-    # banded_edges=()), so a cabinet-wide note would tell the builder to band
-    # the one edge the cutlist row forbids banding — the same pair of
-    # contradictory instructions the cutlist comment says it exists to remove,
-    # re-created in the document taped to the other machine.
+    # Per PANEL, not per cabinet: a "cap" or "flush" top is never banded
+    # (the cap strip / the tall top face covers that edge, and
+    # carcass_panel_dims says so with banded_edges=()), so a cabinet-wide
+    # note would tell the builder to band the one edge the cutlist row
+    # forbids banding — the same pair of contradictory instructions the
+    # cutlist comment says it exists to remove, re-created in the document
+    # taped to the other machine.
     def _band_note(panel) -> str:
         if band_mode != "hardwood" or not panel.banded_edges:
             return ""
