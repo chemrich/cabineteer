@@ -284,6 +284,59 @@ def _manga_schema() -> dict:
     }
 
 
+def _face_style_schema() -> dict:
+    """Input schema for the top/bottom show-face style parameters (plus the
+    deprecated ``furniture_top`` boolean alias), shared verbatim by every
+    design/evaluate/render tool that exposes them — a single copy so a
+    wording or default fix lands everywhere at once instead of needing to
+    be hand-applied across each tool's schema."""
+    return {
+        "furniture_top": {
+            "type": "boolean",
+            "description": (
+                "DEPRECATED boolean alias for (face_top_style, "
+                "face_bottom_style) = ('cap', 'flush') when True "
+                "/ ('plain', 'plain') when False. An explicit "
+                "face_top_style/face_bottom_style in this SAME "
+                "call wins over it. Prefer the two style "
+                "parameters below; this stays only for old "
+                "callers. SharedDesign token."
+            ),
+        },
+        "face_top_style": {
+            "type": "string",
+            "enum": ["plain", "cap", "flush"],
+            "default": "cap",
+            "description": (
+                "Top show-face style. 'cap': the top panel "
+                "gains a front cap strip flush with the face "
+                "plane (emitted on cutlists) and the topmost "
+                "face stops short of it — today's 'furniture "
+                "top' look. 'flush': no cap strip — the topmost "
+                "face itself rises flush with the TOP of the top "
+                "panel, covering its front edge entirely (the same "
+                "plane a cap strip would occupy). 'plain': the face "
+                "stops at the panel's own underside. "
+                "SharedDesign token."
+            ),
+        },
+        "face_bottom_style": {
+            "type": "string",
+            "enum": ["plain", "flush"],
+            "default": "flush",
+            "description": (
+                "Bottom show-face style. 'flush': the lowest "
+                "face drops to the carcass underside (paired "
+                "with a 'cap' top this is the classic "
+                "'furniture top, flush bottom' look, but the "
+                "two axes are independent). 'plain': the face "
+                "starts at the bottom panel's top face. "
+                "SharedDesign token."
+            ),
+        },
+    }
+
+
 def _worktop_schema() -> dict:
     """Input schema for a project worktop block (design_project / update_project)."""
     return {
@@ -490,16 +543,7 @@ async def list_tools() -> list[types.Tool]:
                             "cutlists and renders alike. SharedDesign token."
                         ),
                     },
-                    "furniture_top": {
-                        "type": "boolean", "default": False,
-                        "description": (
-                            "Stored 'furniture top' style: the top panel "
-                            "gains a front cap strip flush with the face "
-                            "plane (emitted on cutlists) and the lowest face "
-                            "drops to the carcass underside. SharedDesign "
-                            "token."
-                        ),
-                    },
+                    **_face_style_schema(),
                     "carcass_corner_style": {
                         "type": "string",
                         "enum": ["butt", "miter"],
@@ -811,16 +855,7 @@ async def list_tools() -> list[types.Tool]:
                             "cutlists and renders alike. SharedDesign token."
                         ),
                     },
-                    "furniture_top": {
-                        "type": "boolean", "default": False,
-                        "description": (
-                            "Stored 'furniture top' style: the top panel "
-                            "gains a front cap strip flush with the face "
-                            "plane (emitted on cutlists) and the lowest face "
-                            "drops to the carcass underside. SharedDesign "
-                            "token."
-                        ),
-                    },
+                    **_face_style_schema(),
                     "carcass_corner_style": {
                         "type": "string",
                         "enum": ["butt", "miter"],
@@ -1053,16 +1088,7 @@ async def list_tools() -> list[types.Tool]:
                             "cutlists and renders alike. SharedDesign token."
                         ),
                     },
-                    "furniture_top": {
-                        "type": "boolean", "default": False,
-                        "description": (
-                            "Stored 'furniture top' style: the top panel "
-                            "gains a front cap strip flush with the face "
-                            "plane (emitted on cutlists) and the lowest face "
-                            "drops to the carcass underside. SharedDesign "
-                            "token."
-                        ),
-                    },
+                    **_face_style_schema(),
                     "carcass_corner_style": {
                         "type": "string",
                         "enum": ["butt", "miter"],
@@ -1422,16 +1448,7 @@ async def list_tools() -> list[types.Tool]:
                             "cutlists and renders alike. SharedDesign token."
                         ),
                     },
-                    "furniture_top": {
-                        "type": "boolean", "default": False,
-                        "description": (
-                            "Stored 'furniture top' style: the top panel "
-                            "gains a front cap strip flush with the face "
-                            "plane (emitted on cutlists) and the lowest face "
-                            "drops to the carcass underside. SharedDesign "
-                            "token."
-                        ),
-                    },
+                    **_face_style_schema(),
                     "carcass_corner_style": {
                         "type": "string",
                         "enum": ["butt", "miter"],
@@ -1897,11 +1914,39 @@ async def list_tools() -> list[types.Tool]:
                     "furniture_top": {
                         "type": "boolean",
                         "description": (
-                            "'Furniture top' style: a front cap strip extends the top "
-                            "panel flush to the drawer-face plane, and the bottom of the "
-                            "lowest drawer face drops to the carcass underside. Omit to "
-                            "use the cabinet's stored furniture_top flag (a SharedDesign "
-                            "token; also emits the cap strip on cutlists)."
+                            "DEPRECATED tri-state boolean alias for "
+                            "(face_top_style, face_bottom_style). Omit to "
+                            "use the cabinet's stored style fields (a "
+                            "SharedDesign token pair). Prefer face_top_style "
+                            "/ face_bottom_style below; an explicit value "
+                            "there wins over this."
+                        ),
+                    },
+                    "face_top_style": {
+                        "type": "string",
+                        "enum": ["plain", "cap", "flush"],
+                        "description": (
+                            "Force this cabinet's top style: 'cap' extends "
+                            "the top panel forward to the drawer-face plane "
+                            "with a front cap strip; 'flush' rises the top "
+                            "face itself flush with the TOP of the top "
+                            "panel, covering its front edge, no cap strip; "
+                            "'plain' stops the face at the panel's own "
+                            "underside. Omit to use "
+                            "the cabinet's stored face_top_style (a "
+                            "SharedDesign token)."
+                        ),
+                    },
+                    "face_bottom_style": {
+                        "type": "string",
+                        "enum": ["plain", "flush"],
+                        "description": (
+                            "Force this cabinet's bottom style: 'flush' "
+                            "drops the lowest face to the carcass "
+                            "underside; 'plain' starts it at the bottom "
+                            "panel's top face. Omit to use the cabinet's "
+                            "stored face_bottom_style (a SharedDesign "
+                            "token)."
                         ),
                     },
                     "divider_full_height": {
@@ -2142,16 +2187,7 @@ async def list_tools() -> list[types.Tool]:
                             "cutlists and renders alike. SharedDesign token."
                         ),
                     },
-                    "furniture_top": {
-                        "type": "boolean", "default": False,
-                        "description": (
-                            "Stored 'furniture top' style: the top panel "
-                            "gains a front cap strip flush with the face "
-                            "plane (emitted on cutlists) and the lowest face "
-                            "drops to the carcass underside. SharedDesign "
-                            "token."
-                        ),
-                    },
+                    **_face_style_schema(),
                     "carcass_corner_style": {
                         "type": "string",
                         "enum": ["butt", "miter"],
@@ -2366,16 +2402,7 @@ async def list_tools() -> list[types.Tool]:
                             "cutlists and renders alike. SharedDesign token."
                         ),
                     },
-                    "furniture_top": {
-                        "type": "boolean", "default": False,
-                        "description": (
-                            "Stored 'furniture top' style: the top panel "
-                            "gains a front cap strip flush with the face "
-                            "plane (emitted on cutlists) and the lowest face "
-                            "drops to the carcass underside. SharedDesign "
-                            "token."
-                        ),
-                    },
+                    **_face_style_schema(),
                     "carcass_corner_style": {
                         "type": "string",
                         "enum": ["butt", "miter"],
@@ -2664,16 +2691,7 @@ async def list_tools() -> list[types.Tool]:
                             "cutlists and renders alike. SharedDesign token."
                         ),
                     },
-                    "furniture_top": {
-                        "type": "boolean", "default": False,
-                        "description": (
-                            "Stored 'furniture top' style: the top panel "
-                            "gains a front cap strip flush with the face "
-                            "plane (emitted on cutlists) and the lowest face "
-                            "drops to the carcass underside. SharedDesign "
-                            "token."
-                        ),
-                    },
+                    **_face_style_schema(),
                     "carcass_corner_style": {
                         "type": "string",
                         "enum": ["butt", "miter"],
@@ -3372,7 +3390,22 @@ async def list_tools() -> list[types.Tool]:
                         "description": "Per-row override, keyed 'cabinet:bay:slot:leaf' -> policy.",
                     },
                     "face_gap_mm": {"type": "number"},
-                    "furniture_top": {"type": "boolean"},
+                    "furniture_top": {
+                        "type": "boolean",
+                        "description": (
+                            "DEPRECATED boolean alias for (face_top_style, "
+                            "face_bottom_style). Prefer the two style "
+                            "parameters below."
+                        ),
+                    },
+                    "face_top_style": {
+                        "type": "string", "enum": ["plain", "cap", "flush"],
+                        "description": _face_style_schema()["face_top_style"]["description"],
+                    },
+                    "face_bottom_style": {
+                        "type": "string", "enum": ["plain", "flush"],
+                        "description": _face_style_schema()["face_bottom_style"]["description"],
+                    },
                     "face_bottom_overhang_mm": {"type": "number"},
                     "face_top_overhang_mm": {"type": "number"},
                     "face_height_overrides": {
@@ -3427,9 +3460,30 @@ async def list_tools() -> list[types.Tool]:
                     "furniture_top": {
                         "type": "boolean",
                         "description": (
-                            "Force every cabinet in the run to (or out of) the "
-                            "'furniture top, flush bottom' style. Omit to let "
-                            "each cabinet's stored furniture_top flag decide."
+                            "DEPRECATED boolean alias for (face_top_style, "
+                            "face_bottom_style). Force every cabinet in the "
+                            "run to (or out of) the 'furniture top, flush "
+                            "bottom' style. Omit to let each cabinet's "
+                            "stored style fields decide. Prefer the two "
+                            "style parameters below."
+                        ),
+                    },
+                    "face_top_style": {
+                        "type": "string",
+                        "enum": ["plain", "cap", "flush"],
+                        "description": (
+                            "Force every cabinet in the run to this top "
+                            "style. Omit to let each cabinet's stored "
+                            "face_top_style decide."
+                        ),
+                    },
+                    "face_bottom_style": {
+                        "type": "string",
+                        "enum": ["plain", "flush"],
+                        "description": (
+                            "Force every cabinet in the run to this bottom "
+                            "style. Omit to let each cabinet's stored "
+                            "face_bottom_style decide."
                         ),
                     },
                     "manga": _manga_schema(),
@@ -4233,19 +4287,25 @@ def _raw_panels_for_cabinet(
             return _notes(tb_bevel, _capture_note("bottom"),
                           _core_note(p.length, p.width, "front edge"))
         if p.kind == "top":
+            # A "cap" strip is glued onto this front edge (see the
+            # top_front_cap row); "flush" covers the same edge with the
+            # tall top face itself instead. Either way it is NEVER banded
+            # and the core is not shrunk for it — pre-fix the row demanded
+            # banding on the same edge the cap covers, two contradictory
+            # instructions at once.
+            if cfg.face_top_style == "cap":
+                top_style_note = "front edge covered by the top_front_cap strip — no banding"
+            elif cfg.face_top_style == "flush":
+                top_style_note = "front edge covered by the tall top face — no separate cap panel, no banding"
+            else:
+                top_style_note = ""
             return _notes(
                 tb_bevel,
                 "full depth — rear edge flush with sides, caps the back"
                 if under_top and not geo.machined else "",
-                # A furniture-top cap strip is glued onto this front edge
-                # (see the top_front_cap row), so it is NEVER banded and the
-                # core is not shrunk for it — pre-fix the row demanded
-                # banding on the same edge the cap covers, two contradictory
-                # instructions at once.
-                "front edge covered by the top_front_cap strip — no banding"
-                if cfg.furniture_top else "",
+                top_style_note,
                 _capture_note("top"),
-                "" if cfg.furniture_top
+                "" if cfg.face_top_style != "plain"
                 else _core_note(p.length, p.width, "front edge"))
         return _core_note(p.length, p.width, "front edge")
 
@@ -4413,10 +4473,13 @@ def _raw_panels_for_cabinet(
     # block sized faces from DrawerConfig's flat 10/3/3 mm overlays — 16 mm
     # narrow on a flush build, and the height stack physically couldn't fit
     # (the kids'-desk fronts were cut from that paper).
-    # Gate on furniture_top too — an opening-less furniture_top cabinet
-    # still has its cap strip (the layout emits it regardless of openings;
-    # gating on norm_cols alone recreated the render-only-cap divergence).
-    if norm_cols or cfg.furniture_top:
+    # Gate on face_top_style == "cap" too — an opening-less cap-style
+    # cabinet still has its cap strip (the layout emits it regardless of
+    # openings; gating on norm_cols alone recreated the render-only-cap
+    # divergence). "flush" needs no such gate: it produces no standalone
+    # panel of its own, only a taller drawer face — nothing to force onto
+    # paper when there is no opening to attach a face to.
+    if norm_cols or cfg.face_top_style == "cap":
         bays = _bays_from_config(cfg, columns_raw if columns_raw else None)
         gap = cfg.face_gap_mm
         n_bays = len(bays)
@@ -5246,6 +5309,8 @@ def _cabinet_assembly(
     *,
     num_bays: int = 1,
     furniture_top: bool | None = None,
+    face_top_style: str | None = None,
+    face_bottom_style: str | None = None,
     divider_full_height: bool = True,
     include_manga: bool = False,
     include_feet: bool = True,
@@ -5315,6 +5380,8 @@ def _cabinet_assembly(
         bay_configs,
         feet_at_dividers=(columns_raw is None),
         furniture_top=furniture_top,
+        face_top_style=face_top_style,
+        face_bottom_style=face_bottom_style,
         divider_top_z=divider_top_z,
         include_manga=include_manga,
         include_feet=include_feet,
@@ -5334,6 +5401,8 @@ async def _tool_visualize_cabinet(args: dict) -> list[types.TextContent]:
     columns_raw        = args.pop("columns", None)
     _ft                = args.pop("furniture_top", None)
     furniture_top      = None if _ft is None else bool(_ft)
+    face_top_style     = args.pop("face_top_style", None)
+    face_bottom_style  = args.pop("face_bottom_style", None)
     divider_full_height = bool(args.pop("divider_full_height", True))
     include_manga      = bool(args.pop("manga", False))
     cfg = _build_cabinet_config(args)
@@ -5342,6 +5411,8 @@ async def _tool_visualize_cabinet(args: dict) -> list[types.TextContent]:
         cfg, columns_raw,
         num_bays=num_bays,
         furniture_top=furniture_top,
+        face_top_style=face_top_style,
+        face_bottom_style=face_bottom_style,
         divider_full_height=divider_full_height,
         include_manga=include_manga,
     )
@@ -6558,6 +6629,8 @@ async def _tool_generate_bench_card(args: dict) -> list[types.TextContent]:
             grain_overrides=args.get("grain_overrides"),
             face_gap=args.get("face_gap_mm"),
             furniture_top=args.get("furniture_top"),
+            face_top_style=args.get("face_top_style"),
+            face_bottom_style=args.get("face_bottom_style"),
             face_bottom_overhang=args.get("face_bottom_overhang_mm"),
             face_top_overhang=args.get("face_top_overhang_mm"),
             face_height_overrides=overrides or None,
@@ -6599,6 +6672,8 @@ async def _tool_visualize_project(args: dict) -> list[types.TextContent]:
     gap_mm       = float(args.get("gap_mm", 0.0))
     _ft           = args.get("furniture_top")
     furniture_top = None if _ft is None else bool(_ft)
+    face_top_style    = args.get("face_top_style")
+    face_bottom_style = args.get("face_bottom_style")
     include_manga = bool(args.get("manga", False))
     shared_feet  = bool(args.get("shared_junction_feet", False))
     finish       = args.get("finish")
@@ -6621,6 +6696,8 @@ async def _tool_visualize_project(args: dict) -> list[types.TextContent]:
         try:
             assy, parts, _info = _cabinet_assembly(
                 cfg, columns_raw, furniture_top=furniture_top,
+                face_top_style=face_top_style,
+                face_bottom_style=face_bottom_style,
                 include_manga=include_manga,
                 include_feet=not use_shared_feet,
             )

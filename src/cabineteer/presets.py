@@ -145,6 +145,13 @@ _p(CabinetPreset(
     tags=["kitchen", "base", "drawer", "blum", "dado_rabbet"],
     difficulty="basic",
     config=CabinetConfig(
+        # Preserve pre-2026-09 behavior: CabinetConfig's own default
+        # changed to ("cap", "flush") (Charlie's ask, "always default
+        # to some sort of flushness") but every preset predates that
+        # ask and was validated against the plain/plain look — pin it
+        # explicitly so apply_preset output stays byte-identical.
+        face_top_style="plain",
+        face_bottom_style="plain",
         width=600,
         height=720,
         depth=550,
@@ -172,6 +179,13 @@ _p(CabinetPreset(
     tags=["kitchen", "base", "door", "drawer", "blum"],
     difficulty="basic",
     config=CabinetConfig(
+        # Preserve pre-2026-09 behavior: CabinetConfig's own default
+        # changed to ("cap", "flush") (Charlie's ask, "always default
+        # to some sort of flushness") but every preset predates that
+        # ask and was validated against the plain/plain look — pin it
+        # explicitly so apply_preset output stays byte-identical.
+        face_top_style="plain",
+        face_bottom_style="plain",
         width=600,
         height=720,
         depth=550,
@@ -199,6 +213,13 @@ _p(CabinetPreset(
     tags=["kitchen", "base", "door_pair", "drawer", "wide", "blum"],
     difficulty="standard",
     config=CabinetConfig(
+        # Preserve pre-2026-09 behavior: CabinetConfig's own default
+        # changed to ("cap", "flush") (Charlie's ask, "always default
+        # to some sort of flushness") but every preset predates that
+        # ask and was validated against the plain/plain look — pin it
+        # explicitly so apply_preset output stays byte-identical.
+        face_top_style="plain",
+        face_bottom_style="plain",
         width=900,
         height=720,
         depth=550,
@@ -226,6 +247,13 @@ _p(CabinetPreset(
     tags=["kitchen", "pantry", "tall", "door_pair", "shelf", "soft_close", "blum"],
     difficulty="standard",
     config=CabinetConfig(
+        # Preserve pre-2026-09 behavior: CabinetConfig's own default
+        # changed to ("cap", "flush") (Charlie's ask, "always default
+        # to some sort of flushness") but every preset predates that
+        # ask and was validated against the plain/plain look — pin it
+        # explicitly so apply_preset output stays byte-identical.
+        face_top_style="plain",
+        face_bottom_style="plain",
         width=600,
         height=2100,
         depth=550,
@@ -262,6 +290,13 @@ _p(CabinetPreset(
     tags=["workshop", "tool_chest", "drawer", "heavy_duty", "blum_movento"],
     difficulty="standard",
     config=CabinetConfig(
+        # Preserve pre-2026-09 behavior: CabinetConfig's own default
+        # changed to ("cap", "flush") (Charlie's ask, "always default
+        # to some sort of flushness") but every preset predates that
+        # ask and was validated against the plain/plain look — pin it
+        # explicitly so apply_preset output stays byte-identical.
+        face_top_style="plain",
+        face_bottom_style="plain",
         width=600,
         height=900,
         depth=550,
@@ -292,6 +327,13 @@ _p(CabinetPreset(
     tags=["workshop", "wall", "door_pair", "shallow", "shelf"],
     difficulty="basic",
     config=CabinetConfig(
+        # Preserve pre-2026-09 behavior: CabinetConfig's own default
+        # changed to ("cap", "flush") (Charlie's ask, "always default
+        # to some sort of flushness") but every preset predates that
+        # ask and was validated against the plain/plain look — pin it
+        # explicitly so apply_preset output stays byte-identical.
+        face_top_style="plain",
+        face_bottom_style="plain",
         width=600,
         height=720,
         depth=300,
@@ -323,6 +365,13 @@ _p(CabinetPreset(
     tags=["bedroom", "dresser", "drawer", "blum", "full_extension"],
     difficulty="standard",
     config=CabinetConfig(
+        # Preserve pre-2026-09 behavior: CabinetConfig's own default
+        # changed to ("cap", "flush") (Charlie's ask, "always default
+        # to some sort of flushness") but every preset predates that
+        # ask and was validated against the plain/plain look — pin it
+        # explicitly so apply_preset output stays byte-identical.
+        face_top_style="plain",
+        face_bottom_style="plain",
         width=900,
         height=1100,
         depth=550,
@@ -357,6 +406,13 @@ _p(CabinetPreset(
     tags=["bathroom", "vanity", "door", "drawer", "soft_close", "shallow", "blum"],
     difficulty="standard",
     config=CabinetConfig(
+        # Preserve pre-2026-09 behavior: CabinetConfig's own default
+        # changed to ("cap", "flush") (Charlie's ask, "always default
+        # to some sort of flushness") but every preset predates that
+        # ask and was validated against the plain/plain look — pin it
+        # explicitly so apply_preset output stays byte-identical.
+        face_top_style="plain",
+        face_bottom_style="plain",
         width=600,
         height=850,
         depth=480,
@@ -387,6 +443,13 @@ _p(CabinetPreset(
     tags=["storage", "wall", "door_pair", "shelf", "adjustable", "soft_close"],
     difficulty="basic",
     config=CabinetConfig(
+        # Preserve pre-2026-09 behavior: CabinetConfig's own default
+        # changed to ("cap", "flush") (Charlie's ask, "always default
+        # to some sort of flushness") but every preset predates that
+        # ask and was validated against the plain/plain look — pin it
+        # explicitly so apply_preset output stays byte-identical.
+        face_top_style="plain",
+        face_bottom_style="plain",
         width=600,
         height=720,
         depth=300,
@@ -417,6 +480,13 @@ _p(CabinetPreset(
     tags=["living_room", "foyer", "console", "drawer", "open", "shallow"],
     difficulty="standard",
     config=CabinetConfig(
+        # Preserve pre-2026-09 behavior: CabinetConfig's own default
+        # changed to ("cap", "flush") (Charlie's ask, "always default
+        # to some sort of flushness") but every preset predates that
+        # ask and was validated against the plain/plain look — pin it
+        # explicitly so apply_preset output stays byte-identical.
+        face_top_style="plain",
+        face_bottom_style="plain",
         width=1200,
         height=800,
         depth=350,
@@ -444,6 +514,13 @@ _p(CabinetPreset(
     tags=["living_room", "foyer", "console", "drawer", "open", "shallow", "narrow"],
     difficulty="basic",
     config=CabinetConfig(
+        # Preserve pre-2026-09 behavior: CabinetConfig's own default
+        # changed to ("cap", "flush") (Charlie's ask, "always default
+        # to some sort of flushness") but every preset predates that
+        # ask and was validated against the plain/plain look — pin it
+        # explicitly so apply_preset output stays byte-identical.
+        face_top_style="plain",
+        face_bottom_style="plain",
         width=900,
         height=850,
         depth=300,
@@ -471,6 +548,13 @@ _p(CabinetPreset(
     tags=["living_room", "credenza", "door_pair", "drawer", "soft_close", "full_extension"],
     difficulty="standard",
     config=CabinetConfig(
+        # Preserve pre-2026-09 behavior: CabinetConfig's own default
+        # changed to ("cap", "flush") (Charlie's ask, "always default
+        # to some sort of flushness") but every preset predates that
+        # ask and was validated against the plain/plain look — pin it
+        # explicitly so apply_preset output stays byte-identical.
+        face_top_style="plain",
+        face_bottom_style="plain",
         width=1600,
         height=800,
         depth=450,
@@ -500,6 +584,13 @@ _p(CabinetPreset(
     tags=["living_room", "sideboard", "door_pair", "drawer", "soft_close", "full_extension", "wide"],
     difficulty="standard",
     config=CabinetConfig(
+        # Preserve pre-2026-09 behavior: CabinetConfig's own default
+        # changed to ("cap", "flush") (Charlie's ask, "always default
+        # to some sort of flushness") but every preset predates that
+        # ask and was validated against the plain/plain look — pin it
+        # explicitly so apply_preset output stays byte-identical.
+        face_top_style="plain",
+        face_bottom_style="plain",
         width=1800,
         height=900,
         depth=500,
@@ -529,6 +620,13 @@ _p(CabinetPreset(
     tags=["living_room", "media", "console", "door_pair", "open", "low", "soft_close"],
     difficulty="basic",
     config=CabinetConfig(
+        # Preserve pre-2026-09 behavior: CabinetConfig's own default
+        # changed to ("cap", "flush") (Charlie's ask, "always default
+        # to some sort of flushness") but every preset predates that
+        # ask and was validated against the plain/plain look — pin it
+        # explicitly so apply_preset output stays byte-identical.
+        face_top_style="plain",
+        face_bottom_style="plain",
         width=1800,
         height=600,
         depth=450,
@@ -560,6 +658,13 @@ _p(CabinetPreset(
     tags=["bedroom", "armoire", "wardrobe", "door_pair", "drawer", "tall", "soft_close"],
     difficulty="standard",
     config=CabinetConfig(
+        # Preserve pre-2026-09 behavior: CabinetConfig's own default
+        # changed to ("cap", "flush") (Charlie's ask, "always default
+        # to some sort of flushness") but every preset predates that
+        # ask and was validated against the plain/plain look — pin it
+        # explicitly so apply_preset output stays byte-identical.
+        face_top_style="plain",
+        face_bottom_style="plain",
         width=1100,
         height=1900,
         depth=580,
@@ -595,6 +700,13 @@ _p(CabinetPreset(
           "soft_close"],
     difficulty="standard",
     config=CabinetConfig(
+        # Preserve pre-2026-09 behavior: CabinetConfig's own default
+        # changed to ("cap", "flush") (Charlie's ask, "always default
+        # to some sort of flushness") but every preset predates that
+        # ask and was validated against the plain/plain look — pin it
+        # explicitly so apply_preset output stays byte-identical.
+        face_top_style="plain",
+        face_bottom_style="plain",
         width=500,
         height=1350,
         depth=450,
@@ -632,6 +744,13 @@ _p(CabinetPreset(
     tags=["bedroom", "armoire", "wardrobe", "door", "drawer", "multi_column", "legs"],
     difficulty="advanced",
     config=CabinetConfig(
+        # Preserve pre-2026-09 behavior: CabinetConfig's own default
+        # changed to ("cap", "flush") (Charlie's ask, "always default
+        # to some sort of flushness") but every preset predates that
+        # ask and was validated against the plain/plain look — pin it
+        # explicitly so apply_preset output stays byte-identical.
+        face_top_style="plain",
+        face_bottom_style="plain",
         width=1117.6,
         height=1703.4,   # carcass only — 100 mm legs bring the total to 71"
         depth=533.4,
@@ -680,6 +799,13 @@ _p(CabinetPreset(
     tags=["bedroom", "nightstand", "bedside", "drawer", "door", "soft_close", "small"],
     difficulty="basic",
     config=CabinetConfig(
+        # Preserve pre-2026-09 behavior: CabinetConfig's own default
+        # changed to ("cap", "flush") (Charlie's ask, "always default
+        # to some sort of flushness") but every preset predates that
+        # ask and was validated against the plain/plain look — pin it
+        # explicitly so apply_preset output stays byte-identical.
+        face_top_style="plain",
+        face_bottom_style="plain",
         width=550,
         height=650,
         depth=400,
@@ -709,6 +835,13 @@ _p(CabinetPreset(
     tags=["bedroom", "chest", "tallboy", "highboy", "drawer", "tall", "full_extension"],
     difficulty="standard",
     config=CabinetConfig(
+        # Preserve pre-2026-09 behavior: CabinetConfig's own default
+        # changed to ("cap", "flush") (Charlie's ask, "always default
+        # to some sort of flushness") but every preset predates that
+        # ask and was validated against the plain/plain look — pin it
+        # explicitly so apply_preset output stays byte-identical.
+        face_top_style="plain",
+        face_bottom_style="plain",
         width=600,
         height=1400,
         depth=550,
@@ -745,6 +878,13 @@ _p(CabinetPreset(
     tags=["bedroom", "lingerie_chest", "chiffonier", "semainier", "drawer", "tall", "narrow"],
     difficulty="standard",
     config=CabinetConfig(
+        # Preserve pre-2026-09 behavior: CabinetConfig's own default
+        # changed to ("cap", "flush") (Charlie's ask, "always default
+        # to some sort of flushness") but every preset predates that
+        # ask and was validated against the plain/plain look — pin it
+        # explicitly so apply_preset output stays byte-identical.
+        face_top_style="plain",
+        face_bottom_style="plain",
         width=500,
         height=1350,
         depth=450,
@@ -781,6 +921,13 @@ _p(CabinetPreset(
           "multi_column", "wide", "full_extension"],
     difficulty="advanced",
     config=CabinetConfig(
+        # Preserve pre-2026-09 behavior: CabinetConfig's own default
+        # changed to ("cap", "flush") (Charlie's ask, "always default
+        # to some sort of flushness") but every preset predates that
+        # ask and was validated against the plain/plain look — pin it
+        # explicitly so apply_preset output stays byte-identical.
+        face_top_style="plain",
+        face_bottom_style="plain",
         width=1400,
         height=1200,
         depth=550,
@@ -826,6 +973,13 @@ _p(CabinetPreset(
           "tall", "narrow", "soft_close", "shelf"],
     difficulty="standard",
     config=CabinetConfig(
+        # Preserve pre-2026-09 behavior: CabinetConfig's own default
+        # changed to ("cap", "flush") (Charlie's ask, "always default
+        # to some sort of flushness") but every preset predates that
+        # ask and was validated against the plain/plain look — pin it
+        # explicitly so apply_preset output stays byte-identical.
+        face_top_style="plain",
+        face_bottom_style="plain",
         width=400,
         height=1900,
         depth=350,
@@ -862,6 +1016,13 @@ _p(CabinetPreset(
           "shelf", "soft_close"],
     difficulty="standard",
     config=CabinetConfig(
+        # Preserve pre-2026-09 behavior: CabinetConfig's own default
+        # changed to ("cap", "flush") (Charlie's ask, "always default
+        # to some sort of flushness") but every preset predates that
+        # ask and was validated against the plain/plain look — pin it
+        # explicitly so apply_preset output stays byte-identical.
+        face_top_style="plain",
+        face_bottom_style="plain",
         width=900,
         height=1000,
         depth=450,
@@ -894,6 +1055,13 @@ _p(CabinetPreset(
     tags=["office", "filing_cabinet", "drawer", "deep", "heavy_duty", "blum_movento"],
     difficulty="standard",
     config=CabinetConfig(
+        # Preserve pre-2026-09 behavior: CabinetConfig's own default
+        # changed to ("cap", "flush") (Charlie's ask, "always default
+        # to some sort of flushness") but every preset predates that
+        # ask and was validated against the plain/plain look — pin it
+        # explicitly so apply_preset output stays byte-identical.
+        face_top_style="plain",
+        face_bottom_style="plain",
         width=460,
         height=1300,
         depth=600,
@@ -927,6 +1095,13 @@ _p(CabinetPreset(
           "shallow", "soft_close"],
     difficulty="basic",
     config=CabinetConfig(
+        # Preserve pre-2026-09 behavior: CabinetConfig's own default
+        # changed to ("cap", "flush") (Charlie's ask, "always default
+        # to some sort of flushness") but every preset predates that
+        # ask and was validated against the plain/plain look — pin it
+        # explicitly so apply_preset output stays byte-identical.
+        face_top_style="plain",
+        face_bottom_style="plain",
         width=900,
         height=900,
         depth=350,
@@ -958,6 +1133,13 @@ _p(CabinetPreset(
     tags=["entryway", "hall_tree", "door_pair", "drawer", "open", "tall", "soft_close"],
     difficulty="standard",
     config=CabinetConfig(
+        # Preserve pre-2026-09 behavior: CabinetConfig's own default
+        # changed to ("cap", "flush") (Charlie's ask, "always default
+        # to some sort of flushness") but every preset predates that
+        # ask and was validated against the plain/plain look — pin it
+        # explicitly so apply_preset output stays byte-identical.
+        face_top_style="plain",
+        face_bottom_style="plain",
         width=900,
         height=1900,
         depth=380,
