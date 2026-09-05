@@ -809,14 +809,18 @@ def _optimize_with_rectpack(
     eff_w = stock_sheet.width - kerf
     EPS = 0.05
 
-    grain_constrained: set[str] = {
-        p.name for p in panels if p.grain_direction not in ("", None)
-    }
-
     # Expand with a globally-unique piece index so two distinct CutlistPanel
     # objects that share a name (e.g. "side" across cabinets) never collide.
     # ``dims`` are the orientation the piece is added to the packer in, and
     # ``pre_rotated`` records whether that differs from the nominal L×W.
+    #
+    # ``can_rotate`` is read off THIS panel INSTANCE's own grain_direction,
+    # never grouped by name first: two CutlistPanel objects sharing a name
+    # (e.g. bench_card.py's per-row grain_overrides, which locks some rows
+    # of a same-named face and frees others) are independent pieces, and a
+    # name-keyed set collapses that back to "any instance of this name is
+    # locked" — silently defeating a free-rotation override whenever a
+    # same-named sibling stays locked.
     oversized: list[str] = []
     # (add_len, add_wid, name, uid, pre_rotated)
     packable: list[tuple[float, float, str, int, bool]] = []
@@ -827,7 +831,7 @@ def _optimize_with_rectpack(
 
     counter = 0
     for p in panels:
-        can_rotate = p.name not in grain_constrained
+        can_rotate = p.grain_direction in ("", None)
         for _ in range(p.quantity):
             uid = counter
             counter += 1
@@ -935,14 +939,13 @@ def _optimize_with_opcut(
     eff_w = stock_sheet.width  - kerf
     EPS = 0.05
 
-    grain_constrained: set[str] = {
-        p.name for p in panels if p.grain_direction not in ("", None)
-    }
-
+    # ``can_rotate`` is read off THIS panel INSTANCE's own grain_direction —
+    # see the matching note in _optimize_with_rectpack. A name-keyed set
+    # would silently re-lock a same-named row that grain_overrides freed.
     oversized: list[str] = []
     valid: list[CutlistPanel] = []
     for p in panels:
-        can_rotate = p.name not in grain_constrained
+        can_rotate = p.grain_direction in ("", None)
         fits = p.length <= eff_l + EPS and p.width <= eff_w + EPS
         fits_rot = can_rotate and p.width <= eff_l + EPS and p.length <= eff_w + EPS
         if not fits and not fits_rot:
@@ -962,8 +965,10 @@ def _optimize_with_opcut(
     id_to_name: dict[str, str] = {}
     id_to_source: dict[str, str] = {}
     id_to_part_id: dict[str, str] = {}
+    id_to_constrained: dict[str, bool] = {}
     counter = 0
     for p in valid:
+        constrained = p.grain_direction not in ("", None)
         for _ in range(p.quantity):
             iid = f"{p.name}__{counter}"
             counter += 1
@@ -971,11 +976,12 @@ def _optimize_with_opcut(
                 id=iid,
                 width=p.length,
                 height=p.width,
-                can_rotate=p.name not in grain_constrained,
+                can_rotate=not constrained,
             ))
             id_to_name[iid] = p.name
             id_to_source[iid] = p.source
             id_to_part_id[iid] = p.part_id
+            id_to_constrained[iid] = constrained
 
     total_area = sum(p.length * p.width * p.quantity for p in valid)
     base = max(1, math.ceil(total_area / (eff_l * eff_w)))
@@ -1009,7 +1015,8 @@ def _optimize_with_opcut(
             placed_l, placed_w = used.item.height, used.item.width
         else:
             placed_l, placed_w = used.item.width, used.item.height
-        if used.rotate and name in grain_constrained and name not in grain_mismatched:
+        if (used.rotate and id_to_constrained[used.item.id]
+                and name not in grain_mismatched):
             grain_mismatched.append(name)
         placements.append(Placement(
             panel_name=name,
@@ -1288,16 +1295,15 @@ def _optimize_strip(
     eff_w = stock_sheet.width  - kerf
     EPS = 0.05
 
-    grain_constrained: set[str] = {
-        p.name for p in panels if p.grain_direction not in ("", None)
-    }
-
     oversized: list[str] = []
     oriented: list[tuple[float, float, str, str, bool]] = []
 
+    # ``grain_direction`` is read off THIS panel INSTANCE — see the matching
+    # note in _optimize_with_rectpack. A name-keyed set would silently
+    # re-lock a same-named row that grain_overrides freed.
     for p in panels:
         for _ in range(p.quantity):
-            if p.name in grain_constrained:
+            if p.grain_direction not in ("", None):
                 plen, pwid, rot = p.length, p.width, False
                 if plen > eff_l + EPS or pwid > eff_w + EPS:
                     if p.name not in oversized:
@@ -3367,7 +3373,8 @@ function showTab(n){{
 
 
 def _parts_table(panels: list["CutlistPanel"], content_width: float,
-                 source_letters: dict | None = None):
+                 source_letters: dict | None = None,
+                 from_map: dict | None = None):
     """Cut-parts table in Charlie's approved bench format (2026-08-02).
 
     Per part: a bold METRIC row with scannable L/W/T columns, a grey
@@ -3376,6 +3383,11 @@ def _parts_table(panels: list["CutlistPanel"], content_width: float,
     "Project X — name" section header rows instead of a Project column
     (part IDs carry the letter anyway). Requires reportlab; only call
     behind a ``_REPORTLAB_AVAILABLE`` check.
+
+    ``from_map`` ({part_id: label}) is the bench-card generator's one
+    addition to this otherwise-general table: an extra "From" column
+    naming which donor piece a row was cut from. ``None`` (every other
+    caller) reproduces the stock 7-column layout byte-for-byte.
     """
     from xml.sax.saxutils import escape as _esc
 
@@ -3398,8 +3410,11 @@ def _parts_table(panels: list["CutlistPanel"], content_width: float,
     def _i(text: str):
         return _Paragraph(_esc(text), sub_sty)
 
-    data: list[list] = [["ID", "Part", "L (mm)", "W (mm)", "T (mm)",
-                         "Qty", "Material"]]
+    header = ["ID", "Part", "L (mm)", "W (mm)", "T (mm)", "Qty", "Material"]
+    if from_map is not None:
+        header.append("From")
+    data: list[list] = [header]
+    blank_row_extra = [""] if from_map is not None else []
     cmds: list[tuple] = [
         ("BACKGROUND", (0, 0), (-1, 0), _HexColor("#2c3e50")),
         ("TEXTCOLOR", (0, 0), (-1, 0), _HexColor("#ffffff")),
@@ -3423,7 +3438,7 @@ def _parts_table(panels: list["CutlistPanel"], content_width: float,
             label = (f"Project {letter} — {p.source}" if letter
                      else (p.source or "Unassigned"))
             data.append([_Paragraph(f"<b>{_esc(label)}</b>", name_sty),
-                         "", "", "", "", "", ""])
+                         "", "", "", "", "", ""] + blank_row_extra)
             cmds += [("SPAN", (0, r), (-1, r)),
                      ("BACKGROUND", (0, r), (-1, r), _HexColor("#dfe6ec")),
                      ("TOPPADDING", (0, r), (-1, r), 5),
@@ -3431,20 +3446,23 @@ def _parts_table(panels: list["CutlistPanel"], content_width: float,
             shade = False
 
         r0 = len(data)
-        data.append([
+        row = [
             p.part_id or "—",
             _Paragraph(_esc(p.name), name_sty),
             _m(f"{p.length:.0f}"), _m(f"{p.width:.0f}"),
             _m(f"{p.thickness:g}"),
             p.quantity, _Paragraph(
                 _esc(p.material.replace("_", " ").title()), name_sty),
-        ])
+        ]
+        if from_map is not None:
+            row.append(_Paragraph(_esc(from_map.get(p.part_id, "—")), name_sty))
+        data.append(row)
         data.append([
             "", _Paragraph("in", sub_l_sty),
             _i(_inch_frac(p.length)), _i(_inch_frac(p.width)),
             _i(_thickness_imperial(p.thickness).replace('"', "")),
             "", "",
-        ])
+        ] + blank_row_extra)
         note_bits = []
         if p.edge_band:
             note_bits.append("band: " + ", ".join(p.edge_band))
@@ -3453,7 +3471,8 @@ def _parts_table(panels: list["CutlistPanel"], content_width: float,
         if note_bits:
             r = len(data)
             data.append(["", _Paragraph(_esc(" — ".join(note_bits)),
-                                        note_sty), "", "", "", "", ""])
+                                        note_sty), "", "", "", "", ""]
+                        + blank_row_extra)
             cmds.append(("SPAN", (1, r), (-1, r)))
         r1 = len(data) - 1
         if shade:
@@ -3463,8 +3482,9 @@ def _parts_table(panels: list["CutlistPanel"], content_width: float,
         cmds.append(("LINEBELOW", (0, r1), (-1, r1), 0.5,
                      _HexColor("#cccccc")))
 
-    col_w = [content_width * x
-             for x in (0.11, 0.30, 0.12, 0.12, 0.09, 0.06, 0.20)]
+    widths = ((0.10, 0.24, 0.11, 0.11, 0.08, 0.05, 0.17, 0.14)
+              if from_map is not None else (0.11, 0.30, 0.12, 0.12, 0.09, 0.06, 0.20))
+    col_w = [content_width * x for x in widths]
     tbl = _Table(data, colWidths=col_w, repeatRows=1)
     tbl.setStyle(_TableStyle(cmds))
     return tbl
