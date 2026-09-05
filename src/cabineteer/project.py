@@ -530,6 +530,16 @@ def _shared_override_keys(shared_dict: dict) -> set[str]:
     }
     if shared_dict.get("pull_preset") is not None:
         keys |= set(_PULL_EXPANSION_KEYS)
+    # A shared block can still carry the legacy "furniture_top" key verbatim
+    # (an old snapshot, or a patch that set shared.furniture_top directly —
+    # the shared-merge loop above stores whatever key it's given, and only
+    # shared_from_dict translates it, at load time, later than this call).
+    # Expand it here too, the same way pull_preset is expanded, so a
+    # legacy-keyed shared token still pins face_top_style/face_bottom_style
+    # on every caller that derives overrides from this function — not just
+    # the one call site a maintainer remembered to hand-patch.
+    if shared_dict.get("furniture_top") is not None:
+        keys |= set(_FURNITURE_TOP_EXPANSION_KEYS)
     return keys
 
 
@@ -691,6 +701,34 @@ def apply_project_patch(base: dict, patch: dict) -> tuple[dict, list[str]]:
                 }
             for k, v in expansion.items():
                 # Keys the same patch sets explicitly win over the preset.
+                cfg_patch.setdefault(k, v)
+        if "furniture_top" in cfg_patch:
+            # Same reasoning as pull_preset just above: a stored cabinet
+            # config always carries the expanded face_top_style/
+            # face_bottom_style explicitly (every _config_to_dict output
+            # does), so merging the literal "furniture_top" key verbatim
+            # would either be silently overridden by an active shared
+            # token on the real field names (this loop only pins keys it
+            # sees literally in shared_keys, which never contains the
+            # legacy name) or be a straight no-op against the cabinet's
+            # own already-explicit face_top_style (build_cabinet_config's
+            # legacy translation only fires when face_top_style is absent
+            # from the same dict). Translate it to the real fields here,
+            # before the pin/merge loop below, so both the override-pin
+            # check and the stored value actually take the patch.
+            ftv = cfg_patch.pop("furniture_top")
+            if ftv is None:
+                expansion = {k: None for k in _FURNITURE_TOP_EXPANSION_KEYS}
+            else:
+                _top_style, _bottom_style = furniture_top_to_styles(bool(ftv))
+                expansion = {
+                    "face_top_style": _top_style,
+                    "face_bottom_style": _bottom_style,
+                }
+            for k, v in expansion.items():
+                # An explicit face_top_style/face_bottom_style in this same
+                # patch wins over the legacy boolean, same precedence as
+                # build_cabinet_config.
                 cfg_patch.setdefault(k, v)
         if "drawer_config" in cfg_patch:
             # Alias for openings — replace the stored stack outright.

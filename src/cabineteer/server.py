@@ -3398,8 +3398,14 @@ async def list_tools() -> list[types.Tool]:
                             "parameters below."
                         ),
                     },
-                    "face_top_style": {"type": "string", "enum": ["plain", "cap", "flush"]},
-                    "face_bottom_style": {"type": "string", "enum": ["plain", "flush"]},
+                    "face_top_style": {
+                        "type": "string", "enum": ["plain", "cap", "flush"],
+                        "description": _face_style_schema()["face_top_style"]["description"],
+                    },
+                    "face_bottom_style": {
+                        "type": "string", "enum": ["plain", "flush"],
+                        "description": _face_style_schema()["face_bottom_style"]["description"],
+                    },
                     "face_bottom_overhang_mm": {"type": "number"},
                     "face_top_overhang_mm": {"type": "number"},
                     "face_height_overrides": {
