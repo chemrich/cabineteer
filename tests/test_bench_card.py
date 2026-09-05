@@ -291,6 +291,13 @@ class TestDonorPiece:
 
 
 class TestGenerateBenchCard:
+    @pytest.fixture(autouse=True)
+    def _require_reportlab(self):
+        # generate_bench_card always renders a PDF once it gets past
+        # validation (there's no PDF-less mode) — every test here that
+        # reaches rendering needs reportlab, which lite installs lack.
+        pytest.importorskip("reportlab")
+
     def _project(self):
         return build_project(_tower_project_payload())
 
@@ -837,6 +844,7 @@ class TestGenerateBenchCardTool:
             call_tool("generate_bench_card", args))
 
     def test_writes_pdf_under_data_dir(self, tmp_path):
+        pytest.importorskip("reportlab")
         res = self._run(self._args())
         text = res[0].text
         assert not text.startswith("ERROR:"), text
